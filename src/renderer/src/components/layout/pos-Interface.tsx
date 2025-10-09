@@ -112,8 +112,8 @@ const POSInterface: React.FC = () => {
           {/* Fixed top: Order details */}
           <OrderDetails />
 
-          {/* Scroll only the items table */}
-          <div className="flex-1 overflow-auto">
+          {/* Items area takes remaining space; inner table handles its own scroll */}
+          <div className="flex-1">
             <ItemsTable
               onRemoveItem={removeItem}
               selectedItemId={selectedItemId}

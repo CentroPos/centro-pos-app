@@ -21,7 +21,7 @@ type Props = {
   onEditingStarted?: () => void
 }
 
-type EditField = 'quantity' | 'uom' | 'discount_percentage'
+type EditField = 'quantity' | 'standard_rate' | 'uom' | 'discount_percentage'
 
 const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem, shouldStartEditing = false, onEditingStarted }) => {
   const { getCurrentTabItems, activeTabId, updateItemInTab } = usePOSTabStore();
@@ -77,7 +77,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     updateItemInTab(activeTabId, selectedItemId, { [activeField]: finalValue })
 
     // Move to next field automatically
-    const fieldOrder: EditField[] = ['quantity', 'uom', 'discount_percentage']
+    // Jump from Qty → Unit Price, then stop
+    const fieldOrder: EditField[] = ['quantity', 'standard_rate']
     const currentIndex = fieldOrder.indexOf(activeField)
 
     if (currentIndex < fieldOrder.length - 1) {
@@ -94,11 +95,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   }
 
   useHotkeys(
-    'Enter',
+    'space',
     () => {
       handleSaveEdit()
     },
-    { preventDefault: true }
+    { preventDefault: true, enableOnFormTags: true }
   )
 
   useHotkeys(
@@ -118,29 +119,26 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         </TabsList>
         <TabsContent value="items" className="mt-4">
           <div className="border rounded-lg">
-            {/* Static table header */}
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Product Code</TableHead>
-                  <TableHead>Label</TableHead>
-                  <TableHead>Qty</TableHead>
-                  <TableHead>UOM</TableHead>
-                  <TableHead>Disc %</TableHead>
-                  <TableHead>Unit Price</TableHead>
-                  <TableHead>Total</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-            </Table>
-
-            {/* Only the rows scroll */}
-            <div className="max-h-[50vh] overflow-y-auto">
-              <Table>
+            {/* Header and rows in a single table to keep columns aligned; header is sticky */}
+            <div className="max-h-[28vh] overflow-y-auto">
+              <Table className="table-fixed w-full">
+                <TableHeader className="sticky top-0 z-10 bg-white">
+                  <TableRow>
+                    <TableHead className="w-[160px]">Product Code</TableHead>
+                    <TableHead>Label</TableHead>
+                    <TableHead className="w-[80px]">Qty</TableHead>
+                    <TableHead className="w-[110px]">UOM</TableHead>
+                    <TableHead className="w-[100px]">Disc %</TableHead>
+                    <TableHead className="w-[120px]">Unit Price</TableHead>
+                    <TableHead className="w-[140px]">Total</TableHead>
+                    <TableHead className="w-[80px]">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
                 <TableBody>
                 {items.map((item) => {
                   const isSelected = item.item_code === selectedItemId
                   const isEditingQuantity = isSelected && isEditing && activeField === 'quantity'
+                  const isEditingRate = isSelected && isEditing && activeField === 'standard_rate'
                   const isEditingUom = isSelected && isEditing && activeField === 'uom'
                   const isEditingDiscount =
                     isSelected && isEditing && activeField === 'discount_percentage'
@@ -162,7 +160,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                       <TableCell className={isSelected ? 'font-semibold text-blue-900' : ''}>
                         {item.item_code}
                       </TableCell>
-                      <TableCell className={isSelected ? 'image.pngfont-medium' : ''}>
+                      <TableCell className={isSelected ? 'font-medium' : ''}>
                         {item.item_name}
                       </TableCell>
 
@@ -171,7 +169,14 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                         className={`${isSelected && activeField === 'quantity'
                             ? 'ring-2 ring-blue-500 ring-inset bg-blue-50'
                             : ''
-                          } ${isSelected ? 'font-medium' : ''}`}
+                          } ${isSelected ? 'font-medium' : ''} w-[80px]`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          selectItem(item.item_code)
+                          setActiveField('quantity')
+                          setIsEditing(true)
+                          setEditValue(String(item.quantity ?? ''))
+                        }}
                       >
                         {isEditingQuantity ? (
                           <input
@@ -189,7 +194,9 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                               }
                             }}
                             onBlur={handleSaveEdit}
-                            className="w-full px-2 py-1 border-2 border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-600"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            className="w-full max-w-[72px] px-2 py-1 border-2 border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-600"
                             min="0"
                             step="0.01"
                           />
@@ -203,7 +210,14 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                         className={`${isSelected && activeField === 'uom'
                             ? 'ring-2 ring-blue-500 ring-inset bg-blue-50'
                             : ''
-                          } ${isSelected ? 'font-medium' : ''}`}
+                          } ${isSelected ? 'font-medium' : ''} w-[110px]`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          selectItem(item.item_code)
+                          setActiveField('uom')
+                          setIsEditing(true)
+                          setEditValue(String(item.uom ?? ''))
+                        }}
                       >
                         {isEditingUom ? (
                           <input
@@ -221,7 +235,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                               }
                             }}
                             onBlur={handleSaveEdit}
-                            className="w-full px-2 py-1 border-2 border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-600"
+                            className="w-full max-w-[100px] px-2 py-1 border-2 border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-600 truncate"
                           />
                         ) : (
                           <div className="px-2 py-1">{item.uom}</div>
@@ -233,7 +247,14 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                         className={`${isSelected && activeField === 'discount_percentage'
                             ? 'ring-2 ring-blue-500 ring-inset bg-blue-50'
                             : ''
-                          } ${isSelected ? 'font-medium' : ''}`}
+                          } ${isSelected ? 'font-medium' : ''} w-[100px]`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          selectItem(item.item_code)
+                          setActiveField('discount_percentage')
+                          setIsEditing(true)
+                          setEditValue(String(item.discount_percentage ?? ''))
+                        }}
                       >
                         {isEditingDiscount ? (
                           <input
@@ -251,7 +272,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                               }
                             }}
                             onBlur={handleSaveEdit}
-                            className="w-full px-2 py-1 border-2 border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-600"
+                            className="w-full max-w-[90px] px-2 py-1 border-2 border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-600"
                             min="0"
                             max="100"
                             step="0.01"
@@ -261,8 +282,44 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                         )}
                       </TableCell>
 
-                      <TableCell className={isSelected ? 'font-medium' : ''}>
-                        ${item.standard_rate}
+                      {/* Unit Price (editable) */}
+                      <TableCell
+                        className={`${isSelected ? 'font-medium' : ''} w-[120px] ${
+                          isSelected && activeField === 'standard_rate'
+                            ? 'ring-2 ring-blue-500 ring-inset bg-blue-50'
+                            : ''
+                        }`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          selectItem(item.item_code)
+                          setActiveField('standard_rate')
+                          setIsEditing(true)
+                          setEditValue(String(item.standard_rate ?? ''))
+                        }}
+                      >
+                        {isEditingRate ? (
+                          <input
+                            ref={inputRef}
+                            type="number"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                handleSaveEdit()
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault()
+                                setIsEditing(false)
+                              }
+                            }}
+                            onBlur={handleSaveEdit}
+                            min="0"
+                            step="0.01"
+                            className="w-full max-w-[110px] px-2 py-1 border-2 border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-600"
+                          />
+                        ) : (
+                          <>${item.standard_rate}</>
+                        )}
                       </TableCell>
                       <TableCell className={`font-semibold ${isSelected ? 'text-blue-900' : ''}`}>
                         $
@@ -304,25 +361,19 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         </TabsContent>
         <TabsContent value="other" className="mt-4">
           <div className="border rounded-lg">
-            {/* Static table header for Other Details */}
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Field</TableHead>
-                  <TableHead>Value</TableHead>
-                </TableRow>
-              </TableHeader>
-            </Table>
-
-            {/* Only the rows scroll in Other Details */}
-            <div className="max-h-[50vh] overflow-y-auto">
-              <Table>
+            <div className="max-h-[28vh] overflow-y-auto">
+              <Table className="table-fixed w-full">
+                <TableHeader className="sticky top-0 z-10 bg-white">
+                  <TableRow>
+                    <TableHead>Field</TableHead>
+                    <TableHead>Value</TableHead>
+                  </TableRow>
+                </TableHeader>
                 <TableBody>
                   {/* Add other details rows here as needed */}
                 </TableBody>
               </Table>
             </div>
-
             <div className="p-3 border-t bg-gray-50" />
           </div>
         </TabsContent>

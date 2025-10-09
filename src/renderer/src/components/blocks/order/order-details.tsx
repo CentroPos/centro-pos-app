@@ -69,17 +69,7 @@ const OrderDetails: React.FC = () => {
           />
         </div>
 
-        <div className="space-y-2">
-          <label className="block text-sm font-semibold text-gray-700">Delivery</label>
-          <div className="flex gap-2">
-            <Button className="px-4 py-3 bg-gradient-to-r from-primary to-slate-700 text-white text-sm rounded-lg shadow-lg transition-all">
-              Instant
-            </Button>
-            <Button className="px-4 py-3 bg-white/60 border border-gray-200 text-sm rounded-lg hover:bg-white/80 transition-all">
-              Scheduled
-            </Button>
-          </div>
-        </div>
+        {/* Delivery options removed as requested */}
       </div>
 
       {/* Customer Search Modal */}
