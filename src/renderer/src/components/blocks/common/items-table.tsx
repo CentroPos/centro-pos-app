@@ -118,6 +118,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         </TabsList>
         <TabsContent value="items" className="mt-4">
           <div className="border rounded-lg">
+            {/* Static table header */}
             <Table>
               <TableHeader>
                 <TableRow>
@@ -131,7 +132,12 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
+            </Table>
+
+            {/* Only the rows scroll */}
+            <div className="max-h-[50vh] overflow-y-auto">
+              <Table>
+                <TableBody>
                 {items.map((item) => {
                   const isSelected = item.item_code === selectedItemId
                   const isEditingQuantity = isSelected && isEditing && activeField === 'quantity'
@@ -156,7 +162,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                       <TableCell className={isSelected ? 'font-semibold text-blue-900' : ''}>
                         {item.item_code}
                       </TableCell>
-                      <TableCell className={isSelected ? 'font-medium' : ''}>
+                      <TableCell className={isSelected ? 'image.pngfont-medium' : ''}>
                         {item.item_name}
                       </TableCell>
 
@@ -282,8 +288,9 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                     </TableRow>
                   )
                 })}
-              </TableBody>
-            </Table>
+                </TableBody>
+              </Table>
+            </div>
             <div className="p-3 border-t bg-gray-50">
               <Button
                 variant="ghost"
@@ -293,6 +300,30 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                 Press &apos;Shift&apos; to add item • Space to edit • ←→ to navigate fields
               </Button>
             </div>
+          </div>
+        </TabsContent>
+        <TabsContent value="other" className="mt-4">
+          <div className="border rounded-lg">
+            {/* Static table header for Other Details */}
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Field</TableHead>
+                  <TableHead>Value</TableHead>
+                </TableRow>
+              </TableHeader>
+            </Table>
+
+            {/* Only the rows scroll in Other Details */}
+            <div className="max-h-[50vh] overflow-y-auto">
+              <Table>
+                <TableBody>
+                  {/* Add other details rows here as needed */}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div className="p-3 border-t bg-gray-50" />
           </div>
         </TabsContent>
       </Tabs>

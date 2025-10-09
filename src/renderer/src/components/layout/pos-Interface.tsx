@@ -3,7 +3,7 @@ import ActionButtons from '../blocks/common/action-buttons'
 import OrderDetails from '../blocks/order/order-details'
 import ItemsTable from '../blocks/common/items-table'
 import PaymentAlert from '../blocks/payment/payment-alert'
-import ProductDetail from '../blocks/products/product-detail'
+import RightPanel from '../blocks/right-panel/right-panel'
 import Header from '../blocks/common/header'
 import DiscountSection from '../blocks/products/discount-section'
 import ProductSearchModal from '../blocks/products/product-modal'
@@ -109,8 +109,11 @@ const POSInterface: React.FC = () => {
             Open
           </button> */}
           <ActionButtons />
+          {/* Fixed top: Order details */}
+          <OrderDetails />
+
+          {/* Scroll only the items table */}
           <div className="flex-1 overflow-auto">
-            <OrderDetails />
             <ItemsTable
               onRemoveItem={removeItem}
               selectedItemId={selectedItemId}
@@ -118,13 +121,13 @@ const POSInterface: React.FC = () => {
               shouldStartEditing={shouldStartEditing}
               onEditingStarted={() => setShouldStartEditing(false)}
             />
-            <DiscountSection />
           </div>
+
+          {/* Fixed bottom: Discount/Summary section */}
+          <DiscountSection />
           <PaymentAlert orderNumber={currentTab?.orderId || ''} />
         </div>
-        <div className="w-80 border-l bg-white">
-          <ProductDetail selectedProduct={selectedItemId || ''} />
-        </div>
+        <RightPanel />
       </div>
       <ProductSearchModal
         open={open}
