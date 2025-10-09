@@ -6,7 +6,7 @@ import React, { useState } from 'react'
 
 const RightPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'product' | 'customer' | 'prints' | 'payments' | 'orders'>('product')
-  const [subTab, setSubTab] = useState<'upsell' | 'alternative'>('upsell')
+  const [subTab, setSubTab] = useState<'orders' | 'returns'>('orders')
 
   return (
     <div className="w-[440px] bg-white/60 backdrop-blur border-l border-white/20 flex flex-col">
@@ -263,69 +263,110 @@ const RightPanel: React.FC = () => {
             <div className="flex border-b border-gray-200/60">
               <button
                 className={`flex-1 px-4 py-3 font-semibold text-sm border-b-2 ${
-                  subTab === 'upsell' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'text-gray-500 hover:text-black hover:bg-white/40'
+                  subTab === 'orders' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'text-gray-500 hover:text-black hover:bg-white/40'
                 }`}
-                onClick={() => setSubTab('upsell')}
+                onClick={() => setSubTab('orders')}
               >
-                Recent Orders
+                Orders
               </button>
               <button
                 className={`flex-1 px-4 py-3 font-medium text-sm border-b-2 ${
-                  subTab === 'alternative' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'text-gray-500 hover:text-black hover:bg-white/40'
+                  subTab === 'returns' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'text-gray-500 hover:text-black hover:bg-white/40'
                 }`}
-                onClick={() => setSubTab('alternative')}
+                onClick={() => setSubTab('returns')}
               >
-                Most Ordered
+                Returns
               </button>
             </div>
 
-            {subTab === 'upsell' ? (
-              <div className="p-4 space-y-2">
-                <div className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-xl">
-                  <div className="flex justify-between items-start mb-1">
-                    <span className="font-bold text-primary text-sm">#POS-2025-002</span>
-                    <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full font-medium">Paid</span>
+            {subTab === 'orders' ? (
+              <div className="p-4 space-y-3">
+                {/* Example Order Row */}
+                {[{
+                  customer: 'John Smith',
+                  orderNo: 'POS-2025-002',
+                  invoiceNo: 'INV-2025-1002',
+                  qty: 3,
+                  dateTime: 'Jan 20, 2025 • 3:45 PM',
+                  amount: '$1,847.50',
+                  status: 'Paid',
+                  returnStatus: null
+                },{
+                  customer: 'Jane Doe',
+                  orderNo: 'POS-2025-001',
+                  invoiceNo: 'INV-2025-1001',
+                  qty: 2,
+                  dateTime: 'Jan 19, 2025 • 11:20 AM',
+                  amount: '$999.99',
+                  status: 'Unpaid',
+                  returnStatus: 'Return'
+                }].map((o, idx) => (
+                  <div key={idx} className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-xl">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="font-semibold text-primary text-sm">{o.customer}</div>
+                        <div className="text-xs text-gray-600 mt-1 flex gap-3 flex-wrap">
+                          <span className="font-medium">#{o.orderNo}</span>
+                          <span className="font-medium">Invoice: {o.invoiceNo}</span>
+                        </div>
+                        <div className="text-xs text-gray-600 mt-1 flex gap-3 flex-wrap">
+                          <span>Qty: {o.qty}</span>
+                          <span>{o.dateTime}</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-semibold">{o.amount}</div>
+                        <div className="mt-1 flex items-center gap-2 justify-end">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${o.status === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{o.status}</span>
+                          {o.returnStatus && (
+                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                              {o.returnStatus}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-xs text-gray-600 mb-1">Jan 20, 2025 • 3:45 PM</div>
-                  <div className="flex justify-between text-xs">
-                    <span>Qty: 3</span>
-                    <span className="font-semibold">$1,847.50</span>
-                  </div>
-                </div>
-                <div className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-xl">
-                  <div className="flex justify-between items-start mb-1">
-                    <span className="font-bold text-primary text-sm">#POS-2025-001</span>
-                    <span className="px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full font-medium">Unpaid</span>
-                  </div>
-                  <div className="text-xs text-gray-600 mb-1">Jan 19, 2025 • 11:20 AM</div>
-                  <div className="flex justify-between text-xs">
-                    <span>Qty: 2</span>
-                    <span className="font-semibold">$999.99</span>
-                  </div>
-                </div>
+                ))}
               </div>
             ) : (
               <div className="p-4 space-y-3">
-                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl">
-                  <div>
-                    <div className="font-semibold text-sm">iPhone 15 Pro</div>
-                    <div className="text-xs text-gray-600">IPH15-PRO</div>
+                {/* Returns rows - no Order No */}
+                {[{
+                  customer: 'John Smith',
+                  invoiceNo: 'INV-2025-1005',
+                  qty: 1,
+                  dateTime: 'Jan 21, 2025 • 3:45 PM',
+                  amount: '$199.99',
+                  status: 'Paid',
+                  returnStatus: 'Returned'
+                }].map((r, idx) => (
+                  <div key={idx} className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-xl">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="font-semibold text-primary text-sm">{r.customer}</div>
+                        <div className="text-xs text-gray-600 mt-1 flex gap-3 flex-wrap">
+                          <span className="font-medium">Invoice: {r.invoiceNo}</span>
+                        </div>
+                        <div className="text-xs text-gray-600 mt-1 flex gap-3 flex-wrap">
+                          <span>Qty: {r.qty}</span>
+                          <span>{r.dateTime}</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-semibold">{r.amount}</div>
+                        <div className="mt-1 flex items-center gap-2 justify-end">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${r.status === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{r.status}</span>
+                          {r.returnStatus && (
+                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                              {r.returnStatus}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <div className="font-bold text-sm">15 units</div>
-                    <div className="text-xs text-gray-600">$13,485</div>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl">
-                  <div>
-                    <div className="font-semibold text-sm">Galaxy S24</div>
-                    <div className="text-xs text-gray-600">SGS24-256</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-bold text-sm">12 units</div>
-                    <div className="text-xs text-gray-600">$9,588</div>
-                  </div>
-                </div>
+                ))}
               </div>
             )}
           </div>
