@@ -1,9 +1,65 @@
-// import { CreditCard, RotateCcw, Send } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@renderer/components/ui/button'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@renderer/components/ui/dialog'
+import { Input } from '@renderer/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@renderer/components/ui/select'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@renderer/components/ui/alert-dialog'
+import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 
 // type Props = unknown
 
 const ActionButtons: React.FC = () => {
+  const [open, setOpen] = useState<false | 'confirm' | 'pay'>(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [orderAmount, setOrderAmount] = useState('0.00')
+  const [prevOutstanding] = useState('0.00') // This will come from API
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [mode, setMode] = useState('Cash')
+  const [amount, setAmount] = useState('')
+  
+  // Get current tab data
+  const { getCurrentTabItems } = usePOSTabStore()
+  const items = getCurrentTabItems()
+  
+  // Calculate order total from items
+  const calculateOrderTotal = useCallback(() => {
+    return items.reduce((total, item) => {
+      const quantity = parseFloat(item.quantity || '0') || 0
+      const rate = parseFloat(item.standard_rate || '0') || 0
+      const discount = parseFloat(item.discount_percentage || '0') || 0
+      const itemTotal = quantity * rate
+      const discountAmount = (itemTotal * discount) / 100
+      return total + (itemTotal - discountAmount)
+    }, 0).toFixed(2)
+  }, [items])
+  
+  // Update order amount when items change
+  useEffect(() => {
+    const total = calculateOrderTotal()
+    setOrderAmount(total)
+  }, [calculateOrderTotal])
+  
+  const totalPending = (() => {
+    const a = parseFloat(orderAmount || '0') || 0
+    const b = parseFloat(prevOutstanding || '0') || 0
+    return (a + b).toFixed(2)
+  })()
+  
+  // Calculate payment status based on amount entered
+  const getPaymentStatus = () => {
+    const enteredAmount = parseFloat(amount || '0') || 0
+    const total = parseFloat(totalPending || '0') || 0
+    
+    if (enteredAmount === 0) {
+      return { text: 'Credit Sale', color: 'bg-orange-100 text-orange-800' }
+    } else if (enteredAmount >= total) {
+      return { text: 'Fully Paid', color: 'bg-green-100 text-green-800' }
+    } else {
+      return { text: 'Partially Paid', color: 'bg-yellow-100 text-yellow-800' }
+    }
+  }
+  
+  const paymentStatus = getPaymentStatus()
   // const [showPaymentModal, setShowPaymentModal] = useState<boolean>(false);
 
   // Get current tab and its items from Zustand (replaces useCartStore)
@@ -153,12 +209,12 @@ const ActionButtons: React.FC = () => {
             {/* )} */}
             <Button
               className="px-2 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs"
-            // onClick={handleSubmitOrder}
+              onClick={() => setOpen('confirm')}
             >
-              <i className="fas fa-paper-plane text-lg"></i>
-              Submit <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+Enter</span>
+              <i className="fas fa-check text-lg"></i>
+              Confirm <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+Enter</span>
             </Button>
-            <Button className="px-2 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs">
+            <Button className="px-2 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs" onClick={() => setOpen('pay')}>
               <i className="fas fa-credit-card text-lg"></i>
               Pay <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+P</span>
             </Button>
@@ -172,6 +228,83 @@ const ActionButtons: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Payment / Confirm Dialog */}
+      <Dialog open={!!open} onOpenChange={(v) => setOpen(v ? (open || 'confirm') : false)}>
+        <DialogContent className="max-w-4xl w-[90vw] bg-white border-2 shadow-2xl">
+          <DialogHeader className="pb-4">
+            <DialogTitle className="text-xl font-bold text-gray-800">{open === 'pay' ? 'Payment' : 'Confirm and Pay'}</DialogTitle>
+          </DialogHeader>
+
+          {/* Row: amounts */}
+          <div className="grid grid-cols-3 gap-4 mb-6">
+            <div className="p-4 rounded-lg bg-gray-50 border-2">
+              <div className="text-sm font-medium text-gray-700 mb-2">Order Amount</div>
+              <Input type="number" value={orderAmount} readOnly className="text-lg font-semibold bg-gray-100" />
+            </div>
+            <div className="p-4 rounded-lg bg-gray-50 border-2">
+              <div className="text-sm font-medium text-gray-700 mb-2">Previous Outstanding</div>
+              <Input type="number" value={prevOutstanding} readOnly className="text-lg font-semibold bg-gray-100" />
+            </div>
+            <div className="p-4 rounded-lg bg-gray-50 border-2">
+              <div className="text-sm font-medium text-gray-700 mb-2">Total Pending</div>
+              <Input value={totalPending} readOnly className="text-lg font-semibold bg-gray-100" />
+            </div>
+          </div>
+
+          {/* Date, Mode, Amount */}
+          <div className="grid grid-cols-3 gap-4 mb-6">
+            <div>
+              <div className="text-sm font-medium text-gray-700 mb-2">Date</div>
+              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="text-lg py-3" />
+            </div>
+            <div>
+              <div className="text-sm font-medium text-gray-700 mb-2">Payment Mode</div>
+              <Select value={mode} onValueChange={setMode}>
+                <SelectTrigger className="w-full text-lg py-3">
+                  <SelectValue placeholder="Select mode" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Cash">Cash</SelectItem>
+                  <SelectItem value="Card">Card</SelectItem>
+                  <SelectItem value="UPI">UPI</SelectItem>
+                  <SelectItem value="Bank">Bank</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <div className="text-sm font-medium text-gray-700 mb-2">Amount</div>
+              <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="text-lg py-3" />
+            </div>
+          </div>
+
+          {/* Payment Status - Real-time calculation */}
+          <div className="mb-6 p-4 bg-gray-50 rounded-lg border-2">
+            <span className="text-sm font-medium text-gray-700 mr-3">Payment Status:</span>
+            <span className={`px-3 py-2 ${paymentStatus.color} text-sm font-medium rounded-lg`}>
+              {paymentStatus.text}
+            </span>
+          </div>
+
+          <DialogFooter className="pt-6">
+            <Button onClick={() => setConfirmOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 text-lg font-semibold">Confirm and Pay</Button>
+            <Button variant="outline" onClick={() => setOpen(false)} className="px-8 py-3 text-lg font-semibold">Cancel</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Final confirm */}
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent className="max-w-md bg-white border-2 shadow-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-xl font-bold text-gray-800">Confirm Payment</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="pt-6">
+            <AlertDialogCancel className="px-6 py-3 text-lg font-semibold">No</AlertDialogCancel>
+            <AlertDialogAction autoFocus className="px-6 py-3 text-lg font-semibold bg-blue-600 hover:bg-blue-700">Yes</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {/* <PaymentSubmissionModal
         open={showPaymentModal}
         onClose={() => setShowPaymentModal(false)}

@@ -12,6 +12,7 @@ import { Plus, X } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { useHotkeys } from 'react-hotkeys-hook'
+import MultiWarehousePopup from './multi-warehouse-popup'
 
 type Props = {
   selectedItemId?: string
@@ -30,6 +31,16 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState<string>('')
   const inputRef = useRef<HTMLInputElement>(null)
+  
+  // Warehouse popup state
+  const [showWarehousePopup, setShowWarehousePopup] = useState(false)
+  const [warehousePopupData, setWarehousePopupData] = useState<{
+    itemCode: string
+    itemName: string
+    requiredQty: number
+    currentWarehouseQty: number
+    warehouses: any[]
+  } | null>(null)
 
   useEffect(() => {
     if (shouldStartEditing && selectedItemId && !isEditing) {
@@ -74,6 +85,29 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       finalValue = numValue
     }
 
+    // Check for quantity shortage when saving quantity
+    if (activeField === 'quantity' && typeof finalValue === 'number') {
+      const requiredQty = finalValue
+      const currentWarehouseQty = item.on_hand || 0 // This should come from API
+      
+      if (requiredQty > currentWarehouseQty) {
+        // Show warehouse allocation popup
+        setWarehousePopupData({
+          itemCode: item.item_code,
+          itemName: item.item_name || item.label || 'Unknown Product',
+          requiredQty,
+          currentWarehouseQty,
+          warehouses: item.warehouses || [
+            { name: 'Warehouse - 2', available: 10 },
+            { name: 'Warehouse - 3', available: 12 },
+            { name: 'Warehouse - 4', available: 30 }
+          ]
+        })
+        setShowWarehousePopup(true)
+        return // Don't save yet, wait for warehouse allocation
+      }
+    }
+
     updateItemInTab(activeTabId, selectedItemId, { [activeField]: finalValue })
 
     // Move to next field automatically
@@ -109,6 +143,31 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     },
     { preventDefault: true }
   )
+
+  // Handle warehouse allocation
+  const handleWarehouseAllocation = (allocations: any[]) => {
+    if (!warehousePopupData || !activeTabId) return
+
+    // Update the item with the allocated quantity
+    updateItemInTab(activeTabId, warehousePopupData.itemCode, { 
+      quantity: warehousePopupData.requiredQty,
+      warehouseAllocations: allocations 
+    })
+
+    // Move to next field after successful allocation
+    const fieldOrder: EditField[] = ['quantity', 'standard_rate']
+    const currentIndex = fieldOrder.indexOf(activeField)
+
+    if (currentIndex < fieldOrder.length - 1) {
+      const nextField = fieldOrder[currentIndex + 1];
+      setTimeout(() => {
+        setActiveField(nextField);
+        setIsEditing(true);
+      }, 50)
+    } else {
+      setIsEditing(false)
+    }
+  }
 
   return (
     <div className="p-4 bg-white">
@@ -378,6 +437,20 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
           </div>
         </TabsContent>
       </Tabs>
+      
+      {/* Multi Warehouse Allocation Popup */}
+      {warehousePopupData && (
+        <MultiWarehousePopup
+          open={showWarehousePopup}
+          onClose={() => setShowWarehousePopup(false)}
+          onAssign={handleWarehouseAllocation}
+          itemCode={warehousePopupData.itemCode}
+          itemName={warehousePopupData.itemName}
+          requiredQty={warehousePopupData.requiredQty}
+          currentWarehouseQty={warehousePopupData.currentWarehouseQty}
+          warehouses={warehousePopupData.warehouses}
+        />
+      )}
     </div>
   )
 }

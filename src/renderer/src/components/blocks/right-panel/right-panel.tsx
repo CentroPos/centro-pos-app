@@ -4,9 +4,51 @@ import React, { useState } from 'react'
 // Contains tabs for Product, Customer, Prints, Payments, Orders
 // and renders the contextual info shown in the design mock.
 
-const RightPanel: React.FC = () => {
+type RightPanelProps = {
+  selectedItemId?: string
+  items: any[]
+}
+
+const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items }) => {
   const [activeTab, setActiveTab] = useState<'product' | 'customer' | 'prints' | 'payments' | 'orders'>('product')
   const [subTab, setSubTab] = useState<'orders' | 'returns'>('orders')
+
+  // Get the currently selected item
+  const selectedItem = selectedItemId ? items.find(item => item.item_code === selectedItemId) : null
+
+  // Default product data when no item is selected
+  const defaultProduct = {
+    item_code: 'SGS24-256',
+    item_name: 'Samsung Galaxy S24',
+    category: 'Smartphones',
+    location: 'Rack A-15, Shelf 3',
+    standard_rate: 799.00,
+    on_hand: 3,
+    cost: 650.00,
+    margin: 18.6,
+    warehouses: [
+      { name: 'Warehouse - 2', qty: 10 },
+      { name: 'Warehouse - 3', qty: 12 },
+      { name: 'Warehouse - 4', qty: 30 }
+    ]
+  }
+
+  // Use selected item data or default
+  const productData = selectedItem ? {
+    item_code: selectedItem.item_code || 'N/A',
+    item_name: selectedItem.item_name || selectedItem.label || 'Unknown Product',
+    category: selectedItem.category || 'General',
+    location: selectedItem.location || 'Location not specified',
+    standard_rate: parseFloat(selectedItem.standard_rate || '0') || 0,
+    on_hand: selectedItem.on_hand || 0,
+    cost: selectedItem.cost || 0,
+    margin: selectedItem.margin || 0,
+    warehouses: selectedItem.warehouses || [
+      { name: 'Warehouse - 2', qty: 0 },
+      { name: 'Warehouse - 3', qty: 0 },
+      { name: 'Warehouse - 4', qty: 0 }
+    ]
+  } : defaultProduct
 
   return (
     <div className="w-[440px] bg-white/60 backdrop-blur border-l border-white/20 flex flex-col">
@@ -69,13 +111,15 @@ const RightPanel: React.FC = () => {
           <div className="p-4 border-b border-gray-200/60 bg-white/90">
             <div className="flex">
               <div className="w-32 h-32 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl mb-4 flex items-center justify-center">
-                <div className="w-24 h-24 bg-blue-600 text-white rounded-lg flex items-center justify-center font-bold">S24</div>
+                <div className="w-24 h-24 bg-blue-600 text-white rounded-lg flex items-center justify-center font-bold">
+                  {productData.item_code.substring(0, 3).toUpperCase()}
+                </div>
               </div>
               <div className="space-y-2 ml-4">
-                <div className="font-bold text-lg text-primary">SGS24-256</div>
-                <div className="font-semibold text-gray-800">Samsung Galaxy S24</div>
-                <div className="text-sm text-gray-600">Category: Smartphones</div>
-                <div className="text-sm text-gray-600">Location: Rack A-15, Shelf 3</div>
+                <div className="font-bold text-lg text-primary">{productData.item_code}</div>
+                <div className="font-semibold text-gray-800">{productData.item_name}</div>
+                <div className="text-sm text-gray-600">Category: {productData.category}</div>
+                <div className="text-sm text-gray-600">Location: {productData.location}</div>
               </div>
             </div>
           </div>
@@ -86,19 +130,19 @@ const RightPanel: React.FC = () => {
             <div className="grid grid-cols-2 gap-3">
               <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl">
                 <div className="text-xs text-gray-600">Unit Price</div>
-                <div className="font-bold text-blue-600">$799.00</div>
+                <div className="font-bold text-blue-600">${productData.standard_rate.toFixed(2)}</div>
               </div>
               <div className="p-3 bg-gradient-to-r from-red-50 to-pink-50 rounded-xl">
                 <div className="text-xs text-gray-600">On Hand</div>
-                <div className="font-bold text-red-600">3 units</div>
+                <div className="font-bold text-red-600">{productData.on_hand} units</div>
               </div>
               <div className="p-3 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl">
                 <div className="text-xs text-gray-600">Cost</div>
-                <div className="font-bold text-orange-600">$650.00</div>
+                <div className="font-bold text-orange-600">${productData.cost.toFixed(2)}</div>
               </div>
               <div className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl">
                 <div className="text-xs text-gray-600">Margin</div>
-                <div className="font-bold text-purple-600">18.6%</div>
+                <div className="font-bold text-purple-600">{productData.margin.toFixed(1)}%</div>
               </div>
             </div>
           </div>
@@ -107,24 +151,14 @@ const RightPanel: React.FC = () => {
           <div className="p-4 border-b border-gray-200/60 bg-white/90">
             <h4 className="font-bold text-gray-800 mb-3">Stock Details</h4>
             <div className="space-y-2">
-              <div className="p-2 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs">
-                <div className="flex justify-between items-center">
-                  <div className="font-semibold text-primary">Warehouse - 2</div>
-                  <span className="font-semibold text-green-600">Qty: 10</span>
+              {productData.warehouses.map((warehouse, index) => (
+                <div key={index} className="p-2 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs">
+                  <div className="flex justify-between items-center">
+                    <div className="font-semibold text-primary">{warehouse.name}</div>
+                    <span className="font-semibold text-green-600">Qty: {warehouse.qty}</span>
+                  </div>
                 </div>
-              </div>
-              <div className="p-2 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs">
-                <div className="flex justify-between items-center">
-                  <div className="font-semibold text-primary">Warehouse - 3</div>
-                  <span className="font-semibold text-green-600">Qty: 12</span>
-                </div>
-              </div>
-              <div className="p-2 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs">
-                <div className="flex justify-between items-center">
-                  <div className="font-semibold text-primary">Warehouse - 4</div>
-                  <span className="font-semibold text-green-600">Qty: 30</span>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
 

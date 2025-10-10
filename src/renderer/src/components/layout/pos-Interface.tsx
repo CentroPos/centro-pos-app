@@ -127,7 +127,7 @@ const POSInterface: React.FC = () => {
           <DiscountSection />
           <PaymentAlert orderNumber={currentTab?.orderId || ''} />
         </div>
-        <RightPanel />
+        <RightPanel selectedItemId={selectedItemId} items={items} />
       </div>
       <ProductSearchModal
         open={open}
