@@ -18,8 +18,9 @@ const ActionButtons: React.FC = () => {
   const [amount, setAmount] = useState('')
   
   // Get current tab data
-  const { getCurrentTabItems } = usePOSTabStore()
+  const { getCurrentTabItems, getCurrentTab, updateTabOrderId } = usePOSTabStore()
   const items = getCurrentTabItems()
+  const currentTab = getCurrentTab()
   
   // Calculate order total from items
   const calculateOrderTotal = useCallback(() => {
@@ -140,6 +141,13 @@ const ActionButtons: React.FC = () => {
   //   }
   // };
 
+  const handleSave = () => {
+    if (!currentTab) return
+    // Generate a temporary order number to simulate save
+    const orderNo = currentTab.orderId || `POS-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`
+    updateTabOrderId(currentTab.id, orderNo)
+  }
+
   // const handlePaymentSubmit = async (paymentAmount: number): Promise<void> => {
   //   try {
   //     // Step 1: Update payment
@@ -201,7 +209,8 @@ const ActionButtons: React.FC = () => {
             {/* {shouldShowSaveButton() && ( */}
             <Button
               className="px-2 py-2 bg-gradient-to-r from-yellow-400 to-yellow-500 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs"
-            // onClick={handleCreateInvoice}
+              disabled={!currentTab?.isEdited}
+              onClick={handleSave}
             >
               <i className="fas fa-save text-lg"></i>
               Save <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+S</span>
@@ -239,15 +248,15 @@ const ActionButtons: React.FC = () => {
           {/* Row: amounts */}
           <div className="grid grid-cols-3 gap-4 mb-6">
             <div className="p-4 rounded-lg bg-gray-50 border-2">
-              <div className="text-sm font-medium text-gray-700 mb-2">Order Amount</div>
+              <div className="text-sm font-medium text-gray-700 mb-2 truncate">Order Amount</div>
               <Input type="number" value={orderAmount} readOnly className="text-lg font-semibold bg-gray-100" />
             </div>
             <div className="p-4 rounded-lg bg-gray-50 border-2">
-              <div className="text-sm font-medium text-gray-700 mb-2">Previous Outstanding</div>
+              <div className="text-sm font-medium text-gray-700 mb-2 truncate">Outstanding</div>
               <Input type="number" value={prevOutstanding} readOnly className="text-lg font-semibold bg-gray-100" />
             </div>
             <div className="p-4 rounded-lg bg-gray-50 border-2">
-              <div className="text-sm font-medium text-gray-700 mb-2">Total Pending</div>
+              <div className="text-sm font-medium text-gray-700 mb-2 truncate">Total Pending</div>
               <Input value={totalPending} readOnly className="text-lg font-semibold bg-gray-100" />
             </div>
           </div>

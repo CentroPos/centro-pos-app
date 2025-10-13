@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@renderer/components/ui/dialog'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
@@ -33,15 +33,22 @@ const MultiWarehousePopup: React.FC<MultiWarehousePopupProps> = ({
 }) => {
   const [warehouseData, setWarehouseData] = useState<Warehouse[]>([])
   const shortage = requiredQty - currentWarehouseQty
+  const firstInputRef = useRef<HTMLInputElement | null>(null)
+  const assignBtnRef = useRef<HTMLButtonElement | null>(null)
 
   useEffect(() => {
     if (open) {
-      // Initialize warehouse data
-      setWarehouseData(warehouses.map(warehouse => ({
+      // Initialize warehouse data with the first warehouse pre-selected
+      setWarehouseData(warehouses.map((warehouse, idx) => ({
         ...warehouse,
         allocated: 0,
-        selected: false
+        selected: idx === 0
       })))
+      // Focus the first input after render
+      setTimeout(() => {
+        firstInputRef.current?.focus()
+        firstInputRef.current?.select()
+      }, 0)
     }
   }, [open, warehouses])
 
@@ -131,9 +138,16 @@ const MultiWarehousePopup: React.FC<MultiWarehousePopupProps> = ({
                     </td>
                     <td className="px-4 py-3">
                       <Input
+                        ref={index === 0 ? firstInputRef : undefined}
                         type="number"
                         value={warehouse.allocated || ''}
                         onChange={(e) => handleAllocationChange(index, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === ' ') {
+                            e.preventDefault()
+                            assignBtnRef.current?.focus()
+                          }
+                        }}
                         disabled={!warehouse.selected}
                         className="w-20 text-sm"
                         min="0"
@@ -146,17 +160,7 @@ const MultiWarehousePopup: React.FC<MultiWarehousePopupProps> = ({
             </table>
           </div>
 
-          {/* Allocation Summary */}
-          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="text-sm text-blue-700">
-              <strong>Total Allocated:</strong> {totalAllocated} / {shortage} required
-            </div>
-            {totalAllocated < shortage && (
-              <div className="text-sm text-red-600 mt-1">
-                ⚠️ Need to allocate {shortage - totalAllocated} more units
-              </div>
-            )}
-          </div>
+          {/* Allocation Summary removed as requested */}
         </div>
 
         <DialogFooter className="pt-4">
@@ -164,6 +168,7 @@ const MultiWarehousePopup: React.FC<MultiWarehousePopupProps> = ({
             Cancel
           </Button>
           <Button 
+            ref={assignBtnRef}
             onClick={handleAssign} 
             disabled={!isValidAllocation}
             className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white"

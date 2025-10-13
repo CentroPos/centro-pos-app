@@ -7,6 +7,7 @@ interface Tab {
   orderId: string | null
   orderData: any | null
   type: 'new' | 'existing'
+  displayName?: string
   customer: {
     name: string
     gst: string
@@ -58,6 +59,7 @@ export const usePOSTabStore = create<POSTabStore>()(
           orderId,
           orderData,
           type: 'existing',
+          displayName: `#${orderId}`,
           customer: { name: 'Walking Customer', gst: 'Not Applicable' },
           items: [],
           isEdited: false,
@@ -72,11 +74,14 @@ export const usePOSTabStore = create<POSTabStore>()(
       },
 
       createNewTab: () => {
+        const state = get()
+        const newCount = state.tabs.filter(t => t.type === 'new' && !t.orderId).length + 1
         const newTab: Tab = {
           id: `tab-${Date.now()}`,
           orderId: null,
           orderData: null,
           type: 'new',
+          displayName: `New ${newCount}`,
           customer: { name: 'Walking Customer', gst: 'Not Applicable' },
           items: [],
           isEdited: false,
@@ -150,7 +155,7 @@ export const usePOSTabStore = create<POSTabStore>()(
       // Other tab data methods
       updateTabOrderId: (tabId: string, orderId: string) => {
         set((state) => ({
-          tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, orderId } : tab))
+          tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, orderId, type: 'existing', displayName: `#${orderId}`, isEdited: false } : tab))
         }))
       },
 

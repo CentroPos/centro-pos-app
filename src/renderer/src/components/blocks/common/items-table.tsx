@@ -178,21 +178,24 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         </TabsList>
         <TabsContent value="items" className="mt-4">
           <div className="border rounded-lg">
-            {/* Header and rows in a single table to keep columns aligned; header is sticky */}
-            <div className="max-h-[28vh] overflow-y-auto">
+            {/* Fixed header table */}
+            <Table className="table-fixed w-full">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[160px]">Product Code</TableHead>
+                  <TableHead>Label</TableHead>
+                  <TableHead className="w-[80px]">Qty</TableHead>
+                  <TableHead className="w-[110px]">UOM</TableHead>
+                  <TableHead className="w-[100px]">Disc %</TableHead>
+                  <TableHead className="w-[120px]">Unit Price</TableHead>
+                  <TableHead className="w-[140px]">Total</TableHead>
+                  <TableHead className="w-[80px]">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+            </Table>
+            {/* Scrollable body table */}
+            <div className="max-h-[22vh] overflow-y-auto">
               <Table className="table-fixed w-full">
-                <TableHeader className="sticky top-0 z-10 bg-white">
-                  <TableRow>
-                    <TableHead className="w-[160px]">Product Code</TableHead>
-                    <TableHead>Label</TableHead>
-                    <TableHead className="w-[80px]">Qty</TableHead>
-                    <TableHead className="w-[110px]">UOM</TableHead>
-                    <TableHead className="w-[100px]">Disc %</TableHead>
-                    <TableHead className="w-[120px]">Unit Price</TableHead>
-                    <TableHead className="w-[140px]">Total</TableHead>
-                    <TableHead className="w-[80px]">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
                 <TableBody>
                 {items.map((item) => {
                   const isSelected = item.item_code === selectedItemId
@@ -420,14 +423,18 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         </TabsContent>
         <TabsContent value="other" className="mt-4">
           <div className="border rounded-lg">
-            <div className="max-h-[28vh] overflow-y-auto">
+            {/* Fixed header */}
+            <Table className="table-fixed w-full">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Field</TableHead>
+                  <TableHead>Value</TableHead>
+                </TableRow>
+              </TableHeader>
+            </Table>
+            {/* Scrollable body */}
+            <div className="max-h-[22vh] overflow-y-auto">
               <Table className="table-fixed w-full">
-                <TableHeader className="sticky top-0 z-10 bg-white">
-                  <TableRow>
-                    <TableHead>Field</TableHead>
-                    <TableHead>Value</TableHead>
-                  </TableRow>
-                </TableHeader>
                 <TableBody>
                   {/* Add other details rows here as needed */}
                 </TableBody>

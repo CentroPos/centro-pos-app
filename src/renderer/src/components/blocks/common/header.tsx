@@ -45,7 +45,7 @@ const Header: React.FC = () => {
                 onClick={() => setActiveTab(tab.id)}
               >
                 <span>
-                  {tab.orderId ? `#${tab.orderId}` : tab.type === 'new' ? 'New' : 'Order'}
+                  {tab.displayName || (tab.orderId ? `#${tab.orderId}` : tab.type === 'new' ? 'New' : 'Order')}
                 </span>
                 <button
                   className="ml-2 text-gray-400 hover:text-red-500"

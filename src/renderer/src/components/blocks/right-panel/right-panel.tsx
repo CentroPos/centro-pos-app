@@ -12,6 +12,8 @@ type RightPanelProps = {
 const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items }) => {
   const [activeTab, setActiveTab] = useState<'product' | 'customer' | 'prints' | 'payments' | 'orders'>('product')
   const [subTab, setSubTab] = useState<'orders' | 'returns'>('orders')
+  const [customerSubTab, setCustomerSubTab] = useState<'recent' | 'most'>('recent')
+  const [ordersSubTab, setOrdersSubTab] = useState<'orders' | 'returns'>('orders')
 
   // Get the currently selected item
   const selectedItem = selectedItemId ? items.find(item => item.item_code === selectedItemId) : null
@@ -293,6 +295,85 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items }) => {
             </div>
           </div>
 
+          {/* Customer insights: Recent Orders and Most Ordered */}
+          <div className="bg-white/90 mt-2">
+            <div className="flex border-b border-gray-200/60">
+              <button
+                className={`flex-1 px-4 py-3 font-semibold text-sm border-b-2 ${
+                  customerSubTab === 'recent' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'text-gray-500 hover:text-black hover:bg-white/40'
+                }`}
+                onClick={() => setCustomerSubTab('recent')}
+              >
+                Recent Orders
+              </button>
+              <button
+                className={`flex-1 px-4 py-3 font-medium text-sm border-b-2 ${
+                  customerSubTab === 'most' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'text-gray-500 hover:text-black hover:bg-white/40'
+                }`}
+                onClick={() => setCustomerSubTab('most')}
+              >
+                Most Ordered
+              </button>
+            </div>
+
+            {customerSubTab === 'recent' ? (
+              <div className="p-4 space-y-3">
+                {[{
+                  orderNo: 'POS-2025-002',
+                  qty: 3,
+                  dateTime: 'Jan 20, 2025 • 3:45 PM',
+                  amount: '$1,847.50',
+                  status: 'Paid'
+                },{
+                  orderNo: 'POS-2025-001',
+                  qty: 2,
+                  dateTime: 'Jan 19, 2025 • 11:20 AM',
+                  amount: '$999.99',
+                  status: 'Unpaid'
+                }].map((o, idx) => (
+                  <div key={idx} className="p-3 bg-gray-50 rounded-xl">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="font-semibold text-primary text-sm">#{o.orderNo}</div>
+                        <div className="text-xs text-gray-600 mt-1">{o.dateTime}</div>
+                        <div className="text-xs text-gray-600 mt-1">Qty: {o.qty}</div>
+                      </div>
+                      <div className="text-right">
+                        <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium mb-1 ${o.status === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{o.status}</span>
+                        <div className="font-semibold">{o.amount}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-4 space-y-3">
+                {[{
+                  code: 'IPH15-PRO', name: 'iPhone 15 Pro', units: '15 units', amount: '$13,485'
+                },{
+                  code: 'SGS24-256', name: 'Galaxy S24', units: '12 units', amount: '$9,588'
+                }].map((m, idx) => (
+                  <div key={idx} className="p-3 bg-gray-50 rounded-xl">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="font-semibold text-primary text-sm">{m.name}</div>
+                        <div className="text-xs text-gray-600">{m.code}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-semibold">{m.units}</div>
+                        <div className="text-xs text-gray-600">{m.amount}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'orders' && (
+        <div className="flex-1 overflow-y-auto">
           <div className="bg-white/90 mt-2">
             <div className="flex border-b border-gray-200/60">
               <button
@@ -315,7 +396,6 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items }) => {
 
             {subTab === 'orders' ? (
               <div className="p-4 space-y-3">
-                {/* Example Order Row */}
                 {[{
                   customer: 'John Smith',
                   orderNo: 'POS-2025-002',
@@ -365,7 +445,6 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items }) => {
               </div>
             ) : (
               <div className="p-4 space-y-3">
-                {/* Returns rows - no Order No */}
                 {[{
                   customer: 'John Smith',
                   invoiceNo: 'INV-2025-1005',
@@ -407,7 +486,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items }) => {
         </div>
       )}
 
-      {activeTab !== 'product' && activeTab !== 'customer' && (
+      {activeTab !== 'product' && activeTab !== 'customer' && activeTab !== 'orders' && (
         <div className="flex-1 flex items-center justify-center text-sm text-gray-500">
           <span>{activeTab[0].toUpperCase() + activeTab.slice(1)} panel coming soon</span>
         </div>
