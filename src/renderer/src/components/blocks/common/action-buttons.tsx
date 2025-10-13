@@ -18,7 +18,7 @@ const ActionButtons: React.FC = () => {
   const [amount, setAmount] = useState('')
   
   // Get current tab data
-  const { getCurrentTabItems, getCurrentTab, updateTabOrderId } = usePOSTabStore()
+  const { getCurrentTabItems, getCurrentTab, updateTabOrderId, setTabStatus } = usePOSTabStore()
   const items = getCurrentTabItems()
   const currentTab = getCurrentTab()
   
@@ -148,6 +148,16 @@ const ActionButtons: React.FC = () => {
     updateTabOrderId(currentTab.id, orderNo)
   }
 
+  const handleConfirm = () => {
+    if (!currentTab) return
+    setTabStatus(currentTab.id, 'confirmed')
+  }
+
+  const handlePay = () => {
+    if (!currentTab) return
+    setTabStatus(currentTab.id, 'paid')
+  }
+
   // const handlePaymentSubmit = async (paymentAmount: number): Promise<void> => {
   //   try {
   //     // Step 1: Update payment
@@ -207,6 +217,7 @@ const ActionButtons: React.FC = () => {
         <div className="flex justify-between items-center">
           <div className="flex gap-4">
             {/* {shouldShowSaveButton() && ( */}
+            {currentTab?.privilege !== 'sales' && (
             <Button
               className="px-2 py-2 bg-gradient-to-r from-yellow-400 to-yellow-500 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs"
               disabled={!currentTab?.isEdited}
@@ -215,18 +226,23 @@ const ActionButtons: React.FC = () => {
               <i className="fas fa-save text-lg"></i>
               Save <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+S</span>
             </Button>
+            )}
             {/* )} */}
-            <Button
-              className="px-2 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs"
-              onClick={() => setOpen('confirm')}
-            >
-              <i className="fas fa-check text-lg"></i>
-              Confirm <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+Enter</span>
-            </Button>
-            <Button className="px-2 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs" onClick={() => setOpen('pay')}>
-              <i className="fas fa-credit-card text-lg"></i>
-              Pay <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+P</span>
-            </Button>
+            {currentTab?.privilege !== 'sales' && currentTab?.status === 'draft' && (
+              <Button
+                className="px-2 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs"
+                onClick={handleConfirm}
+              >
+                <i className="fas fa-check text-lg"></i>
+                Confirm <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+Enter</span>
+              </Button>
+            )}
+            {currentTab?.privilege !== 'sales' && currentTab?.privilege !== 'billing' && currentTab?.status !== 'paid' && (
+              <Button className="px-2 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs" onClick={handlePay}>
+                <i className="fas fa-credit-card text-lg"></i>
+                Pay <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+P</span>
+              </Button>
+            )}
             <Button className="px-2 py-2 bg-gradient-to-r from-orange-500 to-orange-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs">
               <i className="fas fa-undo text-lg"></i>
               Return <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+R</span>

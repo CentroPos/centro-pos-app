@@ -8,6 +8,8 @@ interface Tab {
   orderData: any | null
   type: 'new' | 'existing'
   displayName?: string
+  status: 'draft' | 'confirmed' | 'paid'
+  privilege: 'return' | 'billing' | 'sales'
   customer: {
     name: string
     gst: string
@@ -26,6 +28,8 @@ interface POSTabStore {
   createNewTab: () => void
   closeTab: (tabId: string) => void
   setActiveTab: (tabId: string) => void
+  setTabStatus: (tabId: string, status: Tab['status']) => void
+  setTabPrivilege: (tabId: string, privilege: Tab['privilege']) => void
 
   // Tab data methods
   addItemToTab: (tabId: string, item: any) => void
@@ -60,6 +64,8 @@ export const usePOSTabStore = create<POSTabStore>()(
           orderData,
           type: 'existing',
           displayName: `#${orderId}`,
+          status: 'draft',
+          privilege: 'billing',
           customer: { name: 'Walking Customer', gst: 'Not Applicable' },
           items: [],
           isEdited: false,
@@ -82,6 +88,8 @@ export const usePOSTabStore = create<POSTabStore>()(
           orderData: null,
           type: 'new',
           displayName: `New ${newCount}`,
+          status: 'draft',
+          privilege: 'billing',
           customer: { name: 'Walking Customer', gst: 'Not Applicable' },
           items: [],
           isEdited: false,
@@ -109,6 +117,18 @@ export const usePOSTabStore = create<POSTabStore>()(
 
       setActiveTab: (tabId: string) => {
         set({ activeTabId: tabId })
+      },
+
+      setTabStatus: (tabId: string, status: Tab['status']) => {
+        set((state) => ({
+          tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, status } : tab))
+        }))
+      },
+
+      setTabPrivilege: (tabId: string, privilege: Tab['privilege']) => {
+        set((state) => ({
+          tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, privilege } : tab))
+        }))
       },
 
       // Tab item management methods

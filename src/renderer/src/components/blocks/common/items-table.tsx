@@ -25,8 +25,10 @@ type Props = {
 type EditField = 'quantity' | 'standard_rate' | 'uom' | 'discount_percentage'
 
 const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem, shouldStartEditing = false, onEditingStarted }) => {
-  const { getCurrentTabItems, activeTabId, updateItemInTab } = usePOSTabStore();
+  const { getCurrentTabItems, activeTabId, updateItemInTab, getCurrentTab } = usePOSTabStore();
   const items = getCurrentTabItems();
+  const currentTab = getCurrentTab();
+  const isReadOnly = currentTab?.status === 'confirmed' || currentTab?.status === 'paid';
   const [activeField, setActiveField] = useState<EditField>('quantity');
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState<string>('')
@@ -209,7 +211,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                     <TableRow
                       onClick={(e) => {
                         e.stopPropagation()
-                        if (!isEditing) {
+                        if (!isEditing && !isReadOnly) {
                           selectItem(item.item_code)
                         }
                       }}
@@ -234,10 +236,12 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                           } ${isSelected ? 'font-medium' : ''} w-[80px]`}
                         onClick={(e) => {
                           e.stopPropagation()
-                          selectItem(item.item_code)
-                          setActiveField('quantity')
-                          setIsEditing(true)
-                          setEditValue(String(item.quantity ?? ''))
+                          if (!isReadOnly) {
+                            selectItem(item.item_code)
+                            setActiveField('quantity')
+                            setIsEditing(true)
+                            setEditValue(String(item.quantity ?? ''))
+                          }
                         }}
                       >
                         {isEditingQuantity ? (
@@ -275,10 +279,12 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                           } ${isSelected ? 'font-medium' : ''} w-[110px]`}
                         onClick={(e) => {
                           e.stopPropagation()
-                          selectItem(item.item_code)
-                          setActiveField('uom')
-                          setIsEditing(true)
-                          setEditValue(String(item.uom ?? ''))
+                          if (!isReadOnly) {
+                            selectItem(item.item_code)
+                            setActiveField('uom')
+                            setIsEditing(true)
+                            setEditValue(String(item.uom ?? ''))
+                          }
                         }}
                       >
                         {isEditingUom ? (
@@ -312,10 +318,12 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                           } ${isSelected ? 'font-medium' : ''} w-[100px]`}
                         onClick={(e) => {
                           e.stopPropagation()
-                          selectItem(item.item_code)
-                          setActiveField('discount_percentage')
-                          setIsEditing(true)
-                          setEditValue(String(item.discount_percentage ?? ''))
+                          if (!isReadOnly) {
+                            selectItem(item.item_code)
+                            setActiveField('discount_percentage')
+                            setIsEditing(true)
+                            setEditValue(String(item.discount_percentage ?? ''))
+                          }
                         }}
                       >
                         {isEditingDiscount ? (
@@ -353,10 +361,12 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                         }`}
                         onClick={(e) => {
                           e.stopPropagation()
-                          selectItem(item.item_code)
-                          setActiveField('standard_rate')
-                          setIsEditing(true)
-                          setEditValue(String(item.standard_rate ?? ''))
+                          if (!isReadOnly) {
+                            selectItem(item.item_code)
+                            setActiveField('standard_rate')
+                            setIsEditing(true)
+                            setEditValue(String(item.standard_rate ?? ''))
+                          }
                         }}
                       >
                         {isEditingRate ? (
@@ -398,8 +408,9 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                           className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1"
                           onClick={(e) => {
                             e.stopPropagation()
-                            onRemoveItem(item.item_code)
+                            if (!isReadOnly) onRemoveItem(item.item_code)
                           }}
+                          disabled={isReadOnly}
                         >
                           <X className="w-4 h-4" />
                         </Button>
