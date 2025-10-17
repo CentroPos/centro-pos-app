@@ -155,16 +155,46 @@ function setupAuthHandlers(): void {
     try {
       const { name, value, domain, httpOnly, secure } = cookieDetails
 
-      await session.defaultSession.cookies.set({
-        url: `https://${domain}`,
-        name,
-        value,
-        httpOnly: httpOnly || true,
-        secure: secure || true,
-        sameSite: 'lax'
-      })
+      // Set for both http and https to cover dev servers without TLS
+      const urls = [`http://${domain}`, `https://${domain}`]
+      for (const url of urls) {
+        try {
+          await session.defaultSession.cookies.set({
+            url,
+            name,
+            value,
+            httpOnly: httpOnly ?? true,
+            secure: secure ?? (url.startsWith('https://')),
+            sameSite: 'lax'
+          })
+          console.log(`Cookie ${name} set for ${url}`)
+        } catch (err) {
+          console.warn('Failed to set cookie for', url, err)
+        }
+      }
 
-      console.log(`Session cookie ${name} set for ${domain}`)
+      // Also set for the current window URL if available
+      const mainWindow = global.mainWindow
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        const currentUrl = mainWindow.webContents.getURL()
+        if (currentUrl && currentUrl.includes('localhost')) {
+          try {
+            await session.defaultSession.cookies.set({
+              url: 'http://localhost:5173', // Vite dev server
+              name,
+              value,
+              httpOnly: httpOnly ?? true,
+              secure: false,
+              sameSite: 'lax'
+            })
+            console.log(`Cookie ${name} also set for localhost:5173`)
+          } catch (err) {
+            console.warn('Failed to set cookie for localhost:', err)
+          }
+        }
+      }
+
+      console.log(`Session cookie ${name} set for ${domain} (http/https)`) 
       return true
     } catch (error) {
       console.error('Failed to set session cookie:', error)
@@ -240,6 +270,15 @@ function setupAuthHandlers(): void {
     const mainWindow = global.mainWindow
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('redirect-to-login')
+    }
+  })
+
+  // Renderer error logging
+  ipcMain.on('renderer-log-error', (_event, payload) => {
+    try {
+      console.error('Renderer Error:', typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2))
+    } catch (e) {
+      console.error('Renderer Error:', payload)
     }
   })
 

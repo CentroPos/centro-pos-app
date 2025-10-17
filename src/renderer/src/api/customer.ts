@@ -36,13 +36,18 @@ export interface CustomerCreateData {
 // Transform Frappe customer response - simple and working
 const transformCustomer = (frappeCustomer: any): Customer | null => {
   if (!frappeCustomer) return null
+  // Fallback: derive a simple address string from primary_address HTML if address_line_1 missing
+  const rawPrimaryAddress: string | undefined = frappeCustomer.primary_address
+  const derivedAddress = !frappeCustomer.address_line_1 && typeof rawPrimaryAddress === 'string'
+    ? rawPrimaryAddress.replace(/<br\s*\/?>(\n)?/gi, ', ').replace(/<[^>]+>/g, '').replace(/\s+,/g, ',').replace(/,\s*,/g, ', ').trim()
+    : undefined
 
   return {
     id: frappeCustomer.name,
     name: frappeCustomer.customer_name || frappeCustomer.name,
     email: frappeCustomer.email_id || '',
     phone: frappeCustomer.mobile_no || null,
-    address: frappeCustomer.address_line_1 || null,
+    address: frappeCustomer.address_line_1 || derivedAddress || null,
     city: frappeCustomer.city || null,
     state: frappeCustomer.state || null,
     country: frappeCustomer.country || null,
@@ -55,23 +60,30 @@ const transformCustomer = (frappeCustomer: any): Customer | null => {
   }
 }
 
-// Transform Frappe customer list response - simple and working
+// Transform Frappe customer list response from centro_pos_apis.api.customer.customer_list
 const transformCustomerList = (response: any): Customer[] => {
   if (!response) return []
 
-  let customers: any[] = []
-
-  // Handle different Frappe response structures
-  if (Array.isArray(response)) {
-    customers = response
-  } else if (response.data && Array.isArray(response.data)) {
-    customers = response.data
-  } else if (response.message && Array.isArray(response.message)) {
-    customers = response.message
-  }
+  // API returns: { data: [ { name, customer_name, ... } ] }
+  const customers = Array.isArray(response?.data) ? response.data : Array.isArray(response?.message) ? response.message : ([] as any[])
 
   return customers
-    .map((customer) => transformCustomer(customer))
+    .map((c: any) =>
+      transformCustomer({
+        name: c.name,
+        customer_name: c.customer_name,
+        email_id: c.email_id,
+        mobile_no: c.phone,
+        address_line_1: c.address_line1,
+        city: c.city,
+        state: c.state,
+        pincode: c.pincode,
+        customer_type: 'Individual',
+        disabled: 0,
+        creation: '',
+        modified: ''
+      })
+    )
     .filter((customer): customer is Customer => customer !== null)
 }
 
@@ -79,13 +91,22 @@ export const customersAPI = {
   // Get all customers
   getAll: async (params = {}): Promise<Customer[]> => {
     try {
-      const defaultParams = {
-        limit_start: 0,
-        limit_page_length: 100
+      const defaultParams: any = {
+        search_term: '',
+        limit_start: 1, // API expects 1-based start
+        limit_page_length: 50
       }
 
+      // Use Frappe resource endpoint to avoid custom method permission issues (403)
       const response = await api.get(API_Endpoints.CUSTOMERS, {
-        params: { ...defaultParams, ...params }
+        params: {
+          fields:
+            '["name","customer_name","email_id","mobile_no","address_line_1","city","state","country","pincode","customer_type","disabled","creation","modified"]',
+          limit_start: defaultParams.limit_start,
+          limit_page_length: defaultParams.limit_page_length,
+          order_by: 'modified desc',
+          ...params
+        }
       })
 
       return transformCustomerList(response.data)
@@ -98,8 +119,8 @@ export const customersAPI = {
   // Get customer by ID
   getById: async (id: string): Promise<Customer | null> => {
     try {
-      const response = await api.get(`/resource/Customer/${id}`)
-      const transformed = transformCustomer(response.data.data)
+      const response = await api.get(`${API_Endpoints.CUSTOMERS}/${id}`)
+      const transformed = transformCustomer(response.data?.data || response.data)
       if (!transformed) {
         throw new Error('Customer not found')
       }

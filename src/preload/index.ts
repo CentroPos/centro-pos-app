@@ -35,11 +35,17 @@ const eventsAPI = {
   }
 }
 
+// Logger API
+const logAPI = {
+  logError: (payload: any) => ipcRenderer.send('renderer-log-error', payload)
+}
+
 // Combined custom API
 const customAPI = {
   auth: authAPI,
   app: appAPI,
-  events: eventsAPI
+  events: eventsAPI,
+  log: logAPI
 }
 
 // Type definitions for our custom API
@@ -47,6 +53,7 @@ interface CustomElectronAPI {
   auth: typeof authAPI
   app: typeof appAPI
   events: typeof eventsAPI
+  log: typeof logAPI
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

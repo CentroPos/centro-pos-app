@@ -2,7 +2,7 @@ import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios'
 import { toast } from 'sonner'
 import ElectronAuthStore from './electron-auth-store'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://172.104.140.136'
 
 // Create axios instance
 const api: AxiosInstance = axios.create({

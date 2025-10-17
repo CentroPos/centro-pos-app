@@ -196,8 +196,18 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                   <span className="ml-2 text-sm text-muted-foreground">Loading customers...</span>
                 </div>
               ) : error ? (
-                <div className="flex items-center justify-center h-32 text-red-500 text-sm">
-                  Error loading customers
+                <div className="flex flex-col items-center justify-center h-32 text-red-500 text-sm px-4 text-center">
+                  <span className="font-semibold mb-1">Error loading customers</span>
+                  <span className="text-red-600/90 break-words">
+                    {(() => {
+                      const err: any = error
+                      const msg = err?.message || err?.error || err?.exc || err?.statusText
+                      try {
+                        if (!msg && typeof err === 'object') return JSON.stringify(err)
+                      } catch {}
+                      return msg || 'Unknown error'
+                    })()}
+                  </span>
                 </div>
               ) : filtered.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-32 text-muted-foreground text-sm">

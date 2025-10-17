@@ -8,6 +8,9 @@ import { RouterProvider, createRouter } from '@tanstack/react-router'
 // Import the generated route tree
 import { routeTree } from './routeTree.gen'
 
+// Import API debug for console access
+import '@renderer/services/apiDebug'
+
 // Create a new router instance
 const router = createRouter({ routeTree })
 

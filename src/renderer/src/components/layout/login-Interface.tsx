@@ -62,11 +62,21 @@ const LoginPage: React.FC = () => {
       },
       {
         onSuccess: (res) => {
-          login(res)
+          console.log('Login success response:', res)
+          // Handle different response structures
+          if (res?.message === 'Logged In' || res?.data?.message === 'Logged In') {
+            login(res)
+            toast.success('Login successful!')
+          } else {
+            console.error('Unexpected login response:', res)
+            toast.error('Login failed: Invalid response')
+          }
         },
         onError: (err) => {
-          toast.error(COMMON_ERROR_MESSAGE)
           console.error('Login failed:', err)
+          // Show more specific error message
+          const errorMsg = err?.message || err?.error || COMMON_ERROR_MESSAGE
+          toast.error(errorMsg)
         }
       }
     )

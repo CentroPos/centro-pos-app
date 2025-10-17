@@ -9,6 +9,7 @@ import DiscountSection from '../blocks/products/discount-section'
 import ProductSearchModal from '../blocks/products/product-modal'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
+import { usePosProfile, useProfileDetails } from '@renderer/hooks/useProfile'
 import { toast } from 'sonner'
 
 const POSInterface: React.FC = () => {
@@ -27,6 +28,10 @@ const POSInterface: React.FC = () => {
 
   const items = getCurrentTabItems();
   const currentTab = getCurrentTab();
+
+  // Load POS profile and user profile details once POS loads
+  const { data: profileDetails } = useProfileDetails()
+  const { data: posProfile } = usePosProfile()
 
   const itemExists = (itemCode: string) => {
     if (!activeTabId) return false;

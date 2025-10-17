@@ -13,6 +13,8 @@ import { useState, useRef, useEffect } from 'react'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { useHotkeys } from 'react-hotkeys-hook'
 import MultiWarehousePopup from './multi-warehouse-popup'
+import api from '@renderer/services/api'
+import { API_Endpoints } from '@renderer/config/endpoints'
 
 type Props = {
   selectedItemId?: string
@@ -180,24 +182,21 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         </TabsList>
         <TabsContent value="items" className="mt-4">
           <div className="border rounded-lg">
-            {/* Fixed header table */}
-            <Table className="table-fixed w-full">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[160px]">Product Code</TableHead>
-                  <TableHead>Label</TableHead>
-                  <TableHead className="w-[80px]">Qty</TableHead>
-                  <TableHead className="w-[110px]">UOM</TableHead>
-                  <TableHead className="w-[100px]">Disc %</TableHead>
-                  <TableHead className="w-[120px]">Unit Price</TableHead>
-                  <TableHead className="w-[140px]">Total</TableHead>
-                  <TableHead className="w-[80px]">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-            </Table>
-            {/* Scrollable body table */}
+            {/* Single table with sticky header to keep columns aligned */}
             <div className="max-h-[22vh] overflow-y-auto">
               <Table className="table-fixed w-full">
+                <TableHeader className="sticky top-0 z-10 bg-white">
+                  <TableRow>
+                    <TableHead className="w-[160px]">Product Code</TableHead>
+                    <TableHead>Label</TableHead>
+                    <TableHead className="w-[80px]">Qty</TableHead>
+                    <TableHead className="w-[110px]">UOM</TableHead>
+                    <TableHead className="w-[100px]">Discount</TableHead>
+                    <TableHead className="w-[120px]">Unit Price</TableHead>
+                    <TableHead className="w-[140px]">Total</TableHead>
+                    <TableHead className="w-[80px]">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
                 <TableBody>
                 {items.map((item) => {
                   const isSelected = item.item_code === selectedItemId
@@ -283,7 +282,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             selectItem(item.item_code)
                             setActiveField('uom')
                             setIsEditing(true)
-                            setEditValue(String(item.uom ?? ''))
+                            setEditValue(String(item.uom ?? 'Nos'))
                           }
                         }}
                       >
@@ -292,7 +291,49 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             ref={inputRef}
                             type="text"
                             value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              setEditValue(val)
+                              // Update UOM immediately and adjust rate
+                              const applyRate = async () => {
+                                try {
+                                  let rates: Record<string, number> | undefined = (item as any).uomRates
+                                  if (!rates || rates[val] === undefined) {
+                                    const resp = await api.get(API_Endpoints.PRODUCT_LIST_METHOD, {
+                                      params: {
+                                        price_list: 'Standard Selling',
+                                        search_text: item.item_code,
+                                        limit_start: 1,
+                                        limit_page_length: 1
+                                      }
+                                    })
+                                    const entry = resp?.data?.data?.[0]
+                                    const details = Array.isArray(entry?.uom_details) ? entry.uom_details : []
+                                    rates = Object.fromEntries(details.map((d: any) => [d.uom, Number(d.rate || 0)]))
+                                  }
+                                  // Fallback #2: compute from Item detail conversion factors
+                                  if (!rates || rates[val] === undefined) {
+                                    const resp2 = await api.get(`${API_Endpoints.PRODUCTS}/${item.item_code}`)
+                                    const det = resp2?.data?.data
+                                    const baseRate = Number(det?.standard_rate || 0)
+                                    const convs = Array.isArray(det?.uoms) ? det.uoms : []
+                                    const computed: Record<string, number> = Object.fromEntries(
+                                      convs.map((u: any) => [u.uom, baseRate * Number(u.conversion_factor || 1)])
+                                    )
+                                    rates = { ...(rates || {}), ...computed }
+                                  }
+                                  const rate = rates && rates[val]
+                                  if (activeTabId) {
+                                    updateItemInTab(activeTabId, item.item_code, {
+                                      uom: val,
+                                      standard_rate: Number(rate || 0),
+                                      uomRates: rates
+                                    })
+                                  }
+                                } catch {}
+                              }
+                              applyRate()
+                            }}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
                                 e.preventDefault()
@@ -302,11 +343,10 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                 setIsEditing(false)
                               }
                             }}
-                            onBlur={handleSaveEdit}
                             className="w-full max-w-[100px] px-2 py-1 border-2 border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-600 truncate"
                           />
                         ) : (
-                          <div className="px-2 py-1">{item.uom}</div>
+                          <div className="px-2 py-1">{item.uom || 'Nos'}</div>
                         )}
                       </TableCell>
 
@@ -322,7 +362,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             selectItem(item.item_code)
                             setActiveField('discount_percentage')
                             setIsEditing(true)
-                            setEditValue(String(item.discount_percentage ?? ''))
+                            setEditValue(String(item.discount_percentage ?? '0'))
                           }
                         }}
                       >
@@ -348,7 +388,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             step="0.01"
                           />
                         ) : (
-                          <div className="px-2 py-1">{item.discount_percentage}</div>
+                          <div className="px-2 py-1">{item.discount_percentage ?? 0}</div>
                         )}
                       </TableCell>
 
@@ -390,15 +430,14 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             className="w-full max-w-[110px] px-2 py-1 border-2 border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-600"
                           />
                         ) : (
-                          <>${item.standard_rate}</>
+                          <>{Number(item.standard_rate || 0).toFixed(2)}</>
                         )}
                       </TableCell>
                       <TableCell className={`font-semibold ${isSelected ? 'text-blue-900' : ''}`}>
-                        $
                         {(
-                          item.standard_rate *
-                          item.quantity *
-                          (1 - item.discount_percentage / 100)
+                          Number(item.standard_rate || 0) *
+                          Number(item.quantity || 0) *
+                          (1 - Number(item.discount_percentage || 0) / 100)
                         ).toFixed(2)}
                       </TableCell>
                       <TableCell>
