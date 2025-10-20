@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import centro from './centro'
+import ElectronAuthStore from './electron-auth-store'
 
 type AnyFn = (...args: any[]) => Promise<any>
 
@@ -12,9 +13,72 @@ function safeStringify(obj: any) {
 }
 
 export const apiDebug = {
+  // Check current auth status
+  async checkAuth(): Promise<void> {
+    try {
+      const authStore = ElectronAuthStore.getInstance()
+      const authData = await authStore.getAuthData()
+      console.log('🔐 Current Auth Status:', {
+        isAuthenticated: authData.isAuthenticated,
+        user: authData.user,
+        sessionId: authData.sessionId ? 'present' : 'missing',
+        csrfToken: authData.csrfToken ? 'present' : 'missing',
+        apiKey: authData.apiKey ? 'present' : 'missing'
+      })
+      
+      // Log to terminal
+      try { 
+        window.electronAPI?.log?.logError({ 
+          debug: 'apiDebug:authCheck', 
+          authData 
+        }) 
+      } catch {}
+    } catch (error) {
+      console.error('❌ Auth check failed:', error)
+    }
+  },
+
+  // Test login with detailed debugging
+  async testLogin(credentials: { usr: string; pwd: string }): Promise<void> {
+    try {
+      console.log('🧪 Testing login with detailed debugging...')
+      
+      // Test regular login
+      console.log('1️⃣ Testing regular login...')
+      try {
+        const result = await apiDebug.run('login', credentials)
+        console.log('✅ Regular login result:', result)
+      } catch (e) {
+        console.log('❌ Regular login failed:', e)
+      }
+      
+      // Test API key login
+      console.log('2️⃣ Testing API key login...')
+      try {
+        const { authAPI } = await import('../api/auth')
+        const result = await authAPI.loginWithApiKey(credentials)
+        console.log('✅ API key login result:', result)
+      } catch (e) {
+        console.log('❌ API key login failed:', e)
+      }
+      
+      // Check final auth status
+      console.log('3️⃣ Final auth status:')
+      await apiDebug.checkAuth()
+      
+    } catch (error) {
+      console.error('❌ Login test failed:', error)
+    }
+  },
+
   // Generic executor by name
   async run(name: keyof typeof centro, ...args: any[]): Promise<any> {
     try {
+      // Check auth status first (except for login)
+      if (name !== 'login') {
+        await apiDebug.checkAuth()
+      }
+      
       const fn = (centro[name] as unknown) as AnyFn
       if (typeof fn !== 'function') throw new Error(`Unknown API: ${String(name)}`)
       const res = await fn(...args)

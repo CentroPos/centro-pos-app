@@ -82,6 +82,13 @@ function createWindow(): void {
 
 // Auth IPC Handlers
 function setupAuthHandlers(): void {
+  // In-memory session data (mirrors server.js behavior)
+  let proxySessionData: { cookies: string; csrfToken: string; isLoggedIn: boolean } = {
+    cookies: '',
+    csrfToken: '',
+    isLoggedIn: false
+  }
+
   // Store auth data securely
   ipcMain.handle('store-auth-data', async (_event, authData) => {
     try {
@@ -148,6 +155,120 @@ function setupAuthHandlers(): void {
       console.error('Failed to clear auth data:', error)
       throw error
     }
+  })
+
+  // Proxy: login via ERP, capture cookies and CSRF header
+  ipcMain.handle('proxy-login', async (_event, payload: { username: string; password: string }) => {
+    try {
+      const API_BASE_URL = 'http://172.104.140.136'
+      const loginUrl = `${API_BASE_URL}/api/method/login`
+      const body = new URLSearchParams()
+      body.append('usr', payload.username)
+      body.append('pwd', payload.password)
+
+      const response = await fetch(loginUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body
+      } as any)
+
+      // Collect set-cookie headers (multiple)
+      let rawSetCookie: string[] | undefined
+      const headersAny = response.headers as any
+      if (typeof headersAny.raw === 'function') {
+        rawSetCookie = headersAny.raw()['set-cookie']
+      } else {
+        const single = response.headers.get('set-cookie')
+        rawSetCookie = single ? [single] : []
+      }
+
+      if (rawSetCookie && rawSetCookie.length > 0) {
+        proxySessionData.cookies = rawSetCookie.join('; ')
+      }
+
+      const csrfToken = response.headers.get('x-frappe-csrf-token') || ''
+      if (csrfToken) proxySessionData.csrfToken = csrfToken
+
+      const data = await response.json()
+      proxySessionData.isLoggedIn = response.ok
+
+      return {
+        success: response.ok,
+        status: response.status,
+        data,
+        cookies: proxySessionData.cookies,
+        csrfToken: proxySessionData.csrfToken
+      }
+    } catch (error: any) {
+      return { success: false, status: 500, error: error?.message }
+    }
+  })
+
+  // Proxy: generic request using stored cookies/CSRF
+  ipcMain.handle(
+    'proxy-request',
+    async (
+      _event,
+      payload: { method?: string; url: string; params?: Record<string, any>; data?: any }
+    ) => {
+      try {
+        const API_BASE_URL = 'http://172.104.140.136'
+        const url = new URL(`${API_BASE_URL}${payload.url.startsWith('/') ? '' : '/'}${payload.url}`)
+        if (payload.params) {
+          Object.entries(payload.params).forEach(([k, v]) => url.searchParams.append(k, String(v)))
+        }
+
+        const isForm = typeof payload.data === 'object' && payload.data && payload.data.__form === true
+        const headers: Record<string, string> = {
+          'X-Requested-With': 'XMLHttpRequest'
+        }
+        if (proxySessionData.cookies) headers['Cookie'] = proxySessionData.cookies
+        if (proxySessionData.csrfToken) headers['X-Frappe-CSRF-Token'] = proxySessionData.csrfToken
+        if (!isForm) headers['Content-Type'] = 'application/json'
+
+        const response = await fetch(url.toString(), {
+          method: (payload.method || 'GET') as any,
+          headers,
+          body:
+            payload.data && !isForm
+              ? JSON.stringify(payload.data)
+              : undefined
+        } as any)
+
+        // Update cookies and CSRF if present
+        const headersAny = response.headers as any
+        let rawSetCookie: string[] | undefined
+        if (typeof headersAny.raw === 'function') {
+          rawSetCookie = headersAny.raw()['set-cookie']
+        } else {
+          const single = response.headers.get('set-cookie')
+          rawSetCookie = single ? [single] : []
+        }
+        if (rawSetCookie && rawSetCookie.length > 0) {
+          proxySessionData.cookies = rawSetCookie.join('; ')
+        }
+        const csrfToken = response.headers.get('x-frappe-csrf-token') || ''
+        if (csrfToken) proxySessionData.csrfToken = csrfToken
+
+        const data = await response.json().catch(() => ({}))
+        return { success: response.ok, status: response.status, data }
+      } catch (error: any) {
+        return { success: false, status: 500, error: error?.message }
+      }
+    }
+  )
+
+  // Proxy: session state
+  ipcMain.handle('proxy-session', async () => {
+    return { success: true, sessionData: proxySessionData }
+  })
+
+  ipcMain.handle('proxy-logout', async () => {
+    proxySessionData = { cookies: '', csrfToken: '', isLoggedIn: false }
+    return { success: true }
   })
 
   // Session cookie management for Frappe

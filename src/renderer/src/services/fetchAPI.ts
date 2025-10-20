@@ -1,8 +1,9 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios'
 import { toast } from 'sonner'
 import ElectronAuthStore from './electron-auth-store'
+import { getApiBaseUrl } from '@renderer/config/production'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://172.104.140.136'
+const API_BASE_URL = getApiBaseUrl()
 
 // Create axios instance
 const api: AxiosInstance = axios.create({
@@ -34,12 +35,34 @@ function jsonToFormData(
   return formData
 }
 
-// Request interceptor for dynamic content-type handling
-api.interceptors.request.use((config) => {
+// Request interceptor for dynamic content-type handling and session management
+api.interceptors.request.use(async (config) => {
   // If data is FormData, remove Content-Type header to let browser set it with boundary
   if (config.data instanceof FormData) {
     delete config.headers['Content-Type']
   }
+  
+  // Add session ID and CSRF token if available
+  try {
+    const authStore = ElectronAuthStore.getInstance()
+    const authData = await authStore.getAuthData()
+    
+    // Add CSRF token if available
+    if (authData.csrfToken) {
+      config.headers = config.headers || {}
+      config.headers['X-Frappe-CSRF-Token'] = authData.csrfToken
+    }
+    
+    // Note: Don't manually set Cookie header as it's blocked by browser security
+    // Session will be handled by the backend through other means
+    
+    // Add X-Requested-With header for Frappe
+    config.headers = config.headers || {}
+    config.headers['X-Requested-With'] = 'XMLHttpRequest'
+  } catch (e) {
+    console.warn('Request interceptor error in fetchAPI:', e)
+  }
+  
   return config
 })
 

@@ -30,11 +30,22 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   const { getCurrentTabItems, activeTabId, updateItemInTab, getCurrentTab } = usePOSTabStore();
   const items = getCurrentTabItems();
   const currentTab = getCurrentTab();
-  const isReadOnly = currentTab?.status === 'confirmed' || currentTab?.status === 'paid';
+  const isReadOnly = false; // Temporarily disabled for debugging
+  // const isReadOnly = currentTab?.status === 'confirmed' || currentTab?.status === 'paid';
+  
   const [activeField, setActiveField] = useState<EditField>('quantity');
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState<string>('')
   const inputRef = useRef<HTMLInputElement>(null)
+  
+  console.log('🔧 ItemsTable Debug:', {
+    activeTabId,
+    currentTabStatus: currentTab?.status,
+    isReadOnly,
+    itemsCount: items.length,
+    selectedItemId,
+    isEditing
+  });
   
   // Warehouse popup state
   const [showWarehousePopup, setShowWarehousePopup] = useState(false)
@@ -72,7 +83,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     }
   }, [isEditing, activeField, selectedItemId, items])
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!isEditing || !selectedItemId || !activeTabId) return
 
     const item = items.find((i) => i.item_code === selectedItemId)
@@ -92,24 +103,40 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     // Check for quantity shortage when saving quantity
     if (activeField === 'quantity' && typeof finalValue === 'number') {
       const requiredQty = finalValue
-      const currentWarehouseQty = item.on_hand || 0 // This should come from API
-      
-      if (requiredQty > currentWarehouseQty) {
-        // Show warehouse allocation popup
-        setWarehousePopupData({
-          itemCode: item.item_code,
-          itemName: item.item_name || item.label || 'Unknown Product',
-          requiredQty,
-          currentWarehouseQty,
-          warehouses: item.warehouses || [
-            { name: 'Warehouse - 2', available: 10 },
-            { name: 'Warehouse - 3', available: 12 },
-            { name: 'Warehouse - 4', available: 30 }
-          ]
+      try {
+        // Fetch live warehouse stock for this item and map to current UOM
+        const res = await (window as any).electronAPI?.proxy?.request({
+          url: '/api/method/centro_pos_apis.api.product.item_stock_warehouse_list',
+          params: {
+            item_id: item.item_code,
+            search_text: '',
+            limit_start: 0,
+            limit_page_length: 20
+          }
         })
-        setShowWarehousePopup(true)
-        return // Don't save yet, wait for warehouse allocation
-      }
+        const list = Array.isArray(res?.data?.data) ? res.data.data : []
+        const uomKey = String(item.uom || 'Nos').toLowerCase()
+        const warehouses = list.map((w: any) => {
+          const q = Array.isArray(w.quantities) ? w.quantities : []
+          const match = q.find((qq: any) => String(qq.uom).toLowerCase() === uomKey)
+          return { name: w.warehouse, available: Number(match?.qty || 0) }
+        })
+        const totalAvailable = warehouses.reduce((s: number, w: any) => s + (Number(w.available) || 0), 0)
+
+        if (requiredQty > totalAvailable) {
+          console.log('⚠️ Shortage detected:', { requiredQty, totalAvailable, warehouses })
+          // Show warehouse allocation popup with live availability for the selected UOM
+          setWarehousePopupData({
+            itemCode: item.item_code,
+            itemName: item.item_name || item.label || 'Unknown Product',
+            requiredQty,
+            currentWarehouseQty: totalAvailable,
+            warehouses
+          })
+          setShowWarehousePopup(true)
+          return // Don't save yet, wait for warehouse allocation
+        }
+      } catch {}
     }
 
     updateItemInTab(activeTabId, selectedItemId, { [activeField]: finalValue })
@@ -135,6 +162,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   useHotkeys(
     'space',
     () => {
+      console.log('⌨️ Space key pressed, isEditing:', isEditing, 'selectedItemId:', selectedItemId)
       handleSaveEdit()
     },
     { preventDefault: true, enableOnFormTags: true }
@@ -152,9 +180,20 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   const handleWarehouseAllocation = (allocations: any[]) => {
     if (!warehousePopupData || !activeTabId) return
 
-    // Update the item with the allocated quantity
+    // Calculate total allocated quantity from all warehouses
+    const totalAllocated = allocations.reduce((sum, allocation) => {
+      return sum + (Number(allocation.allocated) || 0)
+    }, 0)
+
+    console.log('📦 Warehouse allocation:', { 
+      allocations, 
+      totalAllocated, 
+      requiredQty: warehousePopupData.requiredQty 
+    })
+
+    // Update the item with the total allocated quantity
     updateItemInTab(activeTabId, warehousePopupData.itemCode, { 
-      quantity: warehousePopupData.requiredQty,
+      quantity: totalAllocated,
       warehouseAllocations: allocations 
     })
 
@@ -210,6 +249,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                     <TableRow
                       onClick={(e) => {
                         e.stopPropagation()
+                        console.log('🖱️ Row clicked:', item.item_code, 'isEditing:', isEditing, 'isReadOnly:', isReadOnly)
                         if (!isEditing && !isReadOnly) {
                           selectItem(item.item_code)
                         }
@@ -235,11 +275,13 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                           } ${isSelected ? 'font-medium' : ''} w-[80px]`}
                         onClick={(e) => {
                           e.stopPropagation()
+                          console.log('🖱️ Quantity cell clicked:', item.item_code, 'isReadOnly:', isReadOnly)
                           if (!isReadOnly) {
                             selectItem(item.item_code)
                             setActiveField('quantity')
                             setIsEditing(true)
                             setEditValue(String(item.quantity ?? ''))
+                            console.log('✅ Started editing quantity for:', item.item_code)
                           }
                         }}
                       >

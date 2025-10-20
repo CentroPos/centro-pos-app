@@ -1,10 +1,11 @@
 import api from './api'
 import { API_Endpoints } from '@renderer/config/endpoints'
+import { authAPI } from '@renderer/api/auth'
 
 // Unified client for Centro POS custom methods and Frappe resources
 export const centro = {
   // Auth
-  login: (usr: string, pwd: string) => api.post(API_Endpoints.LOGIN, { usr, pwd }),
+  login: (credentials: { usr: string; pwd: string }) => authAPI.login({ username: credentials.usr, password: credentials.pwd }),
   logout: () => api.post(API_Endpoints.LOGOUT, {}),
 
   // Profile
@@ -13,7 +14,7 @@ export const centro = {
 
   // Customers
   customerList: (params: { search_term?: string; limit_start?: number; limit_page_length?: number }) =>
-    api.get(API_Endpoints.CUSTOMER_LIST, { params }),
+    api.get(API_Endpoints.CUSTOMERS, { params }),
   customerCreate: (payload: any) => api.post(API_Endpoints.CUSTOMER_CREATE, payload),
   customerEdit: (payload: any) => api.post(API_Endpoints.CUSTOMER_EDIT, payload),
   customerResourceList: (params?: any) => api.get(API_Endpoints.CUSTOMERS, { params }),
