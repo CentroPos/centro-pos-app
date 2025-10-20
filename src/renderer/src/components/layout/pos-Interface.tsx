@@ -23,8 +23,12 @@ const POSInterface: React.FC = () => {
     removeItemFromTab,
     activeTabId,
     itemExistsInTab,
-    getCurrentTab
+    getCurrentTab,
+    getCurrentTabCustomer
   } = usePOSTabStore();
+
+  // Get selected customer from store
+  const selectedCustomer = getCurrentTabCustomer()
 
   const items = getCurrentTabItems();
   const currentTab = getCurrentTab();
@@ -132,7 +136,12 @@ const POSInterface: React.FC = () => {
           <DiscountSection />
           <PaymentAlert orderNumber={currentTab?.orderId || ''} />
         </div>
-        <RightPanel selectedItemId={selectedItemId} items={items} />
+        <RightPanel 
+          key={`${selectedCustomer?.name || 'no-customer'}-${selectedItemId || 'no-item'}`}
+          selectedItemId={selectedItemId} 
+          items={items} 
+          selectedCustomer={selectedCustomer} 
+        />
       </div>
       <ProductSearchModal
         open={open}

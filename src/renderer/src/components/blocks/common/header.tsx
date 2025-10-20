@@ -1,10 +1,5 @@
 import { Button } from '@renderer/components/ui/button'
 import { usePOSTabStore } from '../../../store/usePOSTabStore'
-import { API_Endpoints } from '@renderer/config/endpoints'
-import { useMutationQuery } from '@renderer/hooks/react-query/useReactQuery'
-import { useAuth } from '@renderer/hooks/useAuth'
-// import { useMutationQuery } from '@renderer/hooks/react-query/useReactQuery'
-// import { API_Endpoints } from '@renderer/config/endpoints'
 
 const Header: React.FC = () => {
 
@@ -13,13 +8,6 @@ const Header: React.FC = () => {
   const handleNewOrder = () => {
     createNewTab()
   }
-
-  const { mutate } = useMutationQuery({
-    endPoint: API_Endpoints.LOGOUT,
-    method: 'POST'
-  })
-
-  const { logout } = useAuth()
 
   return (
     <div className="p-3 glass-effect border-b border-white/20">
@@ -69,27 +57,6 @@ const Header: React.FC = () => {
           <div className="text-sm text-gray-600">
             {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </div>
-        </div>
-
-        <div className="ml-2 text-right   rounded-xl p-4 shadow-lg">
-          <Button
-            variant={'outline'}
-            onClick={() =>
-              mutate(
-                {
-                  data: undefined,
-                  params: {}
-                },
-                {
-                  onSuccess: () => {
-                    logout()
-                  }
-                }
-              )
-            }
-          >
-            Logout
-          </Button>
         </div>
       </div>
     </div>

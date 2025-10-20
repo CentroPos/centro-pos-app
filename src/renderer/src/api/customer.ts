@@ -72,7 +72,7 @@ const transformCustomerList = (response: any): Customer[] => {
   const transformed = customers
     .map((c: any) =>
       transformCustomer({
-        name: c.name,
+        name: c.name,  // This will be mapped to id in transformCustomer
         customer_name: c.customer_name,
         email_id: c.email_id,
         mobile_no: c.phone,

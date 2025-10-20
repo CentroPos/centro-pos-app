@@ -7,9 +7,10 @@ import React, { useEffect, useMemo, useState } from 'react'
 type RightPanelProps = {
   selectedItemId?: string
   items: any[]
+  selectedCustomer?: any
 }
 
-const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items }) => {
+const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selectedCustomer }) => {
   const [activeTab, setActiveTab] = useState<'product' | 'customer' | 'prints' | 'payments' | 'orders'>('product')
   const [subTab, setSubTab] = useState<'orders' | 'returns'>('orders')
   const [customerSubTab, setCustomerSubTab] = useState<'recent' | 'most'>('recent')
@@ -23,6 +24,47 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items }) => {
   const [stockLoading, setStockLoading] = useState(false)
   const [stockError, setStockError] = useState<string | null>(null)
   const [warehouseStock, setWarehouseStock] = useState<{ name: string; qty: number }[]>([])
+
+  // Recent orders for selected customer
+  const [recentOrders, setRecentOrders] = useState<any[]>([])
+  const [ordersLoading, setOrdersLoading] = useState(false)
+  const [ordersError, setOrdersError] = useState<string | null>(null)
+
+  // Most ordered products for selected customer
+  const [mostOrdered, setMostOrdered] = useState<any[]>([])
+  const [mostLoading, setMostLoading] = useState(false)
+  const [mostError, setMostError] = useState<string | null>(null)
+
+  // Customer details and insights
+  const [customerDetails, setCustomerDetails] = useState<any>(null)
+  const [customerInsights, setCustomerInsights] = useState<any>(null)
+  const [customerDetailsLoading, setCustomerDetailsLoading] = useState(false)
+  const [customerDetailsError, setCustomerDetailsError] = useState<string | null>(null)
+
+  // All orders and returns
+  const [allOrders, setAllOrders] = useState<any[]>([])
+  const [ordersTabLoading, setOrdersTabLoading] = useState(false)
+  const [ordersTabError, setOrdersTabError] = useState<string | null>(null)
+
+  // Profile data and dropdown
+  const [profileData, setProfileData] = useState<any>(null)
+  const [profileLoading, setProfileLoading] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false)
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showProfileDropdown) {
+        const target = event.target as Element
+        if (!target.closest('.profile-dropdown')) {
+          setShowProfileDropdown(false)
+        }
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showProfileDropdown])
 
   useEffect(() => {
     let cancelled = false
@@ -89,6 +131,288 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items }) => {
     }
   }, [selectedItem?.item_code, currentUom])
 
+  // Fetch recent orders when customer is selected
+  useEffect(() => {
+    let cancelled = false
+    async function loadRecentOrders() {
+      console.log('🔍 loadRecentOrders called with selectedCustomer:', selectedCustomer)
+      if (!selectedCustomer) {
+        console.log('❌ No selected customer, clearing orders')
+        setRecentOrders([])
+        return
+      }
+      try {
+        setOrdersLoading(true)
+        setOrdersError(null)
+        console.log('🔍 Loading recent orders for customer:', selectedCustomer)
+        console.log('🔍 Customer name from dropdown:', selectedCustomer.name)
+        
+        // Step 1: Call customer list API to get the correct customer_id
+        console.log('🔍 Step 1: Fetching customer list to find correct customer_id...')
+        const customerListRes = await window.electronAPI?.proxy?.request({
+          url: '/api/method/centro_pos_apis.api.customer.customer_list',
+          params: {
+            search_term: '',
+            limit_start: 1,
+            limit_page_length: 50
+          }
+        })
+        
+        console.log('🔍 Customer list API response:', customerListRes)
+        
+        // Step 2: Find the customer where customer_name matches selectedCustomer.name
+        const customers = customerListRes?.data?.data || []
+        console.log('🔍 Available customers:', customers)
+        
+        const matchingCustomer = customers.find((c: any) => c.customer_name === selectedCustomer.name)
+        console.log('🔍 Matching customer found:', matchingCustomer)
+        
+        if (!matchingCustomer) {
+          console.log('❌ No matching customer found in customer list')
+          setOrdersError('Customer not found in system')
+          return
+        }
+        
+        // Step 3: Use the 'name' field as customer_id
+        const customerId = matchingCustomer.name
+        console.log('🔍 Selected Customer ID for recent orders API:', customerId)
+        console.log('🔍 API URL: /api/method/centro_pos_apis.api.customer.get_customer_recent_orders')
+        console.log('🔍 API Params:', { customer_id: customerId, limit_start: 0, limit_page_length: 10 })
+        
+        // Step 4: Call recent orders API with correct customer_id
+        const res = await window.electronAPI?.proxy?.request({
+          url: '/api/method/centro_pos_apis.api.customer.get_customer_recent_orders',
+          params: {
+            customer_id: customerId,
+            limit_start: 0,
+            limit_page_length: 10
+          }
+        })
+        console.log('📦 Recent orders API response:', res)
+        console.log('📦 Response success:', res?.success)
+        console.log('📦 Response status:', res?.status)
+        console.log('📦 Response data:', res?.data)
+        console.log('📦 Response data.data:', res?.data?.data)
+        
+        if (res?.success && res?.data?.data) {
+          const orders = Array.isArray(res.data.data) ? res.data.data : []
+          console.log('📋 Recent orders array:', orders)
+          console.log('📋 Recent orders length:', orders.length)
+          if (!cancelled) {
+            setRecentOrders(orders)
+          }
+        } else {
+          console.log('❌ No orders found in response or API failed')
+          if (!cancelled) {
+            setRecentOrders([])
+          }
+        }
+      } catch (err) {
+        console.error('❌ Error loading recent orders:', err)
+        if (!cancelled) {
+          setOrdersError(err instanceof Error ? err.message : 'Failed to load recent orders')
+        }
+      } finally {
+        if (!cancelled) {
+          setOrdersLoading(false)
+        }
+      }
+    }
+    loadRecentOrders()
+    return () => { cancelled = true }
+  }, [selectedCustomer?.id])
+
+  // Fetch most ordered when customer is selected
+  useEffect(() => {
+    let cancelled = false
+    async function loadMostOrdered() {
+      if (!selectedCustomer) {
+        setMostOrdered([])
+        return
+      }
+      try {
+        setMostLoading(true)
+        setMostError(null)
+        // Resolve customer_id via list (same as recent orders strategy)
+        const listRes = await window.electronAPI?.proxy?.request({
+          url: '/api/method/centro_pos_apis.api.customer.customer_list',
+          params: { search_term: '', limit_start: 1, limit_page_length: 50 }
+        })
+        const list = listRes?.data?.data || []
+        const match = list.find((c: any) => c.customer_name === selectedCustomer.name)
+        const customerId = match?.name
+        if (!customerId) {
+          setMostOrdered([])
+          return
+        }
+        const res = await window.electronAPI?.proxy?.request({
+          url: '/api/method/centro_pos_apis.api.customer.get_customer_most_ordered_products',
+          params: { customer_id: customerId, limit_start: 0, limit_page_length: 10 }
+        })
+        const items = Array.isArray(res?.data?.data) ? res.data.data : []
+        if (!cancelled) setMostOrdered(items)
+      } catch (e: any) {
+        if (!cancelled) setMostError(e?.message || 'Failed to load most ordered')
+      } finally {
+        if (!cancelled) setMostLoading(false)
+      }
+    }
+    loadMostOrdered()
+    return () => { cancelled = true }
+  }, [selectedCustomer?.name])
+
+  // Fetch customer details and insights when customer is selected
+  useEffect(() => {
+    let cancelled = false
+    async function loadCustomerDetails() {
+      if (!selectedCustomer) {
+        setCustomerDetails(null)
+        setCustomerInsights(null)
+        return
+      }
+      try {
+        setCustomerDetailsLoading(true)
+        setCustomerDetailsError(null)
+        
+        // Step 1: Get customer ID from customer list
+        const listRes = await window.electronAPI?.proxy?.request({
+          url: '/api/method/centro_pos_apis.api.customer.customer_list',
+          params: { search_term: '', limit_start: 1, limit_page_length: 50 }
+        })
+        const list = listRes?.data?.data || []
+        const match = list.find((c: any) => c.customer_name === selectedCustomer.name)
+        const customerId = match?.name
+        
+        if (!customerId) {
+          setCustomerDetails(null)
+          setCustomerInsights(null)
+          return
+        }
+        
+        // Step 2: Fetch customer details
+        const detailsRes = await window.electronAPI?.proxy?.request({
+          url: `/api/resource/Customer/${customerId}`,
+          params: {}
+        })
+        
+        // Step 3: Fetch customer insights
+        const insightsRes = await window.electronAPI?.proxy?.request({
+          url: '/api/method/centro_pos_apis.api.customer.customer_amount_insights',
+          params: { customer_id: customerId }
+        })
+        
+        if (!cancelled) {
+          setCustomerDetails(detailsRes?.data?.data || null)
+          setCustomerInsights(insightsRes?.data?.data || null)
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          setCustomerDetailsError(e?.message || 'Failed to load customer details')
+        }
+      } finally {
+        if (!cancelled) {
+          setCustomerDetailsLoading(false)
+        }
+      }
+    }
+    loadCustomerDetails()
+    return () => { cancelled = true }
+  }, [selectedCustomer?.name])
+
+  // Fetch all orders when Orders tab is active
+  useEffect(() => {
+    let cancelled = false
+    async function loadAllOrders() {
+      if (activeTab !== 'orders') {
+        return
+      }
+      try {
+        setOrdersTabLoading(true)
+        setOrdersTabError(null)
+        
+        // Use the same API as recent orders but get all orders for all customers
+        // We'll fetch orders for each customer and combine them
+        const customerListRes = await window.electronAPI?.proxy?.request({
+          url: '/api/method/centro_pos_apis.api.customer.customer_list',
+          params: { search_term: '', limit_start: 1, limit_page_length: 50 }
+        })
+        
+        const customers = customerListRes?.data?.data || []
+        let allOrdersData: any[] = []
+        
+        // Fetch orders for each customer
+        for (const customer of customers) {
+          try {
+            const res = await window.electronAPI?.proxy?.request({
+              url: '/api/method/centro_pos_apis.api.customer.get_customer_recent_orders',
+              params: {
+                customer_id: customer.name,
+                limit_start: 0,
+                limit_page_length: 50 // Get more orders per customer
+              }
+            })
+            
+            if (res?.success && res?.data?.data) {
+              const orders = Array.isArray(res.data.data) ? res.data.data : []
+              allOrdersData = [...allOrdersData, ...orders]
+            }
+          } catch (err) {
+            console.error(`Error fetching orders for customer ${customer.name}:`, err)
+            // Continue with other customers even if one fails
+          }
+        }
+        
+        if (!cancelled) {
+          setAllOrders(allOrdersData)
+        }
+      } catch (err) {
+        console.error('❌ Error loading all orders:', err)
+        if (!cancelled) {
+          setOrdersTabError(err instanceof Error ? err.message : 'Failed to load orders')
+        }
+      } finally {
+        if (!cancelled) {
+          setOrdersTabLoading(false)
+        }
+      }
+    }
+    loadAllOrders()
+    return () => { cancelled = true }
+  }, [activeTab])
+
+  // Fetch profile data on component mount
+  useEffect(() => {
+    let cancelled = false
+    async function loadProfile() {
+      try {
+        setProfileLoading(true)
+        setProfileError(null)
+        
+        const res = await window.electronAPI?.proxy?.request({
+          url: '/api/method/centro_pos_apis.api.profile.get_pos_profile',
+          params: {}
+        })
+        
+        if (res?.success && res?.data?.data) {
+          if (!cancelled) {
+            setProfileData(res.data.data)
+          }
+        }
+      } catch (err) {
+        console.error('❌ Error loading profile:', err)
+        if (!cancelled) {
+          setProfileError(err instanceof Error ? err.message : 'Failed to load profile')
+        }
+      } finally {
+        if (!cancelled) {
+          setProfileLoading(false)
+        }
+      }
+    }
+    loadProfile()
+    return () => { cancelled = true }
+  }, [])
+
   // Default product data when no item is selected
   const defaultProduct = {
     item_code: 'SGS24-256',
@@ -125,8 +449,8 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items }) => {
   }
 
   return (
-    <div className="w-[440px] bg-white/60 backdrop-blur border-l border-white/20 flex flex-col">
-      <div className="flex border-b border-gray-200/60 bg-white/80 overflow-x-auto">
+    <div className="w-[480px] bg-white/60 backdrop-blur border-l border-white/20 flex flex-col">
+      <div className="flex justify-end border-b border-gray-200/60 bg-white/80 pl-2 pr-2">
         <button
           className={`px-4 py-3 font-semibold text-sm border-b-3 ${
             activeTab === 'product'
@@ -177,6 +501,47 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items }) => {
         >
           Orders
         </button>
+        
+        
+        {/* Profile Circle */}
+        <div className="relative ml-2 mr-2 flex items-center">
+          <button
+            className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-xs font-semibold hover:from-blue-600 hover:to-purple-700 transition-all"
+            onClick={() => setShowProfileDropdown(!showProfileDropdown)}
+          >
+            {profileLoading ? (
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            ) : profileData?.name ? (
+              profileData.name.substring(0, 2).toUpperCase()
+            ) : (
+              'U'
+            )}
+          </button>
+          
+          {/* Profile Dropdown */}
+          {showProfileDropdown && (
+            <div className="absolute right-0 top-10 bg-white rounded-lg shadow-lg border border-gray-200 py-2 min-w-48 z-50">
+              <div className="px-4 py-2 border-b border-gray-100">
+                <div className="text-sm font-semibold text-gray-800">
+                  {profileData?.name || 'User Profile'}
+                </div>
+                <div className="text-xs text-gray-500">
+                  {profileData?.company || 'Company'}
+                </div>
+              </div>
+              <button
+                className="w-full px-4 py-2 text-left text-sm font-semibold text-black hover:bg-gray-100 transition-colors"
+                onClick={() => {
+                  // Handle logout
+                  window.electronAPI?.auth?.logout()
+                  setShowProfileDropdown(false)
+                }}
+              >
+                Logout
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {activeTab === 'product' && (
@@ -247,135 +612,89 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items }) => {
             </div>
           </div>
 
-          {/* Customer's History / Alternatives */}
-          <div className="bg-white/90">
-            <div className="flex border-b border-gray-200/60">
-              <button
-                id="upsell-tab"
-                className={`flex-1 px-4 py-3 font-semibold text-sm border-b-2 ${
-                  subTab === 'upsell' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'text-gray-500 hover:text-black hover:bg-white/40'
-                }`}
-                onClick={() => setSubTab('upsell')}
-              >
-                <h4 className="font-bold text-gray-800 mb-0">Customer&apos;s History</h4>
-              </button>
-              <button
-                id="alternative-tab"
-                className={`flex-1 px-4 py-3 font-medium text-sm border-b-2 ${
-                  subTab === 'alternative' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'text-gray-500 hover:text-black hover:bg-white/40'
-                }`}
-                onClick={() => setSubTab('alternative')}
-              >
-                <h4 className="font-bold text-gray-800 mb-0">Alternatives</h4>
-              </button>
-            </div>
-
-            {subTab === 'upsell' ? (
-              <div className="p-4">
-                <div className="text-xs text-gray-500 mb-2">Previous purchases of Samsung Galaxy S24</div>
-                <div className="space-y-2">
-                  <div className="p-2 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs">
-                    <div className="flex justify-between items-center">
-                      <div className="font-semibold text-primary">POS-2024-892</div>
-                      <div className="text-gray-600">Dec 15, 2024</div>
-                    </div>
-                    <div className="flex justify-between mt-1">
-                      <span className="text-gray-600">Qty: 1</span>
-                      <span className="font-semibold text-green-600">$799.00</span>
-                    </div>
-                  </div>
-                  <div className="p-2 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs">
-                    <div className="flex justify-between items-center">
-                      <div className="font-semibold text-primary">POS-2024-654</div>
-                      <div className="text-gray-600">Oct 22, 2024</div>
-                    </div>
-                    <div className="flex justify-between mt-1">
-                      <span className="text-gray-600">Qty: 2</span>
-                      <span className="font-semibold text-green-600">$1,598.00</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="p-4">
-                <div className="space-y-3">
-                  <div className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-200">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="font-bold text-sm text-primary">SGS24-512</div>
-                        <div className="text-xs text-gray-600">Galaxy S24 (512GB)</div>
-                        <div className="text-xs text-green-600 font-semibold mt-1">Available: 5</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-bold text-purple-600">$949.00</div>
-                        <button className="mt-1 px-3 py-1 bg-purple-500 text-white text-xs rounded-lg hover:bg-purple-600 transition-all">
-                          Replace
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="p-3 bg-gradient-to-r from-orange-50 to-red-50 rounded-xl border border-orange-200">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="font-bold text-sm text-primary">IPH15-128</div>
-                        <div className="text-xs text-gray-600">iPhone 15 (128GB)</div>
-                        <div className="text-xs text-green-600 font-semibold mt-1">Available: 7</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-bold text-orange-600">$899.00</div>
-                        <button className="mt-1 px-3 py-1 bg-orange-500 text-white text-xs rounded-lg hover:bg-orange-600 transition-all">
-                          Replace
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
         </div>
       )}
 
       {activeTab === 'customer' && (
         <div className="flex-1 overflow-y-auto">
           <div className="p-4 border-b border-gray-200/60 bg-white/90">
-            <div className="flex items-center gap-4 mb-6">
-              <div className="w-12 h-12 bg-gradient-to-r from-primary to-slate-700 rounded-full flex items-center justify-center">
-                <i className="fas fa-user text-white text-lg" />
+            {customerDetailsLoading && (
+              <div className="text-center py-4">
+                <div className="text-sm text-gray-500">Loading customer details...</div>
               </div>
-              <div>
-                <h3 className="font-bold text-lg">Walking Customer</h3>
-                <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">
-                  VAT: Not Applicable
-                </p>
-                <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">
-                  ADDRESS: ABC BUILING, 2nds Street
-                </p>
+            )}
+            {customerDetailsError && (
+              <div className="text-center py-4">
+                <div className="text-sm text-red-600">{customerDetailsError}</div>
               </div>
-            </div>
+            )}
+            {!customerDetailsLoading && !customerDetailsError && customerDetails && (
+              <>
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="w-12 h-12 bg-gradient-to-r from-primary to-slate-700 rounded-full flex items-center justify-center">
+                    <i className="fas fa-user text-white text-lg" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg">{customerDetails.customer_name || 'Walking Customer'}</h3>
+                    <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">
+                      VAT: {customerDetails.tax_id || 'Not Applicable'}
+                    </p>
+                    <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">
+                      ADDRESS: {customerDetails.primary_address ? 
+                        customerDetails.primary_address.replace(/<br\s*\/?>/gi, ', ').replace(/<[^>]+>/g, '').trim() : 
+                        'Address not available'
+                      }
+                    </p>
+                  </div>
+                </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl">
-                <div className="text-xs text-gray-600">Total Invoiced</div>
-                <div className="font-bold text-blue-600">$12,450.00</div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl">
+                    <div className="text-xs text-gray-600">Total Invoiced</div>
+                    <div className="font-bold text-blue-600">
+                      ${customerInsights?.total_invoice_amount?.toLocaleString() || '0.00'}
+                    </div>
+                  </div>
+                  <div className="p-3 bg-gradient-to-r from-red-50 to-pink-50 rounded-xl">
+                    <div className="text-xs text-gray-600">Amount Due</div>
+                    <div className="font-bold text-red-600">
+                      ${customerInsights?.amount_due?.toLocaleString() || '0.00'}
+                    </div>
+                  </div>
+                  <div className="p-3 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl">
+                    <div className="text-xs text-gray-600">
+                      Last Payment {customerInsights?.last_payment_datetime ? 
+                        `| ${new Date(customerInsights.last_payment_datetime).toLocaleDateString('en-US', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric'
+                        })}` : ''
+                      }
+                    </div>
+                    <div className="font-bold text-green-600">
+                      ${customerInsights?.last_payment_amount?.toLocaleString() || '0.00'}
+                    </div>
+                  </div>
+                  <div className="p-3 bg-gradient-to-r from-blue-50 to-yellow-50 rounded-xl">
+                    <div className="text-xs text-gray-600">Credit Limit</div>
+                    <div className="font-bold text-orange-600">
+                      ${customerInsights?.total_credit_limit?.toLocaleString() || '0.00'}
+                    </div>
+                  </div>
+                  <div className="p-3 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl">
+                    <div className="text-xs text-gray-600">Available Credit Limit</div>
+                    <div className="font-bold text-orange-600">
+                      ${customerInsights?.available_credit_limit?.toLocaleString() || '0.00'}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+            {!customerDetailsLoading && !customerDetailsError && !customerDetails && (
+              <div className="text-center py-4">
+                <div className="text-sm text-gray-500">Select a customer to view details</div>
               </div>
-              <div className="p-3 bg-gradient-to-r from-red-50 to-pink-50 rounded-xl">
-                <div className="text-xs text-gray-600">Amount Due</div>
-                <div className="font-bold text-red-600">$2,570.00</div>
-              </div>
-              <div className="p-3 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl">
-                <div className="text-xs text-gray-600">Last Payment  |  <small><i> 20 Oct 2025 </i></small></div>
-                <div className="font-bold text-green-600">$1,200.00</div>
-              </div>
-              <div className="p-3 bg-gradient-to-r from-blue-50 to-yellow-50 rounded-xl">
-                <div className="text-xs text-gray-600">Credit Limit</div>
-                <div className="font-bold text-orange-600">$10000.40</div>
-              </div>
-              <div className="p-3 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl">
-                <div className="text-xs text-gray-600">Available Credit Limit</div>
-                <div className="font-bold text-orange-600">$7500.40</div>
-              </div>
-            </div>
+            )}
           </div>
 
           {/* Customer insights: Recent Orders and Most Ordered */}
@@ -400,55 +719,89 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items }) => {
             </div>
 
             {customerSubTab === 'recent' ? (
-              <div className="p-4 space-y-3">
-                {[{
-                  orderNo: 'POS-2025-002',
-                  qty: 3,
-                  dateTime: 'Jan 20, 2025 • 3:45 PM',
-                  amount: '$1,847.50',
-                  status: 'Paid'
-                },{
-                  orderNo: 'POS-2025-001',
-                  qty: 2,
-                  dateTime: 'Jan 19, 2025 • 11:20 AM',
-                  amount: '$999.99',
-                  status: 'Unpaid'
-                }].map((o, idx) => (
-                  <div key={idx} className="p-3 bg-gray-50 rounded-xl">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="font-semibold text-primary text-sm">#{o.orderNo}</div>
-                        <div className="text-xs text-gray-600 mt-1">{o.dateTime}</div>
-                        <div className="text-xs text-gray-600 mt-1">Qty: {o.qty}</div>
-                      </div>
-                      <div className="text-right">
-                        <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium mb-1 ${o.status === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{o.status}</span>
-                        <div className="font-semibold">{o.amount}</div>
-                      </div>
+              <div className="p-4">
+                <div className="text-xs text-gray-500 mb-2">
+                  {selectedCustomer ? `Recent orders for ${selectedCustomer.name}` : 'Select a customer to view recent orders'}
+                </div>
+                <div className="space-y-2">
+                  {ordersLoading && (
+                    <div className="text-xs text-gray-500 text-center py-4">Loading recent orders...</div>
+                  )}
+                  {ordersError && (
+                    <div className="text-xs text-red-600 text-center py-4">{ordersError}</div>
+                  )}
+                  {!ordersLoading && !ordersError && recentOrders.length > 0 && recentOrders.slice(0, 3).map((order, index) => (
+                    <div key={index} className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200">
+                      <div className="flex justify-between items-center mb-2">
+                        <div className="font-semibold text-primary text-sm">{order.invoice_no || order.sales_order_no}</div>
+                        <div className="text-gray-600 text-xs">
+                          {new Date(order.creation_datetime).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric'
+                          })}
                     </div>
+                    </div>
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-gray-600 font-medium">Qty: {order.total_qty}</span>
+                        <span className="font-bold text-green-600 text-sm">${order.total_amount?.toLocaleString()}</span>
                   </div>
-                ))}
+                    <div className="flex justify-between items-center">
+                        <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                          order.status === 'Overdue' ? 'bg-red-100 text-red-700' : 
+                          order.status === 'Paid' ? 'bg-green-100 text-green-700' :
+                          order.status === 'Draft' ? 'bg-yellow-100 text-yellow-700' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>
+                          {order.status}
+                        </span>
+                        <span className="text-gray-500 text-xs">
+                          {new Date(order.creation_datetime).toLocaleTimeString('en-US', {
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </span>
+                    </div>
+                    </div>
+                  ))}
+                  {!ordersLoading && !ordersError && recentOrders.length === 0 && selectedCustomer && (
+                    <div className="text-xs text-gray-500 text-center py-4">No recent orders found</div>
+                  )}
+                  {!ordersLoading && !ordersError && recentOrders.length > 3 && (
+                    <div className="text-xs text-gray-400 text-center py-2">
+                      Showing 3 of {recentOrders.length} orders
+                  </div>
+                  )}
+                </div>
               </div>
             ) : (
-              <div className="p-4 space-y-3">
-                {[{
-                  code: 'IPH15-PRO', name: 'iPhone 15 Pro', units: '15 units', amount: '$13,485'
-                },{
-                  code: 'SGS24-256', name: 'Galaxy S24', units: '12 units', amount: '$9,588'
-                }].map((m, idx) => (
-                  <div key={idx} className="p-3 bg-gray-50 rounded-xl">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="font-semibold text-primary text-sm">{m.name}</div>
-                        <div className="text-xs text-gray-600">{m.code}</div>
+              <div className="p-4">
+                <div className="text-xs text-gray-500 mb-2">
+                  {selectedCustomer ? `Most ordered by ${selectedCustomer.name}` : 'Select a customer to view most ordered products'}
                       </div>
-                      <div className="text-right">
-                        <div className="font-semibold">{m.units}</div>
-                        <div className="text-xs text-gray-600">{m.amount}</div>
+                <div className="space-y-2">
+                  {mostLoading && (
+                    <div className="text-xs text-gray-500 text-center py-4">Loading most ordered...</div>
+                  )}
+                  {mostError && (
+                    <div className="text-xs text-red-600 text-center py-4">{mostError}</div>
+                  )}
+                  {!mostLoading && !mostError && mostOrdered.slice(0,3).map((item, idx) => (
+                    <div key={idx} className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-200 text-xs">
+                      <div className="flex justify-between items-center">
+                        <div className="font-semibold text-purple-700">{item.item_name} ({item.item_code})</div>
+                        <div className="text-gray-600">Qty: {item.total_qty}</div>
                       </div>
+                      <div className="flex justify-between mt-1">
+                        <span className="text-gray-600">Avg Price: {item.avg_price}</span>
+                        <span className="font-semibold text-purple-700">Total: {item.total_price}</span>
                     </div>
                   </div>
-                ))}
+                  ))}
+                  {!mostLoading && !mostError && mostOrdered.length === 0 && selectedCustomer && (
+                    <div className="text-xs text-gray-500 text-center py-4">No data</div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -478,91 +831,105 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items }) => {
             </div>
 
             {subTab === 'orders' ? (
-              <div className="p-4 space-y-3">
-                {[{
-                  customer: 'John Smith',
-                  orderNo: 'POS-2025-002',
-                  invoiceNo: 'INV-2025-1002',
-                  qty: 3,
-                  dateTime: 'Jan 20, 2025 • 3:45 PM',
-                  amount: '$1,847.50',
-                  status: 'Paid',
-                  returnStatus: null
-                },{
-                  customer: 'Jane Doe',
-                  orderNo: 'POS-2025-001',
-                  invoiceNo: 'INV-2025-1001',
-                  qty: 2,
-                  dateTime: 'Jan 19, 2025 • 11:20 AM',
-                  amount: '$999.99',
-                  status: 'Unpaid',
-                  returnStatus: 'Return'
-                }].map((o, idx) => (
-                  <div key={idx} className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-xl">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="font-semibold text-primary text-sm">{o.customer}</div>
-                        <div className="text-xs text-gray-600 mt-1 flex gap-3 flex-wrap">
-                          <span className="font-medium">#{o.orderNo}</span>
-                          <span className="font-medium">Invoice: {o.invoiceNo}</span>
+              <div className="p-4">
+                <div className="text-xs text-gray-500 mb-2">
+                  All Orders ({allOrders.filter(order => order.status !== 'Return').length})
                         </div>
-                        <div className="text-xs text-gray-600 mt-1 flex gap-3 flex-wrap">
-                          <span>Qty: {o.qty}</span>
-                          <span>{o.dateTime}</span>
+                <div className="max-h-96 overflow-y-auto space-y-2">
+                  {ordersTabLoading && (
+                    <div className="text-xs text-gray-500 text-center py-4">Loading orders...</div>
+                  )}
+                  {ordersTabError && (
+                    <div className="text-xs text-red-600 text-center py-4">{ordersTabError}</div>
+                  )}
+                  {!ordersTabLoading && !ordersTabError && allOrders.filter(order => order.status !== 'Return').length > 0 && 
+                    allOrders.filter(order => order.status !== 'Return').map((order, index) => (
+                      <div key={index} className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200">
+                        <div className="flex justify-between items-center mb-2">
+                          <div className="font-semibold text-primary text-sm">{order.invoice_no || order.sales_order_no}</div>
+                          <div className="text-gray-600 text-xs">
+                            {new Date(order.creation_datetime).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric'
+                            })}
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className="font-semibold">{o.amount}</div>
-                        <div className="mt-1 flex items-center gap-2 justify-end">
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${o.status === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{o.status}</span>
-                          {o.returnStatus && (
-                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                              {o.returnStatus}
-                            </span>
-                          )}
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-gray-600 font-medium">Qty: {order.total_qty}</span>
+                          <span className="font-bold text-green-600 text-sm">${order.total_amount?.toLocaleString()}</span>
                         </div>
-                      </div>
+                        <div className="flex justify-between items-center">
+                          <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                            order.status === 'Overdue' ? 'bg-red-100 text-red-700' : 
+                            order.status === 'Paid' ? 'bg-green-100 text-green-700' :
+                            order.status === 'Draft' ? 'bg-yellow-100 text-yellow-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {order.status}
+                          </span>
+                          <span className="text-gray-500 text-xs">
+                            {new Date(order.creation_datetime).toLocaleTimeString('en-US', {
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </span>
                     </div>
                   </div>
-                ))}
+                    ))
+                  }
+                  {!ordersTabLoading && !ordersTabError && allOrders.filter(order => order.status !== 'Return').length === 0 && (
+                    <div className="text-xs text-gray-500 text-center py-4">No orders found</div>
+                  )}
+                </div>
               </div>
             ) : (
-              <div className="p-4 space-y-3">
-                {[{
-                  customer: 'John Smith',
-                  invoiceNo: 'INV-2025-1005',
-                  qty: 1,
-                  dateTime: 'Jan 21, 2025 • 3:45 PM',
-                  amount: '$199.99',
-                  status: 'Paid',
-                  returnStatus: 'Returned'
-                }].map((r, idx) => (
-                  <div key={idx} className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-xl">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="font-semibold text-primary text-sm">{r.customer}</div>
-                        <div className="text-xs text-gray-600 mt-1 flex gap-3 flex-wrap">
-                          <span className="font-medium">Invoice: {r.invoiceNo}</span>
+              <div className="p-4">
+                <div className="text-xs text-gray-500 mb-2">
+                  Returns ({allOrders.filter(order => order.status === 'Return').length})
                         </div>
-                        <div className="text-xs text-gray-600 mt-1 flex gap-3 flex-wrap">
-                          <span>Qty: {r.qty}</span>
-                          <span>{r.dateTime}</span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-semibold">{r.amount}</div>
-                        <div className="mt-1 flex items-center gap-2 justify-end">
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${r.status === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{r.status}</span>
-                          {r.returnStatus && (
-                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                              {r.returnStatus}
-                            </span>
-                          )}
+                <div className="max-h-96 overflow-y-auto space-y-2">
+                  {ordersTabLoading && (
+                    <div className="text-xs text-gray-500 text-center py-4">Loading returns...</div>
+                  )}
+                  {ordersTabError && (
+                    <div className="text-xs text-red-600 text-center py-4">{ordersTabError}</div>
+                  )}
+                  {!ordersTabLoading && !ordersTabError && allOrders.filter(order => order.status === 'Return').length > 0 && 
+                    allOrders.filter(order => order.status === 'Return').map((order, index) => (
+                      <div key={index} className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg text-xs border border-purple-200">
+                        <div className="flex justify-between items-center mb-2">
+                          <div className="font-semibold text-purple-700 text-sm">{order.invoice_no || order.sales_order_no}</div>
+                          <div className="text-gray-600 text-xs">
+                            {new Date(order.creation_datetime).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric'
+                            })}
                         </div>
                       </div>
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-gray-600">Qty: {order.total_qty}</span>
+                          <span className="font-bold text-purple-600 text-sm">${order.total_amount?.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs px-2 py-1 rounded-full font-medium bg-purple-100 text-purple-700">
+                            Return
+                          </span>
+                          <span className="text-gray-500 text-xs">
+                            {new Date(order.creation_datetime).toLocaleTimeString('en-US', {
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </span>
                     </div>
                   </div>
-                ))}
+                    ))
+                  }
+                  {!ordersTabLoading && !ordersTabError && allOrders.filter(order => order.status === 'Return').length === 0 && (
+                    <div className="text-xs text-gray-500 text-center py-4">No returns found</div>
+                  )}
+                </div>
               </div>
             )}
           </div>
