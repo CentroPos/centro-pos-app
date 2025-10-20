@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 
 // A right-side panel for the POS screen, adapted from pos.html
 // Contains tabs for Product, Customer, Prints, Payments, Orders
@@ -17,6 +17,77 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items }) => {
 
   // Get the currently selected item
   const selectedItem = selectedItemId ? items.find(item => item.item_code === selectedItemId) : null
+  const currentUom = (selectedItem && (selectedItem.uom || 'Nos')) || 'Nos'
+
+  // Live warehouse stock fetched from backend (for current UOM)
+  const [stockLoading, setStockLoading] = useState(false)
+  const [stockError, setStockError] = useState<string | null>(null)
+  const [warehouseStock, setWarehouseStock] = useState<{ name: string; qty: number }[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadStock() {
+      if (!selectedItem?.item_code) {
+        setWarehouseStock([])
+        return
+      }
+      try {
+        setStockLoading(true)
+        setStockError(null)
+        console.log('🔍 Loading stock for:', selectedItem.item_code, 'UOM:', currentUom)
+        const res = await window.electronAPI?.proxy?.request({
+          url: '/api/method/centro_pos_apis.api.product.item_stock_warehouse_list',
+          params: {
+            item_id: selectedItem.item_code,
+            search_text: '',
+            limit_start: 0,
+            limit_page_length: 20
+          }
+        })
+        console.log('📦 Stock API response:', res)
+        console.log('📦 Response success:', res?.success)
+        console.log('📦 Response status:', res?.status)
+        console.log('📦 Response data:', res?.data)
+        const list = Array.isArray(res?.data?.data) ? res.data.data : []
+        const mapped = list.map((w: any) => {
+          const q = Array.isArray(w.quantities) ? w.quantities : []
+          const match = q.find((qq: any) => String(qq.uom).toLowerCase() === String(currentUom).toLowerCase())
+          return { name: w.warehouse, qty: Number(match?.qty || 0) }
+        })
+        console.log('🗂️ Mapped warehouses:', mapped)
+        if (!cancelled) setWarehouseStock(mapped)
+        
+        // Add test command to window for debugging
+        ;(window as any).testStockAPI = async (itemCode: string) => {
+          try {
+            const res = await window.electronAPI?.proxy?.request({
+              url: '/api/method/centro_pos_apis.api.product.item_stock_warehouse_list',
+              params: {
+                item_id: itemCode,
+                search_text: '',
+                limit_start: 0,
+                limit_page_length: 20
+              }
+            })
+            console.log('🧪 Test API result:', res)
+            return res
+          } catch (e) {
+            console.error('🧪 Test API error:', e)
+            return e
+          }
+        }
+      } catch (e: any) {
+        console.error('❌ Stock loading error:', e)
+        if (!cancelled) setStockError(e?.message || 'Failed to load stock')
+      } finally {
+        if (!cancelled) setStockLoading(false)
+      }
+    }
+    loadStock()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedItem?.item_code, currentUom])
 
   // Default product data when no item is selected
   const defaultProduct = {
@@ -45,12 +116,13 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items }) => {
     on_hand: selectedItem.on_hand || 0,
     cost: selectedItem.cost || 0,
     margin: selectedItem.margin || 0,
-    warehouses: selectedItem.warehouses || [
-      { name: 'Warehouse - 2', qty: 0 },
-      { name: 'Warehouse - 3', qty: 0 },
-      { name: 'Warehouse - 4', qty: 0 }
-    ]
-  } : defaultProduct
+    warehouses: warehouseStock.length > 0
+      ? warehouseStock
+      : selectedItem.warehouses || []
+  } : {
+    ...defaultProduct,
+    warehouses: [] // Empty warehouses when no item selected
+  }
 
   return (
     <div className="w-[440px] bg-white/60 backdrop-blur border-l border-white/20 flex flex-col">
@@ -153,14 +225,25 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items }) => {
           <div className="p-4 border-b border-gray-200/60 bg-white/90">
             <h4 className="font-bold text-gray-800 mb-3">Stock Details</h4>
             <div className="space-y-2">
-              {productData.warehouses.map((warehouse, index) => (
+              {stockLoading && (
+                <div className="text-xs text-gray-500">Loading stock...</div>
+              )}
+              {stockError && (
+                <div className="text-xs text-red-600">{stockError}</div>
+              )}
+              {!stockLoading && !stockError && productData.warehouses.length > 0 && productData.warehouses.map((warehouse, index) => (
                 <div key={index} className="p-2 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs">
                   <div className="flex justify-between items-center">
                     <div className="font-semibold text-primary">{warehouse.name}</div>
-                    <span className="font-semibold text-green-600">Qty: {warehouse.qty}</span>
+                    <span className="font-semibold text-green-600">Qty: {warehouse.qty || warehouse.available || 0}</span>
                   </div>
                 </div>
               ))}
+              {!stockLoading && !stockError && productData.warehouses.length === 0 && (
+                <div className="text-xs text-gray-500 text-center py-4">
+                  {selectedItem ? 'No stock available' : 'Select an item to view stock details'}
+                </div>
+              )}
             </div>
           </div>
 

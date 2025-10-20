@@ -62,12 +62,14 @@ const transformCustomer = (frappeCustomer: any): Customer | null => {
 
 // Transform Frappe customer list response from centro_pos_apis.api.customer.customer_list
 const transformCustomerList = (response: any): Customer[] => {
+  console.log('🔄 transformCustomerList input:', response)
   if (!response) return []
 
   // API returns: { data: [ { name, customer_name, ... } ] }
   const customers = Array.isArray(response?.data) ? response.data : Array.isArray(response?.message) ? response.message : ([] as any[])
+  console.log('📋 transformCustomerList customers:', customers)
 
-  return customers
+  const transformed = customers
     .map((c: any) =>
       transformCustomer({
         name: c.name,
@@ -85,33 +87,41 @@ const transformCustomerList = (response: any): Customer[] => {
       })
     )
     .filter((customer): customer is Customer => customer !== null)
+  
+  console.log('✅ transformCustomerList result:', transformed)
+  return transformed
 }
 
 export const customersAPI = {
   // Get all customers
   getAll: async (params = {}): Promise<Customer[]> => {
     try {
+      console.log('🔍 customersAPI.getAll called with params:', params)
       const defaultParams: any = {
-        search_term: '',
-        limit_start: 1, // API expects 1-based start
+        limit_start: 1,
         limit_page_length: 50
       }
 
-      // Use Frappe resource endpoint to avoid custom method permission issues (403)
-      const response = await api.get(API_Endpoints.CUSTOMERS, {
+      // Use the same custom method that works in console for consistent data
+      const proxyRes = await window.electronAPI?.proxy?.request({
+        url: '/api/method/centro_pos_apis.api.customer.customer_list',
         params: {
-          fields:
-            '["name","customer_name","email_id","mobile_no","address_line_1","city","state","country","pincode","customer_type","disabled","creation","modified"]',
-          limit_start: defaultParams.limit_start,
-          limit_page_length: defaultParams.limit_page_length,
-          order_by: 'modified desc',
+          search_term: '',
+          ...defaultParams,
           ...params
         }
       })
 
-      return transformCustomerList(response.data)
+      console.log('📦 customersAPI.getAll response:', proxyRes)
+      console.log('📦 customersAPI.getAll data:', proxyRes?.data)
+      console.log('📦 customersAPI.getAll data.data:', proxyRes?.data?.data)
+
+      // Custom method returns shape: { data: [ ... ] }
+      const transformed = transformCustomerList(proxyRes?.data?.data)
+      console.log('✅ customersAPI.getAll transformed:', transformed)
+      return transformed
     } catch (error) {
-      console.error('Get customers error:', error)
+      console.error('❌ customersAPI.getAll error:', error)
       throw error
     }
   },
@@ -144,11 +154,13 @@ export const customersAPI = {
         order_by: 'customer_name asc'
       }
 
-      const response = await api.get('/method/frappe.client.get_list', {
+      // Use proxy to ensure authenticated context
+      const proxyRes = await window.electronAPI?.proxy?.request({
+        url: '/api/method/frappe.client.get_list',
         params: { ...searchParams, ...params }
       })
 
-      return transformCustomerList(response.data.message)
+      return transformCustomerList(proxyRes?.data?.message)
     } catch (error) {
       console.error('Search customers error:', error)
       throw error

@@ -17,6 +17,12 @@ interface CustomElectronAPI {
     getUserPreferences: () => Promise<any>
     clearUserPreferences: () => Promise<boolean>
   }
+  proxy: {
+    login: (payload: { username: string; password: string }) => Promise<any>
+    request: (payload: { method?: string; url: string; params?: Record<string, any>; data?: any }) => Promise<any>
+    session: () => Promise<any>
+    logout: () => Promise<any>
+  }
   app: {
     getVersion: () => Promise<string>
     getUserDataPath: () => Promise<string>

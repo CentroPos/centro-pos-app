@@ -40,12 +40,22 @@ const logAPI = {
   logError: (payload: any) => ipcRenderer.send('renderer-log-error', payload)
 }
 
+// Proxy API mirroring server.js
+const proxyAPI = {
+  login: (payload: { username: string; password: string }) => ipcRenderer.invoke('proxy-login', payload),
+  request: (payload: { method?: string; url: string; params?: Record<string, any>; data?: any }) =>
+    ipcRenderer.invoke('proxy-request', payload),
+  session: () => ipcRenderer.invoke('proxy-session'),
+  logout: () => ipcRenderer.invoke('proxy-logout')
+}
+
 // Combined custom API
 const customAPI = {
   auth: authAPI,
   app: appAPI,
   events: eventsAPI,
-  log: logAPI
+  log: logAPI,
+  proxy: proxyAPI
 }
 
 // Type definitions for our custom API
@@ -54,6 +64,7 @@ interface CustomElectronAPI {
   app: typeof appAPI
   events: typeof eventsAPI
   log: typeof logAPI
+  proxy: typeof proxyAPI
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

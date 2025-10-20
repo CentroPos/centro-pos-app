@@ -6,8 +6,8 @@ import { useForm } from 'react-hook-form'
 import { yupResolver } from '@hookform/resolvers/yup'
 
 import type { SubmitHandler } from 'react-hook-form'
-import { API_Endpoints } from '@renderer/config/endpoints'
-import { useMutationQuery } from '@renderer/hooks/react-query/useReactQuery'
+// import { API_Endpoints } from '@renderer/config/endpoints'
+// import { useMutationQuery } from '@renderer/hooks/react-query/useReactQuery'
 import { ControlledTextField } from '../form/controlled-text-field'
 import { Loader2, Lock, UserIcon } from 'lucide-react'
 import { Button } from '../ui/button'
@@ -37,13 +37,11 @@ const LoginPage: React.FC = () => {
     }
   })
 
-  const { isLoading } = useAuthStore();
+  const { isLoading, login: storeLogin } = useAuthStore()
 
 
-  const { mutate, error } = useMutationQuery({
-    endPoint: API_Endpoints.LOGIN,
-    method: 'POST'
-  })
+  // Remove API mutation login flow; we'll use proxy-backed auth via storeLogin
+  const error = null as unknown as any
 
   const { login } = useAuth()
 
@@ -51,35 +49,15 @@ const LoginPage: React.FC = () => {
   console.log('forms.f', form.formState.errors)
 
   const onSubmit: SubmitHandler<FormData> = async (data: FormData) => {
-    const adjustedData = {
-      usr: data.email,
-      pwd: data.password
+    try {
+      await storeLogin({ username: data.email, password: data.password })
+      login({ message: 'Logged In', full_name: data.email })
+      toast.success('Login successful!')
+    } catch (err: any) {
+      console.error('Login failed:', err)
+      const errorMsg = err?.message || err?.error || COMMON_ERROR_MESSAGE
+      toast.error(errorMsg)
     }
-    mutate(
-      {
-        data: adjustedData,
-        params: {}
-      },
-      {
-        onSuccess: (res) => {
-          console.log('Login success response:', res)
-          // Handle different response structures
-          if (res?.message === 'Logged In' || res?.data?.message === 'Logged In') {
-            login(res)
-            toast.success('Login successful!')
-          } else {
-            console.error('Unexpected login response:', res)
-            toast.error('Login failed: Invalid response')
-          }
-        },
-        onError: (err) => {
-          console.error('Login failed:', err)
-          // Show more specific error message
-          const errorMsg = err?.message || err?.error || COMMON_ERROR_MESSAGE
-          toast.error(errorMsg)
-        }
-      }
-    )
   }
 
   return (
@@ -114,21 +92,21 @@ const LoginPage: React.FC = () => {
                 <ControlledTextField
                   name="email"
                   leftIcon={<UserIcon />}
-                  label={'Email or Username'}
-                  className='block text-sm font-semibold text-gray-700'
+                  label={"Email or Username"}
+                  className="block text-sm font-semibold text-gray-700"
                   required
                   control={form.control}
-                  placeholder='Enter your username'
+                  placeholder="Enter your username"
                 />
                 <ControlledTextField
                   type="password"
                   name="password"
-                  label={'Password'}
-                  className='block text-sm font-semibold text-gray-700'
+                  label={"Password"}
+                  className="block text-sm font-semibold text-gray-700"
                   required
                   control={form.control}
                   leftIcon={<Lock />}
-                  placeholder='Enter your password'
+                  placeholder="Enter your password"
                 />
 
                 <Button
@@ -142,7 +120,7 @@ const LoginPage: React.FC = () => {
                       Signing in...
                     </>
                   ) : (
-                    "Sign In"
+                    'Sign In'
                   )}
                 </Button>
               </form>
@@ -159,7 +137,7 @@ const LoginPage: React.FC = () => {
 
           <div className="text-center mt-8 space-y-3">
             <p className="text-sm text-gray-600">
-              Don't have an account?
+              Don&apos;t have an account?
               <span className="text-accent hover:text-accent/80 font-medium transition-all"> Sign up here</span>
             </p>
             <div className="flex justify-center space-x-6 text-xs text-gray-500">

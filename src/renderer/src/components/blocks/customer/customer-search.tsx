@@ -4,6 +4,7 @@ import { ArrowLeft, Plus, Search, User } from 'lucide-react'
 import { createPortal } from 'react-dom'
 
 import { useCreateCustomer, useCustomers } from '@renderer/hooks/useCustomer'
+import { customersAPI } from '@renderer/api/customer'
 
 import {
   Dialog,
@@ -49,30 +50,114 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
     pincode: ''
   })
 
-  // Data hooks (kept)
-  const { data: apiCustomers, isLoading, error } = useCustomers()
+  // Direct API call - bypass React Query for now
+  const [apiCustomers, setApiCustomers] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<any>(null)
+  
+  useEffect(() => {
+    const loadCustomers = async () => {
+      setIsLoading(true)
+      setError(null)
+      try {
+        console.log('🧪 Loading customers via direct proxy request...')
+        const res = await window.electronAPI.proxy.request({
+          url: '/api/method/centro_pos_apis.api.customer.customer_list',
+          params: {
+            search_term: '',
+            limit_start: 1,
+            limit_page_length: 10
+          }
+        })
+        console.log('🧪 Proxy response:', res)
+        
+        // Extract customers from response.data.data array
+        const customers = Array.isArray(res?.data?.data) ? res.data.data : []
+        console.log('🧪 Extracted customers:', customers)
+        
+        // Transform to the format expected by the UI
+        const transformedCustomers = customers.map((customer: any) => ({
+          id: customer.name,
+          name: customer.customer_name || customer.name,
+          email: customer.email_id || '',
+          phone: customer.phone || null,
+          address: customer.address_line1 || null,
+          city: customer.city || null,
+          state: customer.state || null,
+          country: 'Saudi Arabia',
+          pincode: customer.pincode || null,
+          customerType: 'Individual',
+          gst: customer.tax_id || null,
+          isActive: true,
+          createdAt: '',
+          updatedAt: ''
+        }))
+        
+        console.log('🧪 Transformed customers:', transformedCustomers)
+        setApiCustomers(transformedCustomers)
+      } catch (err) {
+        console.error('🧪 Error loading customers:', err)
+        setError(err instanceof Error ? err.message : 'Failed to load customers')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    loadCustomers()
+  }, [])
+  
+  console.log('👥 Customer data:', { 
+    apiCustomers, 
+    isLoading, 
+    error,
+    apiCustomersLength: apiCustomers.length
+  })
+  
+  // Add test command to window for debugging
+  ;(window as any).testCustomerAPI = async () => {
+    try {
+      const res = await window.electronAPI?.proxy?.request({
+        url: '/api/method/centro_pos_apis.api.customer.customer_list',
+        params: {
+          search_term: '',
+          limit_start: 1,
+          limit_page_length: 10
+        }
+      })
+      console.log('🧪 Customer API result:', res)
+      return res
+    } catch (e) {
+      console.error('🧪 Customer API error:', e)
+      return e
+    }
+  }
+  
   const createCustomerMutation = useCreateCustomer()
 
-  // Build customer list (kept)
+  // Build customer list - apiCustomers is already transformed by customersAPI.getAll()
   const customersFromAPI = apiCustomers || []
-  const transformedCustomers = useMemo(
-    () =>
-      customersFromAPI.map((customer: any) => ({
-        name: customer.name,
-        gst: customer.gst || 'Not Available'
-      })),
-    [customersFromAPI]
-  )
   const allCustomers = useMemo(
-    () => [walkingCustomer, ...transformedCustomers],
-    [transformedCustomers]
+    () => {
+      console.log('📋 Raw API customers:', customersFromAPI)
+      // apiCustomers is already Customer[] objects from customersAPI.getAll()
+      // Just map to the format needed for display
+      const mapped = customersFromAPI.map((customer: any) => ({
+        name: customer.name, // Customer.name is already the display name
+        gst: customer.gst || 'Not Available'
+      }))
+      console.log('📋 Mapped customers for display:', mapped)
+      return mapped
+    },
+    [customersFromAPI]
   )
 
   // Filter (kept)
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
+    console.log('🔍 Filtering with term:', term, 'allCustomers:', allCustomers)
     if (!term) return allCustomers
-    return allCustomers.filter((c) => c.name && c.name.toLowerCase().includes(term))
+    const result = allCustomers.filter((c) => c.name && c.name.toLowerCase().includes(term))
+    console.log('🎯 Filtered result:', result)
+    return result
   }, [allCustomers, search])
 
   // Keyboard scroll support (UI-only)
@@ -208,10 +293,19 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                       return msg || 'Unknown error'
                     })()}
                   </span>
+                  <button 
+                    onClick={() => window.location.reload()} 
+                    className="mt-2 px-3 py-1 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200"
+                  >
+                    Retry
+                  </button>
                 </div>
               ) : filtered.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-32 text-muted-foreground text-sm">
-                  No customers found
+                  <div>No customers found</div>
+                  <div className="text-xs mt-1">
+                    API: {apiCustomers.length}, All: {allCustomers.length}
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-1">

@@ -158,7 +158,7 @@ class ElectronAuthStore {
       }
 
       // Get the API URL from environment or use fallback
-      const apiUrl = import.meta.env?.VITE_API_URL || process.env?.VITE_API_URL || ''
+      const apiUrl = import.meta.env?.VITE_API_URL || ''
       let domain = 'localhost' // fallback domain
 
       if (apiUrl) {

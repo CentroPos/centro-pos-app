@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios'
+import { getApiBaseUrl } from '@renderer/config/production'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://172.104.140.136'
+const API_BASE_URL = getApiBaseUrl()
 
 // Create axios instance
 const api: AxiosInstance = axios.create({
@@ -28,24 +29,41 @@ api.interceptors.response.use(
   }
 )
 
-// Request interceptor: attach CSRF token if available (helps avoid 417)
+// Request interceptor: attach CSRF token and session ID if available
 api.interceptors.request.use(async (config) => {
   try {
+    // Skip interceptor for login to avoid issues
+    if (config.url?.includes('/login')) {
+      console.log('API Request (login):', {
+        url: config.url,
+        method: config.method,
+        headers: config.headers,
+        withCredentials: config.withCredentials
+      })
+      return config
+    }
+    
     // Lazy import to avoid circular
     const ElectronAuthStore = (await import('@renderer/services/electron-auth-store')).default
     const store = ElectronAuthStore.getInstance()
-    const csrf = store.getCsrfToken?.()
-    if (csrf) {
+    const authData = await store.getAuthData()
+    
+    // Add CSRF token if available
+    if (authData.csrfToken) {
       config.headers = config.headers || {}
-      config.headers['X-Frappe-CSRF-Token'] = csrf
+      config.headers['X-Frappe-CSRF-Token'] = authData.csrfToken
     }
+    
+    // Note: Don't manually set Cookie header as it's blocked by browser security
+    // Session will be handled by the backend through other means
     
     // Debug: log request details
     console.log('API Request:', {
       url: config.url,
       method: config.method,
       headers: config.headers,
-      withCredentials: config.withCredentials
+      withCredentials: config.withCredentials,
+      sessionId: authData.sessionId ? 'present' : 'missing'
     })
   } catch (e) {
     console.warn('Request interceptor error:', e)

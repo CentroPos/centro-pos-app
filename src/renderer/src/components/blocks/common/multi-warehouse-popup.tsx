@@ -81,6 +81,14 @@ const MultiWarehousePopup: React.FC<MultiWarehousePopupProps> = ({
 
   const totalAllocated = warehouseData.reduce((sum, w) => sum + w.allocated, 0)
   const isValidAllocation = totalAllocated >= shortage && warehouseData.some(w => w.selected)
+  
+  console.log('📊 Allocation summary:', {
+    totalAllocated,
+    shortage,
+    requiredQty,
+    isValidAllocation,
+    warehouses: warehouseData.map(w => ({ name: w.name, allocated: w.allocated, selected: w.selected }))
+  })
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -160,7 +168,20 @@ const MultiWarehousePopup: React.FC<MultiWarehousePopupProps> = ({
             </table>
           </div>
 
-          {/* Allocation Summary removed as requested */}
+          {/* Allocation Summary */}
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex justify-between items-center">
+              <div className="text-sm text-gray-700">
+                <strong>Total Allocated:</strong> {totalAllocated} units
+              </div>
+              <div className="text-sm text-gray-700">
+                <strong>Required:</strong> {requiredQty} units
+              </div>
+              <div className={`text-sm font-semibold ${totalAllocated >= shortage ? 'text-green-600' : 'text-red-600'}`}>
+                {totalAllocated >= shortage ? '✅ Sufficient' : '❌ Insufficient'}
+              </div>
+            </div>
+          </div>
         </div>
 
         <DialogFooter className="pt-4">
