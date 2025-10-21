@@ -9,19 +9,52 @@ const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<'login' | 'pos'>('login')
   const { user, validateSession, isAuthenticated, logout } = useAuthStore()
 
-  // Initialize app - ALWAYS start from login page
+  // Initialize app - check authentication status
   useEffect(() => {
     const initializeApp = async () => {
-      // Clear any existing auth state to ensure fresh start
-      logout()
-      
-      // FORCE start from login page - no exceptions
-      setCurrentPage('login')
+      try {
+        console.log('App initialization - isAuthenticated:', isAuthenticated)
+        
+        // If already authenticated, go to POS
+        if (isAuthenticated) {
+          console.log('User is authenticated, going to POS')
+          setCurrentPage('pos')
+          setIsInitialized(true)
+          return
+        }
+
+        // If not authenticated, check if there's stored data
+        const storedUserData = localStorage.getItem('userData')
+        console.log('Stored user data exists:', !!storedUserData)
+        
+        if (storedUserData) {
+          console.log('Found stored user data, validating session...')
+          try {
+            const isValid = await validateSession()
+            if (isValid) {
+              console.log('Session validated successfully, going to POS')
+              setCurrentPage('pos')
+            } else {
+              console.log('Session validation failed, going to login')
+              setCurrentPage('login')
+            }
+          } catch (error) {
+            console.log('Session validation error:', error)
+            setCurrentPage('login')
+          }
+        } else {
+          console.log('No stored data, going to login')
+          setCurrentPage('login')
+        }
+      } catch (error) {
+        console.log('App initialization failed:', error)
+        setCurrentPage('login')
+      }
       setIsInitialized(true)
     }
 
     initializeApp()
-  }, [logout])
+  }, [isAuthenticated, validateSession])
 
   // ONLY switch to POS when user is authenticated AND we're not on login page
   useEffect(() => {

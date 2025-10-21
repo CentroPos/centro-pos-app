@@ -13,6 +13,7 @@ interface Tab {
   customer: {
     name: string
     gst: string
+    customer_id?: string
   }
   items: any[]  // Add items to each tab
   isEdited?: boolean
@@ -41,12 +42,12 @@ interface POSTabStore {
   updateTabInvoiceData: (tabId: string, invoiceData: any) => void
   
   // Customer management methods
-  updateTabCustomer: (tabId: string, customer: { name: string; gst: string }) => void
+  updateTabCustomer: (tabId: string, customer: { name: string; gst: string; customer_id?: string }) => void
   
   // Helper methods
   getCurrentTab: () => Tab | undefined
   getCurrentTabItems: () => any[]
-  getCurrentTabCustomer: () => { name: string; gst: string }
+  getCurrentTabCustomer: () => { name: string; gst: string; customer_id?: string }
   itemExistsInTab: (tabId: string, itemCode: string) => boolean
 }
 
@@ -198,7 +199,7 @@ export const usePOSTabStore = create<POSTabStore>()(
       },
 
       // Customer management methods
-      updateTabCustomer: (tabId: string, customer: { name: string; gst: string }) => {
+      updateTabCustomer: (tabId: string, customer: { name: string; gst: string; customer_id?: string }) => {
         set((state) => ({
           tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, customer } : tab))
         }))

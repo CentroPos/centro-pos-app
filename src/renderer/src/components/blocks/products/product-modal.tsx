@@ -97,7 +97,24 @@ const ProductSearch: React.FC<{
 
   // Fetch product list using POS API method (includes price list)
   const { data: productMethodResp, isLoading } = useProductList(searchTerm, 'Standard Selling', 50)
-  const productList = productMethodResp?.data || []
+  
+  // Debug: Log the API response structure
+  console.log('🔍 Product List API Response:', {
+    productMethodResp,
+    isLoading
+  })
+  
+  // Handle different possible response structures
+  let productList = []
+  if (productMethodResp?.data?.data) {
+    productList = productMethodResp.data.data
+  } else if (productMethodResp?.data) {
+    productList = productMethodResp.data
+  } else if (Array.isArray(productMethodResp)) {
+    productList = productMethodResp
+  }
+  
+  console.log('🔍 Processed Product List:', productList.slice(0, 2))
 
   useEffect(() => {
     if (selectedIndex >= 0 && itemRefs.current[selectedIndex]) {
@@ -127,7 +144,45 @@ const ProductSearch: React.FC<{
       case 'Enter':
         e.preventDefault()
         if (selectedIndex >= 0 && productList[selectedIndex]) {
-          onSelect(productList[selectedIndex])
+          const product = productList[selectedIndex]
+          
+          // Handle different possible field names for item code
+          const code = product.item_id || product.item_code || product.name || product.item_name || `ITEM-${selectedIndex}`
+          
+          // Handle different possible field names for item name
+          const itemName = product.item_name || product.name || product.label || 'Unknown Product'
+          
+          // Handle UOM details - try different possible structures
+          let primaryUOM = { uom: 'Nos', rate: 0 }
+          if (Array.isArray(product.uom_details) && product.uom_details.length > 0) {
+            primaryUOM = product.uom_details[0]
+          } else if (product.uom && product.rate) {
+            primaryUOM = { uom: product.uom, rate: product.rate }
+          } else if (product.stock_uom && product.standard_rate) {
+            primaryUOM = { uom: product.stock_uom, rate: product.standard_rate }
+          }
+          
+          const displayRate = Number(primaryUOM.rate || product.standard_rate || product.rate || 0)
+          
+          console.log('⌨️ Enter key - selecting product:', {
+            code,
+            itemName,
+            displayRate,
+            primaryUOM,
+            originalProduct: product
+          })
+          
+          onSelect({
+            name: code,
+            item_name: itemName,
+            item_code: code,
+            image: product.image,
+            standard_rate: displayRate,
+            uom: primaryUOM.uom,
+            quantity: 1,
+            discount_percentage: 0,
+            uomRates: (Array.isArray(product.uom_details) ? Object.fromEntries(product.uom_details.map((d: any) => [d.uom, d.rate])) : {})
+          } as any)
         }
         break
     }
@@ -174,9 +229,34 @@ const ProductSearch: React.FC<{
         ) : (
           <div className="space-y-1">
             {productList.map((product: any, index: number) => {
-              const primaryUOM = Array.isArray(product.uom_details) && product.uom_details.length > 0 ? product.uom_details[0] : { uom: 'Nos', rate: 0 }
-              const displayRate = Number(primaryUOM.rate || 0)
-              const code = product.item_id || product.item_code || product.name
+              console.log('🔍 Processing product:', product)
+              
+              // Handle different possible field names for item code
+              const code = product.item_id || product.item_code || product.name || product.item_name || `ITEM-${index}`
+              
+              // Handle different possible field names for item name
+              const itemName = product.item_name || product.name || product.label || 'Unknown Product'
+              
+              // Handle UOM details - try different possible structures
+              let primaryUOM = { uom: 'Nos', rate: 0 }
+              if (Array.isArray(product.uom_details) && product.uom_details.length > 0) {
+                primaryUOM = product.uom_details[0]
+              } else if (product.uom && product.rate) {
+                primaryUOM = { uom: product.uom, rate: product.rate }
+              } else if (product.stock_uom && product.standard_rate) {
+                primaryUOM = { uom: product.stock_uom, rate: product.standard_rate }
+              }
+              
+              const displayRate = Number(primaryUOM.rate || product.standard_rate || product.rate || 0)
+              
+              console.log('🔍 Processed product data:', {
+                code,
+                itemName,
+                displayRate,
+                primaryUOM,
+                originalProduct: product
+              })
+              
               return (
               <div
                 ref={(el) => {
@@ -186,22 +266,25 @@ const ProductSearch: React.FC<{
                 className={`p-3 rounded-lg cursor-pointer transition-all duration-200 ${
                   selectedIndex === index ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
                 }`}
-                onClick={() => onSelect({
-                  name: code,
-                  item_name: product.item_name,
-                  item_code: code,
-                  image: product.image,
-                  standard_rate: displayRate,
-                  uom: primaryUOM.uom,
-                  quantity: 1,
-                  discount_percentage: 0,
-                  uomRates: (Array.isArray(product.uom_details) ? Object.fromEntries(product.uom_details.map((d: any) => [d.uom, d.rate])) : {})
-                } as any)}
+                onClick={() => {
+                  console.log('🖱️ Product clicked:', product)
+                  onSelect({
+                    name: code,
+                    item_name: itemName,
+                    item_code: code,
+                    image: product.image,
+                    standard_rate: displayRate,
+                    uom: primaryUOM.uom,
+                    quantity: 1,
+                    discount_percentage: 0,
+                    uomRates: (Array.isArray(product.uom_details) ? Object.fromEntries(product.uom_details.map((d: any) => [d.uom, d.rate])) : {})
+                  } as any)
+                }}
                 onMouseEnter={() => setSelectedIndex(index)}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
-                    <h4 className="font-medium text-sm leading-tight">{product.item_name}</h4>
+                    <h4 className="font-medium text-sm leading-tight">{itemName}</h4>
                     <p
                       className={`text-xs mt-1 ${
                         selectedIndex === index

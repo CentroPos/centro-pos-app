@@ -11,12 +11,17 @@ export const useProfileDetails = () => {
 }
 
 export const usePosProfile = () => {
-  return useGetQuery({
+  const result = useGetQuery({
     endPoint: API_Endpoints.POS_PROFILE,
     method: 'GET',
     dependency: [],
     options: { enabled: true }
   })
+  
+  // Debug logging
+  console.log('🔍 usePosProfile result:', result)
+  
+  return result
 }
 
 export type ProfileDetailsResponse = any

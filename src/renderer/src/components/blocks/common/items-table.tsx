@@ -44,7 +44,14 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     isReadOnly,
     itemsCount: items.length,
     selectedItemId,
-    isEditing
+    isEditing,
+    items: items.map(item => ({
+      item_code: item.item_code,
+      item_name: item.item_name,
+      standard_rate: item.standard_rate,
+      quantity: item.quantity,
+      uom: item.uom
+    }))
   });
   
   // Warehouse popup state
@@ -163,7 +170,17 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     'space',
     () => {
       console.log('⌨️ Space key pressed, isEditing:', isEditing, 'selectedItemId:', selectedItemId)
-      handleSaveEdit()
+      if (isEditing) {
+        handleSaveEdit()
+      } else if (selectedItemId && !isReadOnly) {
+        // Start editing quantity if not already editing
+        setActiveField('quantity')
+        setIsEditing(true)
+        const item = items.find((i) => i.item_code === selectedItemId)
+        if (item) {
+          setEditValue(String(item.quantity ?? ''))
+        }
+      }
     },
     { preventDefault: true, enableOnFormTags: true }
   )
