@@ -40,7 +40,9 @@ const OrderDetails: React.FC = () => {
             onClick={() => setShowCustomerModal(true)}
             className="w-full p-4 bg-white/80 border border-white/40 rounded-xl shadow-lg focus:ring-2 focus:ring-accent focus:border-transparent transition-all text-left flex items-center justify-between hover:bg-white/90"
           >
-            <span>{selectedCustomer.name}</span>
+            <span className={selectedCustomer.name === 'Walking Customer' ? 'text-gray-400' : ''}>
+              {selectedCustomer.name === 'Walking Customer' ? 'Select Customer' : selectedCustomer.name}
+            </span>
             <ChevronDown className="h-4 w-4 text-gray-400" />
           </Button>
         </div>

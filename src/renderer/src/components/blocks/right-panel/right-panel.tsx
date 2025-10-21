@@ -546,72 +546,87 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
 
       {activeTab === 'product' && (
         <div className="flex-1 overflow-y-auto">
-          {/* Product Overview */}
-          <div className="p-4 border-b border-gray-200/60 bg-white/90">
-            <div className="flex">
-              <div className="w-32 h-32 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl mb-4 flex items-center justify-center">
-                <div className="w-24 h-24 bg-blue-600 text-white rounded-lg flex items-center justify-center font-bold">
-                  {productData.item_code.substring(0, 3).toUpperCase()}
+          {!selectedItem ? (
+            <div className="flex-1 flex items-center justify-center p-8">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                  </svg>
                 </div>
-              </div>
-              <div className="space-y-2 ml-4">
-                <div className="font-bold text-lg text-primary">{productData.item_code}</div>
-                <div className="font-semibold text-gray-800">{productData.item_name}</div>
-                <div className="text-sm text-gray-600">Category: {productData.category}</div>
-                <div className="text-sm text-gray-600">Location: {productData.location}</div>
+                <h3 className="text-lg font-semibold text-gray-600 mb-2">Select an item to view details</h3>
+                <p className="text-sm text-gray-500">Choose a product from the items table to see pricing, stock, and other information.</p>
               </div>
             </div>
-          </div>
-
-          {/* Pricing & Stock */}
-          <div className="p-4 border-b border-gray-200/60 bg-white/90">
-            <h4 className="font-bold text-gray-800 mb-3">Pricing & Stock</h4>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl">
-                <div className="text-xs text-gray-600">Unit Price</div>
-                <div className="font-bold text-blue-600">${productData.standard_rate.toFixed(2)}</div>
-              </div>
-              <div className="p-3 bg-gradient-to-r from-red-50 to-pink-50 rounded-xl">
-                <div className="text-xs text-gray-600">On Hand</div>
-                <div className="font-bold text-red-600">{productData.on_hand} units</div>
-              </div>
-              <div className="p-3 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl">
-                <div className="text-xs text-gray-600">Cost</div>
-                <div className="font-bold text-orange-600">${productData.cost.toFixed(2)}</div>
-              </div>
-              <div className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl">
-                <div className="text-xs text-gray-600">Margin</div>
-                <div className="font-bold text-purple-600">{productData.margin.toFixed(1)}%</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Stock Details */}
-          <div className="p-4 border-b border-gray-200/60 bg-white/90">
-            <h4 className="font-bold text-gray-800 mb-3">Stock Details</h4>
-            <div className="space-y-2">
-              {stockLoading && (
-                <div className="text-xs text-gray-500">Loading stock...</div>
-              )}
-              {stockError && (
-                <div className="text-xs text-red-600">{stockError}</div>
-              )}
-              {!stockLoading && !stockError && productData.warehouses.length > 0 && productData.warehouses.map((warehouse, index) => (
-                <div key={index} className="p-2 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs">
-                  <div className="flex justify-between items-center">
-                    <div className="font-semibold text-primary">{warehouse.name}</div>
-                    <span className="font-semibold text-green-600">Qty: {warehouse.qty || warehouse.available || 0}</span>
+          ) : (
+            <>
+              {/* Product Overview */}
+              <div className="p-4 border-b border-gray-200/60 bg-white/90">
+                <div className="flex">
+                  <div className="w-32 h-32 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl mb-4 flex items-center justify-center">
+                    <div className="w-24 h-24 bg-blue-600 text-white rounded-lg flex items-center justify-center font-bold">
+                      {productData.item_code.substring(0, 3).toUpperCase()}
+                    </div>
+                  </div>
+                  <div className="space-y-2 ml-4">
+                    <div className="font-bold text-lg text-primary">{productData.item_code}</div>
+                    <div className="font-semibold text-gray-800">{productData.item_name}</div>
+                    <div className="text-sm text-gray-600">Category: {productData.category}</div>
+                    <div className="text-sm text-gray-600">Location: {productData.location}</div>
                   </div>
                 </div>
-              ))}
-              {!stockLoading && !stockError && productData.warehouses.length === 0 && (
-                <div className="text-xs text-gray-500 text-center py-4">
-                  {selectedItem ? 'No stock available' : 'Select an item to view stock details'}
-                </div>
-              )}
-            </div>
-          </div>
+              </div>
 
+              {/* Pricing & Stock */}
+              <div className="p-4 border-b border-gray-200/60 bg-white/90">
+                <h4 className="font-bold text-gray-800 mb-3">Pricing & Stock</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl">
+                    <div className="text-xs text-gray-600">Unit Price</div>
+                    <div className="font-bold text-blue-600">${productData.standard_rate.toFixed(2)}</div>
+                  </div>
+                  <div className="p-3 bg-gradient-to-r from-red-50 to-pink-50 rounded-xl">
+                    <div className="text-xs text-gray-600">On Hand</div>
+                    <div className="font-bold text-red-600">{productData.on_hand} units</div>
+                  </div>
+                  <div className="p-3 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl">
+                    <div className="text-xs text-gray-600">Cost</div>
+                    <div className="font-bold text-orange-600">${productData.cost.toFixed(2)}</div>
+                  </div>
+                  <div className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl">
+                    <div className="text-xs text-gray-600">Margin</div>
+                    <div className="font-bold text-purple-600">{productData.margin.toFixed(1)}%</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Stock Details */}
+              <div className="p-4 border-b border-gray-200/60 bg-white/90">
+                <h4 className="font-bold text-gray-800 mb-3">Stock Details</h4>
+                <div className="space-y-2">
+                  {stockLoading && (
+                    <div className="text-xs text-gray-500">Loading stock...</div>
+                  )}
+                  {stockError && (
+                    <div className="text-xs text-red-600">{stockError}</div>
+                  )}
+                  {!stockLoading && !stockError && productData.warehouses.length > 0 && productData.warehouses.map((warehouse, index) => (
+                    <div key={index} className="p-2 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs">
+                      <div className="flex justify-between items-center">
+                        <div className="font-semibold text-primary">{warehouse.name}</div>
+                        <span className="font-semibold text-green-600">Qty: {warehouse.qty || warehouse.available || 0}</span>
+                      </div>
+                    </div>
+                  ))}
+                  {!stockLoading && !stockError && productData.warehouses.length === 0 && (
+                    <div className="text-xs text-gray-500 text-center py-4">
+                      No stock available
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
