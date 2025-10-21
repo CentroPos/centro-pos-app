@@ -27,8 +27,8 @@ interface AuthStore {
 }
 
 export const useAuthStore = create<AuthStore>()(
-  persist(
-    (set, get) => ({
+  // Remove persist wrapper completely - no persistence at all
+  (set, get) => ({
       // Initial state
       user: null,
       token: null,
@@ -71,10 +71,13 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       login: async (credentials: LoginCredentials) => {
+        console.log('=== useAuthStore.login() called ===')
         set({ isLoading: true, error: null })
 
         try {
+          console.log('1. Calling authAPI.login...')
           const response: FrappeLoginResponse = await authAPI.login(credentials)
+          console.log('2. AuthAPI response:', response)
 
           if (response.message === 'Logged In') {
             const userData = {
@@ -84,6 +87,7 @@ export const useAuthStore = create<AuthStore>()(
               role: 'Administrator'
             }
 
+            console.log('3. Setting userData:', userData)
             localStorage.setItem('userData', JSON.stringify(userData))
 
             set({
@@ -93,7 +97,9 @@ export const useAuthStore = create<AuthStore>()(
               isLoading: false,
               error: null
             })
+            console.log('4. Store updated, isAuthenticated set to true')
           } else {
+            console.log('5. Login failed - invalid response')
             throw new Error('Login failed')
           }
         } catch (error: any) {
@@ -120,8 +126,10 @@ export const useAuthStore = create<AuthStore>()(
 
       // Logout action
       logout: () => {
+        console.log('=== useAuthStore.logout() called ===')
         // Clear stored data
         localStorage.removeItem('userData')
+        console.log('localStorage cleared')
 
         set({
           user: null,
@@ -130,6 +138,7 @@ export const useAuthStore = create<AuthStore>()(
           isLoading: false,
           error: null
         })
+        console.log('Store state cleared, isAuthenticated set to false')
       },
 
       // Clear error
@@ -137,14 +146,7 @@ export const useAuthStore = create<AuthStore>()(
 
       // Set loading state
       setLoading: (loading: boolean) => set({ isLoading: loading })
-    }),
-    {
-      name: 'auth-storage', // localStorage key
-      partialize: (state) => ({
-        user: state.user
-      })
-    }
-  )
+    })
 )
 
 export default useAuthStore

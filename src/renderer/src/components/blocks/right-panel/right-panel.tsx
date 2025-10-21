@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { useAuthStore } from '@renderer/store/useAuthStore'
+import { useNavigate } from '@tanstack/react-router'
 
 // A right-side panel for the POS screen, adapted from pos.html
 // Contains tabs for Product, Customer, Prints, Payments, Orders
@@ -15,6 +17,10 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
   const [subTab, setSubTab] = useState<'orders' | 'returns'>('orders')
   const [customerSubTab, setCustomerSubTab] = useState<'recent' | 'most'>('recent')
   const [ordersSubTab, setOrdersSubTab] = useState<'orders' | 'returns'>('orders')
+  
+  // Get logout function from useAuthStore
+  const { logout } = useAuthStore()
+  const navigate = useNavigate()
 
   // Get the currently selected item
   const selectedItem = selectedItemId ? items.find(item => item.item_code === selectedItemId) : null
@@ -520,7 +526,10 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
           
           {/* Profile Dropdown */}
           {showProfileDropdown && (
-            <div className="absolute right-0 top-10 bg-white rounded-lg shadow-lg border border-gray-200 py-2 min-w-48 z-50">
+            <div 
+              className="absolute right-0 top-10 bg-white rounded-lg shadow-lg border border-gray-200 py-2 min-w-48 z-50"
+              onClick={(e) => e.stopPropagation()}
+            >
               <div className="px-4 py-2 border-b border-gray-100">
                 <div className="text-sm font-semibold text-gray-800">
                   {profileData?.name || 'User Profile'}
@@ -531,10 +540,56 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
               </div>
               <button
                 className="w-full px-4 py-2 text-left text-sm font-semibold text-black hover:bg-gray-100 transition-colors"
-                onClick={() => {
-                  // Handle logout
-                  window.electronAPI?.auth?.logout()
-                  setShowProfileDropdown(false)
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  console.log('=== DROPDOWN LOGOUT BUTTON MOUSE DOWN ===')
+                }}
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  console.log('=== DROPDOWN LOGOUT BUTTON CLICKED ===')
+                  
+                  // Don't close dropdown immediately - let logout handle it
+                  
+                  const performLogout = async () => {
+                    try {
+                      // Clear the auth store
+                      console.log('1. Calling logout from store...')
+                      logout()
+                      console.log('2. Store logout completed')
+                      
+                      // Also clear the proxy session
+                      console.log('3. Calling proxy logout...')
+                      await window.electronAPI?.proxy?.logout()
+                      console.log('4. Proxy logout completed')
+                      
+                      // Clear all localStorage
+                      console.log('5. Clearing localStorage...')
+                      localStorage.clear()
+                      console.log('6. localStorage cleared')
+                      
+                      // Close dropdown
+                      setShowProfileDropdown(false)
+                      console.log('7. Dropdown closed')
+                      
+                      // FORCE reload to login page
+                      console.log('8. Reloading page to login...')
+                      window.location.href = '/'
+                      console.log('9. Page reload initiated')
+                      
+                    } catch (error) {
+                      console.error('=== DROPDOWN LOGOUT FAILED ===', error)
+                      // Force reload even if logout fails
+                      console.log('Fallback: Force reloading page...')
+                      setShowProfileDropdown(false)
+                      localStorage.clear()
+                      window.location.href = '/'
+                    }
+                  }
+                  
+                  // Execute logout
+                  performLogout()
                 }}
               >
                 Logout

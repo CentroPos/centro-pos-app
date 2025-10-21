@@ -7,23 +7,29 @@ import Providers from './providers/Providers'
 const App: React.FC = () => {
   const [isInitialized, setIsInitialized] = useState(false)
   const [currentPage, setCurrentPage] = useState<'login' | 'pos'>('login')
-  const { user, validateSession } = useAuthStore()
+  const { user, validateSession, isAuthenticated, logout } = useAuthStore()
 
-  // Initialize app and check authentication status
+  // Initialize app - ALWAYS start from login page
   useEffect(() => {
     const initializeApp = async () => {
-      // Always validate with server first
-      const isValid = await validateSession()
-      if (isValid) {
-        setCurrentPage('pos')
-      } else {
-        setCurrentPage('login')
-      }
+      // Clear any existing auth state to ensure fresh start
+      logout()
+      
+      // FORCE start from login page - no exceptions
+      setCurrentPage('login')
       setIsInitialized(true)
     }
 
     initializeApp()
-  }, [validateSession])
+  }, [logout])
+
+  // ONLY switch to POS when user is authenticated AND we're not on login page
+  useEffect(() => {
+    if (isInitialized && isAuthenticated && currentPage !== 'pos') {
+      // Only switch to POS when user is authenticated (after login)
+      setCurrentPage('pos')
+    }
+  }, [isAuthenticated, isInitialized, currentPage])
 
   // Handle successful login
   const handleLoginSuccess = () => {
