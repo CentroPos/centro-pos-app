@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import React, { Fragment, useState } from 'react'
 import ActionButtons from '../blocks/common/action-buttons'
 import OrderDetails from '../blocks/order/order-details'
 import ItemsTable from '../blocks/common/items-table'
@@ -10,6 +10,8 @@ import ProductSearchModal from '../blocks/products/product-modal'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { usePosProfile, useProfileDetails } from '@renderer/hooks/useProfile'
+import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
+import { useAuthStore } from '@renderer/store/useAuthStore'
 import { toast } from 'sonner'
 
 const POSInterface: React.FC = () => {
@@ -36,6 +38,77 @@ const POSInterface: React.FC = () => {
   // Load POS profile and user profile details once POS loads
   const { data: profileDetails } = useProfileDetails()
   const { data: posProfile } = usePosProfile()
+  const { user } = useAuthStore()
+  const { setProfile, setCurrentUserPrivileges } = usePOSProfileStore()
+
+  // Test direct API call and set profile data
+  React.useEffect(() => {
+    const loadPOSProfile = async () => {
+      try {
+        console.log('🧪 Testing direct POS profile API call...')
+        const response = await window.electronAPI?.proxy?.request({
+          url: '/api/method/centro_pos_apis.api.profile.get_pos_profile',
+          params: {}
+        })
+        console.log('🧪 Direct API response:', response)
+        
+        // If direct API call succeeds, use that data
+        if (response?.data?.data) {
+          console.log('✅ Using direct API data:', response.data.data)
+          console.log('✅ Applicable users:', response.data.data.applicable_for_users)
+          setProfile(response.data.data)
+          
+          // Try to get user email from auth store or use the first user from API
+          let userEmail = user?.email
+          
+          // If no user email from auth store, or if we can't find a match, use the first user from API
+          if (!userEmail || !response.data.data.applicable_for_users?.find(u => u.user === userEmail)) {
+            if (response.data.data.applicable_for_users?.length > 0) {
+              userEmail = response.data.data.applicable_for_users[0].user
+              console.log('⚠️ Using email from API response (no match found):', userEmail)
+            }
+          } else {
+            console.log('✅ Found matching user email in auth store:', userEmail)
+          }
+          
+          if (userEmail) {
+            console.log('✅ Setting privileges for user:', userEmail)
+            console.log('✅ User object:', user)
+            setCurrentUserPrivileges(userEmail)
+          } else {
+            console.log('❌ No user email found anywhere')
+            console.log('❌ User object:', user)
+          }
+        }
+      } catch (error) {
+        console.error('🧪 Direct API error:', error)
+      }
+    }
+    
+    loadPOSProfile()
+  }, [user?.email, setProfile, setCurrentUserPrivileges])
+
+  // Set POS profile data when loaded
+  React.useEffect(() => {
+    console.log('🔍 POS Profile Debug:', {
+      posProfile,
+      posProfileData: posProfile?.data,
+      userEmail: user?.email,
+      hasData: !!posProfile?.data?.data
+    })
+    
+    if (posProfile?.data?.data) {
+      console.log('✅ Setting POS profile data:', posProfile.data.data)
+      setProfile(posProfile.data.data)
+      // Set current user privileges
+      if (user?.email) {
+        console.log('✅ Setting user privileges for:', user.email)
+        setCurrentUserPrivileges(user.email)
+      }
+    } else {
+      console.log('❌ No POS profile data found')
+    }
+  }, [posProfile, user?.email, setProfile, setCurrentUserPrivileges])
 
   const itemExists = (itemCode: string) => {
     if (!activeTabId) return false;
@@ -53,6 +126,15 @@ const POSInterface: React.FC = () => {
       toast.error('Item already in cart');
       return;
     }
+
+    console.log('🛒 Adding item to cart:', {
+      item_code: item.item_code,
+      item_name: item.item_name,
+      standard_rate: item.standard_rate,
+      uom: item.uom,
+      quantity: item.quantity,
+      fullItem: item
+    });
 
     addItemToTab(activeTabId, item);
     setSelectedItemId(item.item_code);

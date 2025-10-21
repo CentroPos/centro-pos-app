@@ -13,6 +13,7 @@ import { Button } from '@renderer/components/ui/button'
 
 import CustomerSearchModal from '../customer/customer-search'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
+import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 
 
 
@@ -20,8 +21,17 @@ const OrderDetails: React.FC = () => {
 
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const { activeTabId, getCurrentTabCustomer, updateTabCustomer } = usePOSTabStore()
+  const { profile } = usePOSProfileStore()
 
   const selectedCustomer = getCurrentTabCustomer()
+
+  // Debug logging
+  React.useEffect(() => {
+    console.log('🔍 OrderDetails Debug:', {
+      profile,
+      sellingPriceList: profile?.selling_price_list
+    })
+  }, [profile])
 
   const handleCustomerSelect = (customer: any) => {
     if (activeTabId) {
@@ -49,15 +59,15 @@ const OrderDetails: React.FC = () => {
 
         <div className="space-y-2">
           <label className="block text-sm font-semibold text-gray-700">Price List</label>
-          <Select defaultValue="default">
+          <Select defaultValue={profile?.selling_price_list || "Standard Selling"}>
             <SelectTrigger className="w-full p-4 bg-white/80 border border-white/40 rounded-xl shadow-lg focus:ring-2 focus:ring-accent focus:border-transparent transition-all">
               <SelectValue placeholder="Select Price List" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="default">Default Price List</SelectItem>
-              <SelectItem value="wholesale">Wholesale Price List</SelectItem>
-              <SelectItem value="retail">Retail Price List</SelectItem>
-              <SelectItem value="vip">VIP Price List</SelectItem>
+              <SelectItem value="Standard Selling">Standard Selling</SelectItem>
+              <SelectItem value="Wholesale Price List">Wholesale Price List</SelectItem>
+              <SelectItem value="Retail Price List">Retail Price List</SelectItem>
+              <SelectItem value="VIP Price List">VIP Price List</SelectItem>
             </SelectContent>
           </Select>
         </div>

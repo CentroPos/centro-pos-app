@@ -253,8 +253,55 @@ function setupAuthHandlers(): void {
         const csrfToken = response.headers.get('x-frappe-csrf-token') || ''
         if (csrfToken) proxySessionData.csrfToken = csrfToken
 
-        const data = await response.json().catch(() => ({}))
-        return { success: response.ok, status: response.status, data }
+        // Check if response is PDF or binary content
+        const contentType = response.headers.get('content-type') || ''
+        const isPdf = contentType.includes('application/pdf') || 
+                     payload.url.includes('create_order') ||
+                     contentType.includes('application/octet-stream') ||
+                     contentType === ''
+        
+        let data = {}
+        let pdfData: string | null = null
+        
+        if (isPdf) {
+          // Handle PDF response
+          try {
+            const arrayBuffer = await response.arrayBuffer()
+            const uint8Array = new Uint8Array(arrayBuffer)
+            
+            // Check if it's actually a PDF by looking for PDF header
+            const isActualPdf = uint8Array.length > 4 && 
+                               uint8Array[0] === 0x25 && // %
+                               uint8Array[1] === 0x50 && // P
+                               uint8Array[2] === 0x44 && // D
+                               uint8Array[3] === 0x46    // F
+            
+            if (isActualPdf) {
+              const base64 = Buffer.from(arrayBuffer).toString('base64')
+              pdfData = `data:application/pdf;base64,${base64}`
+              data = { pdf_data: base64, pdf_url: pdfData }
+              console.log('📄 PDF response detected, converted to base64, size:', arrayBuffer.byteLength)
+            } else {
+              console.log('📄 Response detected as potential PDF but not valid PDF format')
+              // Try to parse as JSON anyway
+              const text = new TextDecoder().decode(arrayBuffer)
+              try {
+                data = JSON.parse(text)
+                console.log('📄 Response parsed as JSON instead')
+              } catch {
+                data = { error: 'Response is not PDF or JSON' }
+              }
+            }
+          } catch (error) {
+            console.error('Error processing PDF response:', error)
+            data = { error: 'Failed to process PDF response' }
+          }
+        } else {
+          // Handle JSON response
+          data = await response.json().catch(() => ({}))
+        }
+        
+        return { success: response.ok, status: response.status, data, pdfData: pdfData || undefined }
       } catch (error: any) {
         return { success: false, status: 500, error: error?.message }
       }
@@ -398,7 +445,7 @@ function setupAuthHandlers(): void {
   ipcMain.on('renderer-log-error', (_event, payload) => {
     try {
       console.error('Renderer Error:', typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2))
-    } catch (e) {
+    } catch (error) {
       console.error('Renderer Error:', payload)
     }
   })
