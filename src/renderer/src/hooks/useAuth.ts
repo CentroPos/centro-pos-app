@@ -51,7 +51,7 @@ export function useAuth(): UseAuthReturn {
 
         await authStore.setFrappeAuth(userData)
         await checkAuth() // Refresh auth state
-        router.navigate({ to: '/', replace: true }) // Redirect to home or dashboard
+        router.navigate({ to: '/pos', replace: true }) // Redirect to POS page
       } catch (err) {
         console.error('Login failed:', err)
         setError(err instanceof Error ? err.message : 'Login failed')
@@ -69,7 +69,7 @@ export function useAuth(): UseAuthReturn {
       await authStore.clearAuthData()
       setIsAuthenticated(false)
       setAuthData(null)
-      router.navigate({ to: '/login', replace: true }) // Redirect to home or dashboard
+      router.navigate({ to: '/', replace: true }) // Redirect to login page
     } catch (err) {
       console.error('Logout failed:', err)
       setError(err instanceof Error ? err.message : 'Logout failed')

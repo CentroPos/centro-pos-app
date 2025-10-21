@@ -12,10 +12,10 @@ import { ControlledTextField } from '../form/controlled-text-field'
 import { Loader2, Lock, UserIcon } from 'lucide-react'
 import { Button } from '../ui/button'
 import { Form } from '../ui/form'
-import { useAuth } from '@renderer/hooks/useAuth'
 import { toast } from 'sonner'
 import { COMMON_ERROR_MESSAGE } from '@renderer/data/messages'
 import { useAuthStore } from '../../store/useAuthStore';
+import { useNavigate } from '@tanstack/react-router';
 
 
 const schema = Yup.object().shape({
@@ -38,23 +38,30 @@ const LoginPage: React.FC = () => {
   })
 
   const { isLoading, login: storeLogin } = useAuthStore()
-
+  const navigate = useNavigate()
 
   // Remove API mutation login flow; we'll use proxy-backed auth via storeLogin
   const error = null as unknown as any
-
-  const { login } = useAuth()
 
 
   console.log('forms.f', form.formState.errors)
 
   const onSubmit: SubmitHandler<FormData> = async (data: FormData) => {
     try {
+      console.log('=== LOGIN ATTEMPT ===')
+      console.log('1. Calling storeLogin...')
       await storeLogin({ username: data.email, password: data.password })
-      login({ message: 'Logged In', full_name: data.email })
+      console.log('2. StoreLogin successful')
+      
       toast.success('Login successful!')
+      console.log('3. Toast shown, navigating to POS...')
+      
+      // Navigate to POS page after successful login
+      navigate({ to: '/pos', replace: true })
+      console.log('4. Navigation completed')
+      
     } catch (err: any) {
-      console.error('Login failed:', err)
+      console.error('=== LOGIN FAILED ===', err)
       const errorMsg = err?.message || err?.error || COMMON_ERROR_MESSAGE
       toast.error(errorMsg)
     }
