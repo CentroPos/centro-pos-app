@@ -53,6 +53,26 @@ const ActionButtons: React.FC = () => {
     const total = calculateOrderTotal()
     setOrderAmount(total)
   }, [calculateOrderTotal])
+
+  // Keyboard shortcuts for Confirm and Pay
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey) {
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          console.log('⌨️ Ctrl+Enter pressed - opening confirm dialog')
+          handleConfirm()
+        } else if (e.key === 'p' || e.key === 'P') {
+          e.preventDefault()
+          console.log('⌨️ Ctrl+P pressed - opening pay dialog')
+          handlePay()
+        }
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
   
   const totalPending = (() => {
     const a = parseFloat(orderAmount || '0') || 0
@@ -404,12 +424,14 @@ const ActionButtons: React.FC = () => {
 
   const handleConfirm = () => {
     if (!currentTab) return
-    setTabStatus(currentTab.id, 'confirmed')
+    console.log('🔘 Confirm button clicked - opening payment dialog')
+    setOpen('confirm')
   }
 
   const handlePay = () => {
     if (!currentTab) return
-    setTabStatus(currentTab.id, 'paid')
+    console.log('💳 Pay button clicked - opening payment dialog')
+    setOpen('pay')
   }
 
   // const handlePaymentSubmit = async (paymentAmount: number): Promise<void> => {
@@ -580,7 +602,15 @@ const ActionButtons: React.FC = () => {
           </div>
 
           <DialogFooter className="pt-6">
-            <Button onClick={() => setConfirmOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 text-lg font-semibold">Confirm and Pay</Button>
+            <Button 
+              onClick={() => {
+                console.log('💳 Confirm and Pay clicked in dialog')
+                setConfirmOpen(true)
+              }} 
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 text-lg font-semibold"
+            >
+              Confirm and Pay
+            </Button>
             <Button variant="outline" onClick={() => setOpen(false)} className="px-8 py-3 text-lg font-semibold">Cancel</Button>
           </DialogFooter>
         </DialogContent>
@@ -592,9 +622,44 @@ const ActionButtons: React.FC = () => {
           <AlertDialogHeader>
             <AlertDialogTitle className="text-xl font-bold text-gray-800">Confirm Payment</AlertDialogTitle>
           </AlertDialogHeader>
+          <div className="py-4">
+            <p className="text-gray-600 mb-2">Payment Details:</p>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span>Amount:</span>
+                <span className="font-semibold">${amount || '0.00'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Mode:</span>
+                <span className="font-semibold">{mode}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Date:</span>
+                <span className="font-semibold">{date}</span>
+              </div>
+            </div>
+          </div>
           <AlertDialogFooter className="pt-6">
-            <AlertDialogCancel className="px-6 py-3 text-lg font-semibold">No</AlertDialogCancel>
-            <AlertDialogAction autoFocus className="px-6 py-3 text-lg font-semibold bg-blue-600 hover:bg-blue-700">Yes</AlertDialogAction>
+            <AlertDialogCancel className="px-6 py-3 text-lg font-semibold">Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              autoFocus 
+              className="px-6 py-3 text-lg font-semibold bg-blue-600 hover:bg-blue-700"
+              onClick={() => {
+                console.log('✅ Final payment confirmation - processing payment')
+                // Process the payment here
+                if (currentTab) {
+                  setTabStatus(currentTab.id, 'paid')
+                  setOpen(false)
+                  setConfirmOpen(false)
+                  // Reset form
+                  setAmount('')
+                  setMode('Cash')
+                  setDate(new Date().toISOString().slice(0, 10))
+                }
+              }}
+            >
+              Confirm Payment
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
