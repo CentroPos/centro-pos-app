@@ -7,9 +7,12 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 
-// type Props = unknown
+type Props = {
+  onNavigateToPrints?: () => void
+  selectedPriceList?: string
+}
 
-const ActionButtons: React.FC = () => {
+const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList = 'Standard Selling' }) => {
   const [open, setOpen] = useState<false | 'confirm' | 'pay'>(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [orderAmount, setOrderAmount] = useState('0.00')
@@ -21,7 +24,7 @@ const ActionButtons: React.FC = () => {
   
   // Get current tab data
   const { getCurrentTabItems, getCurrentTab, updateTabOrderId, setTabStatus, getCurrentTabCustomer } = usePOSTabStore()
-  const { currentUserPrivileges, profile } = usePOSProfileStore()
+  const { currentUserPrivileges } = usePOSProfileStore()
   const items = getCurrentTabItems()
   const currentTab = getCurrentTab()
 
@@ -256,12 +259,13 @@ const ActionButtons: React.FC = () => {
       const orderData = {
         customer: finalCustomerId,
         posting_date: new Date().toISOString().split('T')[0], // Today's date in YYYY-MM-DD format
-        selling_price_list: profile?.selling_price_list || "Standard Selling",
+        selling_price_list: selectedPriceList,
         taxes_and_charges: "VAT 15% - NAB", // Default tax, can be made configurable
         items: mappedItems
       }
       
       console.log('📦 Creating order with data:', orderData)
+      console.log('📦 Selected Price List:', selectedPriceList)
       console.log('📦 Detailed items data:', JSON.stringify(orderData.items, null, 2))
       
       // Call create order API
@@ -282,12 +286,25 @@ const ActionButtons: React.FC = () => {
           updateTabOrderId(currentTab.id, orderId)
         }
         
-        // Handle PDF print response
+        // Show success message with relevant information
+        console.log('✅ Order created successfully!')
+        console.log('📦 API Response:', response)
+        
+        // Extract relevant information from response
+        const displayOrderId = response.data?.name || response.data?.order_id || 'Unknown'
+        const orderName = response.data?.order_name || response.data?.name || displayOrderId
+        const grandTotal = response.data?.grand_total || response.data?.total || 'N/A'
+        const status = response.data?.status || 'Created'
+        
+        // Show clean success message
+        alert(`Order created successfully!\n\nOrder ID: ${displayOrderId}\nOrder Name: ${orderName}\nTotal Amount: ${grandTotal}\nStatus: ${status}`)
+        
+        // Handle PDF download (temporary)
         console.log('🔍 Checking for PDF in response data:', response.data)
         console.log('🔍 Full response structure:', response)
         console.log('🔍 PDF data from proxy:', response.pdfData)
         
-        let pdfUrl = null
+        let pdfUrl: string | null = null
         
         // Check for PDF data from the updated proxy response
         if (response.pdfData) {
@@ -362,7 +379,7 @@ const ActionButtons: React.FC = () => {
               const link = document.createElement('a')
               link.href = pdfUrl
               link.target = '_blank'
-              link.download = `order-${orderId || 'receipt'}.pdf`
+              link.download = `order-${displayOrderId || 'receipt'}.pdf`
               document.body.appendChild(link)
               link.click()
               document.body.removeChild(link)
@@ -380,7 +397,7 @@ const ActionButtons: React.FC = () => {
                     setTimeout(() => {
                       document.body.removeChild(iframe)
                     }, 1000)
-                  } catch (e) {
+                  } catch {
                     console.log('📄 Iframe print failed, PDF will open in new tab')
                     document.body.removeChild(iframe)
                   }
@@ -395,8 +412,10 @@ const ActionButtons: React.FC = () => {
           }
         } else {
           console.log('📄 No PDF found in response, showing success message')
-          alert('Order created successfully!')
         }
+        
+        // Navigate to prints tab
+        onNavigateToPrints?.()
       } else {
         // Parse server error message from _server_messages
         let errorMessage = 'Failed to create order'
@@ -416,7 +435,7 @@ const ActionButtons: React.FC = () => {
       
     } catch (error) {
       console.error('❌ Error creating order:', error)
-      alert(`Failed to create order: ${error?.message || 'Please try again.'}`)
+      alert(`Failed to create order: ${(error as any)?.message || 'Please try again.'}`)
     } finally {
       setIsSaving(false)
     }

@@ -18,6 +18,8 @@ const POSInterface: React.FC = () => {
   const [open, setOpen] = useState(false)
   const [selectedItemId, setSelectedItemId] = useState<string | undefined>()
   const [shouldStartEditing, setShouldStartEditing] = useState(false)
+  const [rightPanelTab, setRightPanelTab] = useState<'product' | 'customer' | 'prints' | 'payments' | 'orders'>('product')
+  const [selectedPriceList, setSelectedPriceList] = useState<string>('Standard Selling')
 
   const {
     getCurrentTabItems,
@@ -199,9 +201,12 @@ const POSInterface: React.FC = () => {
           {/* <button onClick={() => setOpen(true)} className="m-4 p-2 bg-blue-500 text-white rounded">
             Open
           </button> */}
-          <ActionButtons />
+          <ActionButtons 
+            onNavigateToPrints={() => setRightPanelTab('prints')} 
+            selectedPriceList={selectedPriceList}
+          />
           {/* Fixed top: Order details */}
-          <OrderDetails />
+          <OrderDetails onPriceListChange={setSelectedPriceList} />
 
           {/* Items area takes remaining space; inner table handles its own scroll */}
           <div className="flex-1">
@@ -211,6 +216,7 @@ const POSInterface: React.FC = () => {
               selectItem={selectItem}
               shouldStartEditing={shouldStartEditing}
               onEditingStarted={() => setShouldStartEditing(false)}
+              onAddItemClick={() => setOpen(true)}
             />
           </div>
 
@@ -222,13 +228,16 @@ const POSInterface: React.FC = () => {
           key={`${selectedCustomer?.name || 'no-customer'}-${selectedItemId || 'no-item'}`}
           selectedItemId={selectedItemId} 
           items={items} 
-          selectedCustomer={selectedCustomer} 
+          selectedCustomer={selectedCustomer}
+          activeTab={rightPanelTab}
+          onTabChange={setRightPanelTab}
         />
       </div>
       <ProductSearchModal
         open={open}
         onOpenChange={setOpen}
         onSelect={addItem}
+        selectedPriceList={selectedPriceList}
       />
     </Fragment>
   )

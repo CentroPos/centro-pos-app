@@ -22,11 +22,12 @@ type Props = {
   selectItem: (value: string) => void
   shouldStartEditing?: boolean
   onEditingStarted?: () => void
+  onAddItemClick?: () => void
 }
 
 type EditField = 'quantity' | 'standard_rate' | 'uom' | 'discount_percentage'
 
-const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem, shouldStartEditing = false, onEditingStarted }) => {
+const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem, shouldStartEditing = false, onEditingStarted, onAddItemClick }) => {
   const { getCurrentTabItems, activeTabId, updateItemInTab, getCurrentTab } = usePOSTabStore();
   const items = getCurrentTabItems();
   const currentTab = getCurrentTab();
@@ -36,6 +37,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   const [activeField, setActiveField] = useState<EditField>('quantity');
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState<string>('')
+  const [forceFocus, setForceFocus] = useState(0)
+  const [invalidUomMessage, setInvalidUomMessage] = useState<string>('')
   const inputRef = useRef<HTMLInputElement>(null)
   
   console.log('🔧 ItemsTable Debug:', {
@@ -79,16 +82,106 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     }
   }, [isEditing, activeField, selectedItemId])
 
-  // Set initial edit value when editing starts
+  // Set initial edit value when editing starts.
+  // Important: do NOT depend on items, or we may overwrite user typing after store updates.
   useEffect(() => {
-    if (isEditing && selectedItemId) {
-      const item = items.find((i) => i.item_code === selectedItemId)
-      if (item) {
-        const value = item[activeField]
-        setEditValue(value?.toString() || '')
-      }
+    if (!isEditing || !selectedItemId) return
+    const item = items.find((i) => i.item_code === selectedItemId)
+    if (!item) return
+    // Only set if editValue is empty or we switched fields
+    if (editValue === '' || (activeField && String(item[activeField]) !== editValue)) {
+      const value = item[activeField]
+      setEditValue(value?.toString() || '')
     }
-  }, [isEditing, activeField, selectedItemId, items])
+    // Clear invalid UOM message when starting to edit
+    if (activeField === 'uom') {
+      setInvalidUomMessage('')
+    }
+  }, [isEditing, activeField, selectedItemId])
+
+  // Handle focus after revert - more robust approach
+  useEffect(() => {
+    console.log('🎯 Focus effect triggered:', { forceFocus, isEditing, activeField, selectedItemId })
+    
+    if (forceFocus > 0) {
+      // Try multiple times to ensure focus works
+      const attemptFocus = (attempt = 1) => {
+        console.log(`🎯 Focus attempt ${attempt}`)
+        if (inputRef.current && isEditing && activeField === 'uom') {
+          console.log('🎯 Focusing input field')
+          inputRef.current.focus()
+          inputRef.current.select()
+          return true
+        } else if (attempt < 5) {
+          // Retry after a short delay
+          setTimeout(() => attemptFocus(attempt + 1), 100)
+        } else {
+          console.log('🎯 Failed to focus after 5 attempts')
+        }
+        return false
+      }
+      
+      setTimeout(() => attemptFocus(), 50)
+    }
+  }, [forceFocus, isEditing, activeField, selectedItemId])
+
+  // Debug the isEditingUom condition
+  useEffect(() => {
+    if (selectedItemId) {
+      const item = items.find((i) => i.item_code === selectedItemId)
+      const isSelected = item?.item_code === selectedItemId
+      const isEditingUom = isSelected && isEditing && activeField === 'uom'
+      console.log('🔍 UOM editing state:', { 
+        selectedItemId, 
+        itemCode: item?.item_code, 
+        isSelected, 
+        isEditing, 
+        activeField, 
+        isEditingUom 
+      })
+    }
+  }, [selectedItemId, isEditing, activeField, items])
+
+  // Function to completely reset editing state
+  const resetEditingState = () => {
+    console.log('🔄 Completely resetting editing state')
+    setIsEditing(false)
+    setActiveField(null)
+    setEditValue('')
+    setForceFocus(0)
+  }
+
+  // Function to refresh item data from API
+  const refreshItemData = async (itemCode: string) => {
+    try {
+      console.log('🔄 Refreshing item data for:', itemCode)
+      const resp = await api.get(API_Endpoints.PRODUCT_LIST_METHOD, {
+        params: {
+          price_list: 'Standard Selling',
+          search_text: itemCode,
+          limit_start: 0,
+          limit_page_length: 10
+        }
+      })
+      
+      const allItems = Array.isArray(resp?.data?.data) ? resp.data.data : []
+      const freshItem = allItems.find((i: any) => i.item_id === itemCode)
+      
+      if (freshItem && activeTabId) {
+        console.log('✅ Refreshed item data:', freshItem)
+        const uomDetails = Array.isArray(freshItem?.uom_details) ? freshItem.uom_details : []
+        const uomRates = Object.fromEntries(uomDetails.map((d: any) => [d.uom, d.rate]))
+        
+        // Update the item with fresh data
+        updateItemInTab(activeTabId, itemCode, {
+          uomRates: uomRates,
+          // Keep current UOM and rate, just update the rates map
+        })
+      }
+    } catch (error) {
+      console.error('Error refreshing item data:', error)
+    }
+  }
 
   const handleSaveEdit = async () => {
     if (!isEditing || !selectedItemId || !activeTabId) return
@@ -105,6 +198,108 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         return
       }
       finalValue = numValue
+    } else {
+      // Handle UOM validation
+      try {
+        console.log('🔍 Validating UOM for item:', item.item_code, 'UOM:', editValue)
+        
+        // Fetch fresh UOM details from API for this specific item
+        const resp = await api.get(API_Endpoints.PRODUCT_LIST_METHOD, {
+          params: {
+            price_list: 'Standard Selling',
+            search_text: item.item_code,
+            limit_start: 0,
+            limit_page_length: 10
+          }
+        })
+        
+        console.log('📡 API Response for UOM validation:', resp?.data)
+        
+        // Find the exact item in the response
+        const allItems = Array.isArray(resp?.data?.data) ? resp.data.data : []
+        const exactItem = allItems.find((i: any) => i.item_id === item.item_code)
+        
+        if (!exactItem) {
+          console.error('❌ Item not found in API response:', item.item_code)
+          alert(`Item ${item.item_code} not found in API. Please refresh and try again.`)
+          setIsEditing(false)
+          return
+        }
+        
+        console.log('✅ Found exact item:', exactItem.item_id, 'UOM details:', exactItem.uom_details)
+        
+        const uomDetails = Array.isArray(exactItem?.uom_details) ? exactItem.uom_details : []
+        
+        // Create a map of UOM -> rate for easy lookup
+        const uomMap = Object.fromEntries(
+          uomDetails.map((d: any) => [String(d.uom).toLowerCase(), {
+            uom: d.uom,
+            rate: Number(d.rate || 0),
+            qty: Number(d.qty || 0)
+          }])
+        )
+        
+        console.log('🗺️ UOM Map created:', uomMap)
+        
+        const previousUom = String(item.uom || 'Nos')
+        const editValueLower = String(editValue).toLowerCase()
+        const uomInfo = uomMap[editValueLower]
+
+        console.log('🔍 Looking for UOM:', editValueLower, 'Found:', uomInfo)
+
+        // Check if UOM exists in API response
+        if (!uomInfo) {
+          // UOM not found in API - just revert without popup
+          const prevUomInfo = uomMap[String(previousUom).toLowerCase()]
+          const fallbackRate = prevUomInfo?.rate || Number(item.standard_rate || 0)
+          
+          console.log('❌ UOM not found, reverting to:', previousUom, 'with rate:', fallbackRate)
+          
+          // Update the item with previous UOM
+          if (activeTabId) {
+            updateItemInTab(activeTabId, item.item_code, {
+              uom: previousUom,
+              standard_rate: Number(fallbackRate || 0),
+              uomRates: Object.fromEntries(uomDetails.map((d: any) => [d.uom, d.rate]))
+            })
+          }
+          
+          // Set the edit value to the previous UOM
+          setEditValue(previousUom)
+          
+          // Set visual message instead of popup
+          setInvalidUomMessage(`No ${String(editValue)} available. Reverted to ${previousUom}.`)
+          
+          // Clear the message after 3 seconds
+          setTimeout(() => {
+            setInvalidUomMessage('')
+          }, 3000)
+          
+          // Just return without breaking the editing state
+          return
+        }
+
+        // UOM exists in API - use the rate (regardless of qty)
+        console.log('✅ UOM found, updating with rate:', uomInfo.rate)
+        
+        if (activeTabId) {
+          updateItemInTab(activeTabId, item.item_code, {
+            uom: uomInfo.uom, // Use the exact UOM from API (preserves case)
+            standard_rate: Number(uomInfo.rate || 0),
+            uomRates: Object.fromEntries(uomDetails.map((d: any) => [d.uom, d.rate]))
+          })
+          
+          // Refresh item data to ensure UI is updated
+          setTimeout(() => {
+            refreshItemData(item.item_code)
+          }, 100)
+        }
+        finalValue = uomInfo.uom
+      } catch (error) {
+        console.error('Error fetching UOM details:', error)
+        // If API fails, just use the typed value
+        finalValue = editValue
+      }
     }
 
     // Check for quantity shortage when saving quantity
@@ -149,8 +344,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     updateItemInTab(activeTabId, selectedItemId, { [activeField]: finalValue })
 
     // Move to next field automatically
-    // Jump from Qty → Unit Price, then stop
-    const fieldOrder: EditField[] = ['quantity', 'standard_rate']
+    // Navigate through all editable fields: Qty → UOM → Discount → Unit Price
+    const fieldOrder: EditField[] = ['quantity', 'uom', 'discount_percentage', 'standard_rate']
     const currentIndex = fieldOrder.indexOf(activeField)
 
     if (currentIndex < fieldOrder.length - 1) {
@@ -185,12 +380,105 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     { preventDefault: true, enableOnFormTags: true }
   )
 
+  // Emergency reset shortcut (Ctrl+R)
+  useHotkeys(
+    'ctrl+r',
+    () => {
+      console.log('🆘 Emergency reset triggered')
+      resetEditingState()
+    },
+    { preventDefault: true, enableOnFormTags: true }
+  )
+
   useHotkeys(
     'Escape',
     () => {
       setIsEditing(false)
     },
     { preventDefault: true }
+  )
+
+  // Arrow key navigation
+  useHotkeys(
+    'ArrowLeft',
+    () => {
+      if (isEditing && selectedItemId) {
+        const fieldOrder: EditField[] = ['quantity', 'uom', 'discount_percentage', 'standard_rate']
+        const currentIndex = fieldOrder.indexOf(activeField)
+        
+        if (currentIndex > 0) {
+          const prevField = fieldOrder[currentIndex - 1]
+          setActiveField(prevField)
+          const item = items.find((i) => i.item_code === selectedItemId)
+          if (item) {
+            setEditValue(String(item[prevField] ?? ''))
+          }
+        }
+      }
+    },
+    { preventDefault: true, enableOnFormTags: true }
+  )
+
+  useHotkeys(
+    'ArrowRight',
+    () => {
+      if (isEditing && selectedItemId) {
+        const fieldOrder: EditField[] = ['quantity', 'uom', 'discount_percentage', 'standard_rate']
+        const currentIndex = fieldOrder.indexOf(activeField)
+        
+        if (currentIndex < fieldOrder.length - 1) {
+          const nextField = fieldOrder[currentIndex + 1]
+          setActiveField(nextField)
+          const item = items.find((i) => i.item_code === selectedItemId)
+          if (item) {
+            setEditValue(String(item[nextField] ?? ''))
+          }
+        }
+      }
+    },
+    { preventDefault: true, enableOnFormTags: true }
+  )
+
+  useHotkeys(
+    'ArrowUp',
+    () => {
+      if (selectedItemId && !isReadOnly) {
+        const currentIndex = items.findIndex((i) => i.item_code === selectedItemId)
+        if (currentIndex > 0) {
+          const prevItem = items[currentIndex - 1]
+          selectItem(prevItem.item_code)
+          if (isEditing) {
+            // Keep editing mode but switch to the previous item
+            const item = items.find((i) => i.item_code === prevItem.item_code)
+            if (item) {
+              setEditValue(String(item[activeField] ?? ''))
+            }
+          }
+        }
+      }
+    },
+    { preventDefault: true, enableOnFormTags: true }
+  )
+
+  useHotkeys(
+    'ArrowDown',
+    () => {
+      if (selectedItemId && !isReadOnly) {
+        const currentIndex = items.findIndex((i) => i.item_code === selectedItemId)
+        if (currentIndex < items.length - 1) {
+          const nextItem = items[currentIndex + 1]
+          selectItem(nextItem.item_code)
+          if (isEditing) {
+            // Keep editing mode but switch to the next item
+            const item = items.find((i) => i.item_code === nextItem.item_code)
+            if (item) {
+              setEditValue(String(item[activeField] ?? ''))
+            }
+          }
+        }
+      }
+    },
+    { preventDefault: true, enableOnFormTags: true }
   )
 
   // Handle warehouse allocation
@@ -215,7 +503,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     })
 
     // Move to next field after successful allocation
-    const fieldOrder: EditField[] = ['quantity', 'standard_rate']
+    const fieldOrder: EditField[] = ['quantity', 'uom', 'discount_percentage', 'standard_rate']
     const currentIndex = fieldOrder.indexOf(activeField)
 
     if (currentIndex < fieldOrder.length - 1) {
@@ -239,7 +527,16 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         <TabsContent value="items" className="mt-4">
           <div className="border rounded-lg">
             {/* Single table with sticky header to keep columns aligned */}
-            <div className="max-h-[22vh] overflow-y-auto">
+            <div 
+              className="max-h-[22vh] overflow-y-auto cursor-pointer"
+              onClick={(e) => {
+                // Only trigger if clicking on empty space (not on table cells)
+                if (e.target === e.currentTarget || (e.target as HTMLElement).tagName === 'DIV') {
+                  console.log('🖱️ Items table area clicked - opening product modal')
+                  onAddItemClick?.()
+                }
+              }}
+            >
               <Table className="table-fixed w-full">
                 <TableHeader className="sticky top-0 z-10 bg-white">
                   <TableRow>
@@ -280,8 +577,13 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                       <TableCell className={isSelected ? 'font-semibold text-blue-900' : ''}>
                         {item.item_code}
                       </TableCell>
-                      <TableCell className={isSelected ? 'font-medium' : ''}>
-                        {item.item_name}
+                      <TableCell className={`${isSelected ? 'font-medium' : ''} max-w-[420px]`}>
+                        <span
+                          className="block truncate"
+                          title={item.item_name || ''}
+                        >
+                          {item.item_name}
+                        </span>
                       </TableCell>
 
                       {/* Quantity Cell */}
@@ -347,51 +649,15 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                       >
                         {isEditingUom ? (
                           <input
+                            key={`uom-${item.item_code}-${isEditingUom}-${forceFocus}`}
                             ref={inputRef}
                             type="text"
                             value={editValue}
                             onChange={(e) => {
                               const val = e.target.value
+                              console.log('📝 UOM input onChange:', val)
                               setEditValue(val)
-                              // Update UOM immediately and adjust rate
-                              const applyRate = async () => {
-                                try {
-                                  let rates: Record<string, number> | undefined = (item as any).uomRates
-                                  if (!rates || rates[val] === undefined) {
-                                    const resp = await api.get(API_Endpoints.PRODUCT_LIST_METHOD, {
-                                      params: {
-                                        price_list: 'Standard Selling',
-                                        search_text: item.item_code,
-                                        limit_start: 1,
-                                        limit_page_length: 1
-                                      }
-                                    })
-                                    const entry = resp?.data?.data?.[0]
-                                    const details = Array.isArray(entry?.uom_details) ? entry.uom_details : []
-                                    rates = Object.fromEntries(details.map((d: any) => [d.uom, Number(d.rate || 0)]))
-                                  }
-                                  // Fallback #2: compute from Item detail conversion factors
-                                  if (!rates || rates[val] === undefined) {
-                                    const resp2 = await api.get(`${API_Endpoints.PRODUCTS}/${item.item_code}`)
-                                    const det = resp2?.data?.data
-                                    const baseRate = Number(det?.standard_rate || 0)
-                                    const convs = Array.isArray(det?.uoms) ? det.uoms : []
-                                    const computed: Record<string, number> = Object.fromEntries(
-                                      convs.map((u: any) => [u.uom, baseRate * Number(u.conversion_factor || 1)])
-                                    )
-                                    rates = { ...(rates || {}), ...computed }
-                                  }
-                                  const rate = rates && rates[val]
-                                  if (activeTabId) {
-                                    updateItemInTab(activeTabId, item.item_code, {
-                                      uom: val,
-                                      standard_rate: Number(rate || 0),
-                                      uomRates: rates
-                                    })
-                                  }
-                                } catch {}
-                              }
-                              applyRate()
+                              // Don't validate on every keystroke - only on blur/enter
                             }}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
@@ -402,6 +668,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                 setIsEditing(false)
                               }
                             }}
+                            onBlur={handleSaveEdit}
                             className="w-full max-w-[100px] px-2 py-1 border-2 border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-600 truncate"
                           />
                         ) : (
@@ -519,13 +786,27 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                 </TableBody>
               </Table>
             </div>
+            
+            {/* Invalid UOM Message */}
+            {invalidUomMessage && (
+              <div className="px-3 py-2 bg-red-50 border-t border-red-200">
+                <div className="text-red-700 text-sm text-center">
+                  ⚠️ {invalidUomMessage}
+                </div>
+              </div>
+            )}
+            
             <div className="p-3 border-t bg-gray-50">
               <Button
                 variant="ghost"
                 className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                onClick={() => {
+                  console.log('🖱️ Add item button clicked - opening product modal')
+                  onAddItemClick?.()
+                }}
               >
                 <Plus className="w-4 h-4 mr-2" />
-                Press &apos;Shift&apos; to add item • Space to edit • ←→ to navigate fields
+                Click or press &apos;Shift&apos; to add item • Space to edit • ← → to navigate fields • ↑ ↓ to navigate rows
               </Button>
             </div>
           </div>

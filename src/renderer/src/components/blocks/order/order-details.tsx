@@ -17,21 +17,39 @@ import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 
 
 
-const OrderDetails: React.FC = () => {
+type OrderDetailsProps = {
+  onPriceListChange?: (priceList: string) => void
+}
+
+const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange }) => {
 
   const [showCustomerModal, setShowCustomerModal] = useState(false);
+  const [selectedPriceList, setSelectedPriceList] = useState<string>('Standard Selling');
   const { activeTabId, getCurrentTabCustomer, updateTabCustomer } = usePOSTabStore()
   const { profile } = usePOSProfileStore()
 
   const selectedCustomer = getCurrentTabCustomer()
 
+  // Initialize price list from profile
+  React.useEffect(() => {
+    if (profile?.selling_price_list) {
+      setSelectedPriceList(profile.selling_price_list)
+    }
+  }, [profile?.selling_price_list])
+
+  // Notify parent when price list changes
+  React.useEffect(() => {
+    onPriceListChange?.(selectedPriceList)
+  }, [selectedPriceList, onPriceListChange])
+
   // Debug logging
   React.useEffect(() => {
     console.log('🔍 OrderDetails Debug:', {
       profile,
-      sellingPriceList: profile?.selling_price_list
+      sellingPriceList: profile?.selling_price_list,
+      selectedPriceList
     })
-  }, [profile])
+  }, [profile, selectedPriceList])
 
   const handleCustomerSelect = (customer: any) => {
     if (activeTabId) {
@@ -59,7 +77,10 @@ const OrderDetails: React.FC = () => {
 
         <div className="space-y-2">
           <label className="block text-sm font-semibold text-gray-700">Price List</label>
-          <Select defaultValue={profile?.selling_price_list || "Standard Selling"}>
+          <Select 
+            value={selectedPriceList} 
+            onValueChange={setSelectedPriceList}
+          >
             <SelectTrigger className="w-full p-4 bg-white/80 border border-white/40 rounded-xl shadow-lg focus:ring-2 focus:ring-accent focus:border-transparent transition-all">
               <SelectValue placeholder="Select Price List" />
             </SelectTrigger>
