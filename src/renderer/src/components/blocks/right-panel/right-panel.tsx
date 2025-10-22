@@ -10,10 +10,15 @@ type RightPanelProps = {
   selectedItemId?: string
   items: any[]
   selectedCustomer?: any
+  onTabChange?: (tab: string) => void
+  activeTab?: 'product' | 'customer' | 'prints' | 'payments' | 'orders'
 }
 
-const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selectedCustomer }) => {
-  const [activeTab, setActiveTab] = useState<'product' | 'customer' | 'prints' | 'payments' | 'orders'>('product')
+const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selectedCustomer, onTabChange, activeTab: externalActiveTab }) => {
+  const [internalActiveTab, setInternalActiveTab] = useState<'product' | 'customer' | 'prints' | 'payments' | 'orders'>('product')
+  
+  // Use external activeTab if provided, otherwise use internal state
+  const activeTab = externalActiveTab || internalActiveTab
   const [subTab, setSubTab] = useState<'orders' | 'returns'>('orders')
   const [customerSubTab, setCustomerSubTab] = useState<'recent' | 'most'>('recent')
   const [ordersSubTab, setOrdersSubTab] = useState<'orders' | 'returns'>('orders')
@@ -21,6 +26,12 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
   // Get logout function from useAuthStore
   const { logout } = useAuthStore()
   const navigate = useNavigate()
+
+  // Handle tab change and notify parent
+  const handleTabChange = (tab: 'product' | 'customer' | 'prints' | 'payments' | 'orders') => {
+    setInternalActiveTab(tab)
+    onTabChange?.(tab)
+  }
 
   // Get the currently selected item
   const selectedItem = selectedItemId ? items.find(item => item.item_code === selectedItemId) : null
@@ -463,7 +474,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
               ? 'border-accent bg-white/90 text-accent'
               : 'border-transparent text-gray-500 hover:text-black hover:bg-white/40 transition-all'
           }`}
-          onClick={() => setActiveTab('product')}
+          onClick={() => handleTabChange('product')}
         >
           Product
         </button>
@@ -473,7 +484,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
               ? 'border-accent bg-white/90 text-accent font-semibold'
               : 'border-transparent text-gray-500 hover:text-black hover:bg-white/40 transition-all'
           }`}
-          onClick={() => setActiveTab('customer')}
+          onClick={() => handleTabChange('customer')}
         >
           Customer
         </button>
@@ -483,7 +494,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
               ? 'border-accent bg-white/90 text-accent font-semibold'
               : 'border-transparent text-gray-500 hover:text-black hover:bg-white/40 transition-all'
           }`}
-          onClick={() => setActiveTab('prints')}
+          onClick={() => handleTabChange('prints')}
         >
           Prints
         </button>
@@ -493,7 +504,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
               ? 'border-accent bg-white/90 text-accent font-semibold'
               : 'border-transparent text-gray-500 hover:text-black hover:bg-white/40 transition-all'
           }`}
-          onClick={() => setActiveTab('payments')}
+          onClick={() => handleTabChange('payments')}
         >
           Payments
         </button>
@@ -503,7 +514,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
               ? 'border-accent bg-white/90 text-accent font-semibold'
               : 'border-transparent text-gray-500 hover:text-black hover:bg-white/40 transition-all'
           }`}
-          onClick={() => setActiveTab('orders')}
+          onClick={() => handleTabChange('orders')}
         >
           Orders
         </button>

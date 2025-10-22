@@ -54,6 +54,7 @@ interface ProductSearchModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSelect: (product: Product) => void
+  selectedPriceList?: string
 }
 
 // Validation schemas
@@ -89,19 +90,21 @@ type ProductFormData = {
 const ProductSearch: React.FC<{
   onSelect: (product: Product) => void
   onCreateNew: () => void
-}> = ({ onSelect, onCreateNew }) => {
+  selectedPriceList?: string
+}> = ({ onSelect, onCreateNew, selectedPriceList = 'Standard Selling' }) => {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(-1)
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
   const scrollAreaRef = useRef<HTMLDivElement>(null)
 
   // Fetch product list using POS API method (includes price list)
-  const { data: productMethodResp, isLoading } = useProductList(searchTerm, 'Standard Selling', 50)
+  const { data: productMethodResp, isLoading } = useProductList(searchTerm, selectedPriceList, 50)
   
   // Debug: Log the API response structure
   console.log('🔍 Product List API Response:', {
     productMethodResp,
-    isLoading
+    isLoading,
+    selectedPriceList
   })
   
   // Handle different possible response structures
@@ -536,7 +539,8 @@ const ProductCreate: React.FC<{
 const ProductSearchModal: React.FC<ProductSearchModalProps> = ({
   open,
   onOpenChange,
-  onSelect
+  onSelect,
+  selectedPriceList
 }) => {
   const [view, setView] = useState<'search' | 'create'>('search')
 
@@ -567,7 +571,11 @@ const ProductSearchModal: React.FC<ProductSearchModalProps> = ({
 
         {view === 'search' ? (
           <>
-            <ProductSearch onSelect={handleProductSelect} onCreateNew={() => setView('create')} />
+            <ProductSearch 
+              onSelect={handleProductSelect} 
+              onCreateNew={() => setView('create')} 
+              selectedPriceList={selectedPriceList}
+            />
             <DialogFooter>
               <Button variant="outline" onClick={handleClose}>
                 Cancel
