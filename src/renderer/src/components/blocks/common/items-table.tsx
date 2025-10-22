@@ -146,7 +146,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   const resetEditingState = () => {
     console.log('🔄 Completely resetting editing state')
     setIsEditing(false)
-    setActiveField(null)
+    setActiveField('quantity')
     setEditValue('')
     setForceFocus(0)
   }
@@ -338,7 +338,9 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
           setShowWarehousePopup(true)
           return // Don't save yet, wait for warehouse allocation
         }
-      } catch {}
+      } catch (err) {
+        console.error('Error checking warehouse quantities:', err)
+      }
     }
 
     updateItemInTab(activeTabId, selectedItemId, { [activeField]: finalValue })
@@ -363,18 +365,63 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
   useHotkeys(
     'space',
-    () => {
-      console.log('⌨️ Space key pressed, isEditing:', isEditing, 'selectedItemId:', selectedItemId)
-      if (isEditing) {
-        handleSaveEdit()
-      } else if (selectedItemId && !isReadOnly) {
-        // Start editing quantity if not already editing
-        setActiveField('quantity')
-        setIsEditing(true)
+    async () => {
+      console.log('⌨️ Space key pressed. Active field:', activeField, 'Selected item:', selectedItemId)
+      // New behavior: Space toggles/cycles UOM for the selected item
+      if (!selectedItemId || isReadOnly) return
+      if (activeField !== 'uom') return
+
+      try {
         const item = items.find((i) => i.item_code === selectedItemId)
-        if (item) {
-          setEditValue(String(item.quantity ?? ''))
+        if (!item) return
+
+        // Fetch UOM list for the exact item
+        const resp = await api.get(API_Endpoints.PRODUCT_LIST_METHOD, {
+          params: {
+            price_list: 'Standard Selling',
+            search_text: item.item_code,
+            limit_start: 0,
+            limit_page_length: 10
+          }
+        })
+        const allItems = Array.isArray(resp?.data?.data) ? resp.data.data : []
+        const exactItem = allItems.find((i: any) => i.item_id === item.item_code)
+        const details: Array<{ uom: string; rate: number; qty?: number }> = Array.isArray(exactItem?.uom_details)
+          ? exactItem.uom_details
+          : []
+        if (details.length === 0) return
+
+        // Build ordered UOM list
+        const orderedUoms = details.map((d) => ({ uom: String(d.uom), rate: Number(d.rate || 0) }))
+        const currentUomLower = String(item.uom || 'Nos').toLowerCase()
+        const currentIndex = Math.max(
+          0,
+          orderedUoms.findIndex((d) => d.uom.toLowerCase() === currentUomLower)
+        )
+        const nextIndex = (currentIndex + 1) % orderedUoms.length
+        const next = orderedUoms[nextIndex]
+
+        console.log('🔁 Cycling UOM:', {
+          current: item.uom,
+          next: next.uom,
+          nextRate: next.rate,
+          list: orderedUoms
+        })
+
+        if (activeTabId) {
+          updateItemInTab(activeTabId, item.item_code, {
+            uom: next.uom,
+            standard_rate: Number(next.rate || 0),
+            uomRates: Object.fromEntries(orderedUoms.map((d) => [d.uom, d.rate]))
+          })
         }
+
+        // Reflect the change in the inline editor state if it's open
+        if (isEditing && activeField === 'uom') {
+          setEditValue(next.uom)
+        }
+      } catch (err) {
+        console.error('Space-to-cycle UOM failed:', err)
       }
     },
     { preventDefault: true, enableOnFormTags: true }
@@ -526,7 +573,23 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         </TabsList>
         <TabsContent value="items" className="mt-4">
           <div className="border rounded-lg">
-            {/* Single table with sticky header to keep columns aligned */}
+            {/* Fixed header (outside scroll) */}
+            <Table className="table-fixed w-full">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[140px]">Product Code</TableHead>
+                  <TableHead className="w-[200px]">Label</TableHead>
+                  <TableHead className="w-[70px] text-center">Qty</TableHead>
+                  <TableHead className="w-[80px] text-center px-1">UOM</TableHead>
+                  <TableHead className="w-[80px] text-center">Discount</TableHead>
+                  <TableHead className="w-[100px] text-center">Unit Price</TableHead>
+                  <TableHead className="w-[100px] text-left pl-5">Total</TableHead>
+                  <TableHead className="w-[60px] text-center pl-1">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+            </Table>
+
+            {/* Scrollable body only */}
             <div 
               className="max-h-[22vh] overflow-y-auto cursor-pointer"
               onClick={(e) => {
@@ -538,18 +601,6 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
               }}
             >
               <Table className="table-fixed w-full">
-                <TableHeader className="sticky top-0 z-10 bg-white">
-                  <TableRow>
-                    <TableHead className="w-[160px]">Product Code</TableHead>
-                    <TableHead>Label</TableHead>
-                    <TableHead className="w-[80px]">Qty</TableHead>
-                    <TableHead className="w-[110px]">UOM</TableHead>
-                    <TableHead className="w-[100px]">Discount</TableHead>
-                    <TableHead className="w-[120px]">Unit Price</TableHead>
-                    <TableHead className="w-[140px]">Total</TableHead>
-                    <TableHead className="w-[80px]">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
                 <TableBody>
                 {items.map((item) => {
                   const isSelected = item.item_code === selectedItemId
@@ -574,10 +625,10 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                           : 'hover:bg-gray-50'
                         }`}
                     >
-                      <TableCell className={isSelected ? 'font-semibold text-blue-900' : ''}>
+                      <TableCell className={`${isSelected ? 'font-semibold text-blue-900' : ''} w-[140px]`}>
                         {item.item_code}
                       </TableCell>
-                      <TableCell className={`${isSelected ? 'font-medium' : ''} max-w-[420px]`}>
+                      <TableCell className={`${isSelected ? 'font-medium' : ''} w-[200px]`}>
                         <span
                           className="block truncate"
                           title={item.item_name || ''}
@@ -591,7 +642,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                         className={`${isSelected && activeField === 'quantity'
                             ? 'ring-2 ring-blue-500 ring-inset bg-blue-50'
                             : ''
-                          } ${isSelected ? 'font-medium' : ''} w-[80px]`}
+                          } ${isSelected ? 'font-medium' : ''} w-[70px] text-center`}
                         onClick={(e) => {
                           e.stopPropagation()
                           console.log('🖱️ Quantity cell clicked:', item.item_code, 'isReadOnly:', isReadOnly)
@@ -622,7 +673,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             onBlur={handleSaveEdit}
                             inputMode="numeric"
                             pattern="[0-9]*"
-                            className="w-full max-w-[72px] px-2 py-1 border-2 border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-600"
+                            className="w-[50px] mx-auto px-2 py-1 border-2 border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-600 text-center"
                             min="0"
                             step="0.01"
                           />
@@ -636,7 +687,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                         className={`${isSelected && activeField === 'uom'
                             ? 'ring-2 ring-blue-500 ring-inset bg-blue-50'
                             : ''
-                          } ${isSelected ? 'font-medium' : ''} w-[110px]`}
+                          } ${isSelected ? 'font-medium' : ''} w-[80px] text-center`}
                         onClick={(e) => {
                           e.stopPropagation()
                           if (!isReadOnly) {
@@ -669,7 +720,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                               }
                             }}
                             onBlur={handleSaveEdit}
-                            className="w-full max-w-[100px] px-2 py-1 border-2 border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-600 truncate"
+                            className="w-[70px] mx-auto px-2 py-1 border-2 border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-600 text-center truncate"
                           />
                         ) : (
                           <div className="px-2 py-1">{item.uom || 'Nos'}</div>
@@ -681,7 +732,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                         className={`${isSelected && activeField === 'discount_percentage'
                             ? 'ring-2 ring-blue-500 ring-inset bg-blue-50'
                             : ''
-                          } ${isSelected ? 'font-medium' : ''} w-[100px]`}
+                          } ${isSelected ? 'font-medium' : ''} w-[80px] text-center`}
                         onClick={(e) => {
                           e.stopPropagation()
                           if (!isReadOnly) {
@@ -708,7 +759,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                               }
                             }}
                             onBlur={handleSaveEdit}
-                            className="w-full max-w-[90px] px-2 py-1 border-2 border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-600"
+                            className="w-[60px] mx-auto px-2 py-1 border-2 border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-600 text-center"
                             min="0"
                             max="100"
                             step="0.01"
@@ -720,7 +771,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
                       {/* Unit Price (editable) */}
                       <TableCell
-                        className={`${isSelected ? 'font-medium' : ''} w-[120px] ${
+                        className={`${isSelected ? 'font-medium' : ''} w-[100px] text-center ${
                           isSelected && activeField === 'standard_rate'
                             ? 'ring-2 ring-blue-500 ring-inset bg-blue-50'
                             : ''
@@ -753,20 +804,20 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             onBlur={handleSaveEdit}
                             min="0"
                             step="0.01"
-                            className="w-full max-w-[110px] px-2 py-1 border-2 border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-600"
+                            className="w-[80px] mx-auto px-2 py-1 border-2 border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-600 text-center"
                           />
                         ) : (
                           <>{Number(item.standard_rate || 0).toFixed(2)}</>
                         )}
                       </TableCell>
-                      <TableCell className={`font-semibold ${isSelected ? 'text-blue-900' : ''}`}>
+                      <TableCell className={`font-semibold ${isSelected ? 'text-blue-900' : ''} w-[100px] text-left pl-8`}>
                         {(
                           Number(item.standard_rate || 0) *
                           Number(item.quantity || 0) *
                           (1 - Number(item.discount_percentage || 0) / 100)
                         ).toFixed(2)}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="w-[60px] text-center">
                         <Button
                           size="sm"
                           variant="ghost"
@@ -806,7 +857,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                 }}
               >
                 <Plus className="w-4 h-4 mr-2" />
-                Click or press &apos;Shift&apos; to add item • Space to edit • ← → to navigate fields • ↑ ↓ to navigate rows
+                Click or press &apos;Shift&apos; to add item • Space to switch UOM • ← → to navigate fields • ↑ ↓ to navigate rows
               </Button>
             </div>
           </div>
