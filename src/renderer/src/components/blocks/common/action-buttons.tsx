@@ -256,6 +256,44 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
       console.log('📊 Items count:', items.length)
       console.log('📊 Global discount percentage:', globalDiscountPercent)
       
+      // Prepare custom stock adjustment sources from multi-warehouse allocations
+      const customStockAdjustmentSources = []
+      
+      // Process each item to check for multi-warehouse allocations
+      for (const item of items) {
+        if (item.warehouseAllocations && Array.isArray(item.warehouseAllocations) && item.warehouseAllocations.length > 0) {
+          // Item has multi-warehouse allocations
+          for (const allocation of item.warehouseAllocations) {
+            if (allocation.allocated > 0) {
+              customStockAdjustmentSources.push({
+                item_code: item.item_code || item.code,
+                source_warehouse: allocation.name,
+                qty: allocation.allocated,
+                uom: item.uom || "Nos"
+              })
+            }
+          }
+        } else {
+          // Item has no multi-warehouse allocations - add empty entry
+          customStockAdjustmentSources.push({
+            item_code: "",
+            source_warehouse: "",
+            qty: 0,
+            uom: ""
+          })
+        }
+      }
+      
+      // If no items have multi-warehouse allocations, add one empty entry
+      if (customStockAdjustmentSources.length === 0) {
+        customStockAdjustmentSources.push({
+          item_code: "",
+          source_warehouse: "",
+          qty: 0,
+          uom: ""
+        })
+      }
+
       // Prepare order data
       const orderData = {
         customer: finalCustomerId,
@@ -264,19 +302,13 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
         taxes_and_charges: "VAT 15% - NAB", // Default tax, can be made configurable
         additional_discount_percentage: globalDiscountPercent, // Global discount from bottom section
         items: mappedItems,
-        custom_stock_adjustment_sources: [
-          {
-            item_code: "",
-            source_warehouse: "",
-            qty: 0,
-            uom: ""
-          }
-        ]
+        custom_stock_adjustment_sources: customStockAdjustmentSources
       }
       
       console.log('📦 Order data:', orderData)
       console.log('📦 Selected Price List:', selectedPriceList)
       console.log('📦 Detailed items data:', JSON.stringify(orderData.items, null, 2))
+      console.log('📦 Custom Stock Adjustment Sources:', JSON.stringify(customStockAdjustmentSources, null, 2))
       
       let response: any
       
