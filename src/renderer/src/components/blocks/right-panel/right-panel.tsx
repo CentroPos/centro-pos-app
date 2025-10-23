@@ -1,10 +1,224 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useAuthStore } from '@renderer/store/useAuthStore'
 import { useNavigate } from '@tanstack/react-router'
+import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 
 // A right-side panel for the POS screen, adapted from pos.html
 // Contains tabs for Product, Customer, Prints, Payments, Orders
 // and renders the contextual info shown in the design mock.
+
+// Prints Tab Content Component
+const PrintsTabContent: React.FC = () => {
+  const { getCurrentTab } = usePOSTabStore()
+  const currentTab = getCurrentTab()
+  const [printItems, setPrintItems] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Fetch print items when component mounts or order changes
+  useEffect(() => {
+    const fetchPrintItems = async () => {
+      console.log('🖨️ useEffect triggered - currentTab:', currentTab)
+      console.log('🖨️ useEffect triggered - orderId:', currentTab?.orderId)
+      
+      if (!currentTab?.orderId) {
+        console.log('🖨️ No orderId, setting empty array')
+        setPrintItems([])
+        return
+      }
+
+      console.log('🖨️ Starting API call for order:', currentTab.orderId)
+      setLoading(true)
+      setError(null)
+
+      try {
+        console.log('🖨️ Making API request to:', '/api/method/centro_pos_apis.api.print.print_items_list')
+        console.log('🖨️ Request data:', { order_id: currentTab.orderId })
+        
+        const response = await window.electronAPI?.proxy?.request({
+          method: 'POST',
+          url: '/api/method/centro_pos_apis.api.print.print_items_list',
+          data: {
+            order_id: currentTab.orderId
+          }
+        })
+
+        console.log('🖨️ API call completed')
+        console.log('🖨️ Full response object:', response)
+        console.log('🖨️ Response success:', response?.success)
+        console.log('🖨️ Response data:', response?.data)
+        console.log('🖨️ Response data type:', typeof response?.data)
+        console.log('🖨️ Response data is array:', Array.isArray(response?.data))
+        console.log('🖨️ Response keys:', response ? Object.keys(response) : 'No response')
+
+        if (response?.success && response?.data) {
+          // The actual print items array is nested at response.data.data
+          const actualData = response.data.data || response.data
+          const data = Array.isArray(actualData) ? actualData : []
+          console.log('🖨️ Actual data from response.data.data:', actualData)
+          console.log('🖨️ Processed print items data:', data)
+          console.log('🖨️ Data length:', data.length)
+          setPrintItems(data)
+        } else {
+          console.log('🖨️ No valid data in response, setting empty array')
+          console.log('🖨️ Response success was:', response?.success)
+          console.log('🖨️ Response data was:', response?.data)
+          console.log('🖨️ Response message was:', response?.message)
+          setPrintItems([])
+        }
+      } catch (err) {
+        console.error('❌ Error fetching print items:', err)
+        console.error('❌ Error details:', {
+          message: (err as any)?.message,
+          stack: (err as any)?.stack,
+          name: (err as any)?.name
+        })
+        setError((err as any)?.message || 'Failed to fetch print items')
+      } finally {
+        console.log('🖨️ API call finished, setting loading to false')
+        setLoading(false)
+      }
+    }
+
+    console.log('🖨️ Calling fetchPrintItems')
+    fetchPrintItems()
+  }, [currentTab?.orderId])
+
+  if (!currentTab?.orderId) {
+    return (
+      <div className="p-4">
+        <div className="text-center py-8">
+          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <i className="fas fa-print text-2xl text-gray-400"></i>
+          </div>
+          <h3 className="text-lg font-semibold text-gray-600 mb-2">No Order Selected</h3>
+          <p className="text-sm text-gray-500">Please save an order first to view print options</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="p-4">
+        <div className="text-center py-8">
+          <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-sm text-gray-500">Loading print options...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="p-4">
+        <div className="text-center py-8">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <i className="fas fa-exclamation-triangle text-2xl text-red-500"></i>
+          </div>
+          <h3 className="text-lg font-semibold text-red-600 mb-2">Error Loading Print Options</h3>
+          <p className="text-sm text-gray-500">{error}</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Debug logging
+  console.log('🖨️ PrintsTabContent render - printItems:', printItems)
+  console.log('🖨️ PrintsTabContent render - printItems type:', typeof printItems)
+  console.log('🖨️ PrintsTabContent render - printItems is array:', Array.isArray(printItems))
+  console.log('🖨️ PrintsTabContent render - printItems length:', printItems?.length)
+
+  return (
+    <div className="p-4 h-full flex flex-col">
+      <div className="mb-4">
+        <h3 className="text-lg font-semibold text-gray-800 mb-2">Print Options</h3>
+        <p className="text-sm text-gray-600">Order: {currentTab.orderId}</p>
+        {/* <p className="text-xs text-gray-500">Debug: printItems = {JSON.stringify(printItems)}</p> */}
+      </div>
+
+      <div className="space-y-4 flex-1 overflow-y-auto">
+        {Array.isArray(printItems) && printItems.map((item, index) => (
+          <div key={index} className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-semibold text-gray-800">{item.report_title}</h4>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    const pdfUrl = `${window.location.origin}${item.url}`
+                    window.open(pdfUrl, '_blank')
+                  }}
+                  className="p-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                  title="Download PDF"
+                >
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => {
+                    const pdfUrl = `${window.location.origin}${item.url}`
+                    
+                    // Open PDF in new window with proper headers to force display
+                    const printWindow = window.open('', '_blank', 'width=800,height=600,scrollbars=yes,resizable=yes')
+                    
+                    if (printWindow) {
+                      // Write HTML that embeds the PDF for display
+                      printWindow.document.write(`
+                        <html>
+                          <head>
+                            <title>Print PDF</title>
+                            <style>
+                              body { margin: 0; padding: 0; }
+                              iframe { width: 100%; height: 100vh; border: none; }
+                            </style>
+                          </head>
+                          <body>
+                            <iframe src="${pdfUrl}" onload="setTimeout(() => { this.contentWindow.print(); }, 1000);"></iframe>
+                          </body>
+                        </html>
+                      `)
+                      printWindow.document.close()
+                    } else {
+                      // Fallback if popup blocked
+                      window.open(pdfUrl, '_blank')
+                    }
+                  }}
+                  className="p-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 transition-colors"
+                  title="Print PDF"
+                >
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v3a2 2 0 002 2h1v2a2 2 0 002 2h6a2 2 0 002-2v-2h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            
+            {/* PDF Preview */}
+            <div className="bg-gray-50 rounded border p-3">
+              <div className="flex items-center justify-center h-24 bg-white rounded border-2 border-dashed border-gray-300">
+                <div className="text-center">
+                  <i className="fas fa-file-pdf text-3xl text-red-500 mb-1"></i>
+                  <p className="text-xs text-gray-500">{item.report_title}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {(!Array.isArray(printItems) || printItems.length === 0) && (
+          <div className="text-center py-8">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <i className="fas fa-print text-2xl text-gray-400"></i>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-600 mb-2">No Print Options Available</h3>
+            <p className="text-sm text-gray-500">No print formats found for this order</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 type RightPanelProps = {
   selectedItemId?: string
@@ -891,6 +1105,12 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
         </div>
       )}
 
+      {activeTab === 'prints' && (
+        <div className="flex-1 overflow-y-auto">
+          <PrintsTabContent />
+        </div>
+      )}
+
       {activeTab === 'orders' && (
         <div className="flex-1 overflow-y-auto">
           <div className="bg-white/90 mt-2">
@@ -1019,9 +1239,10 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
         </div>
       )}
 
-      {activeTab !== 'product' && activeTab !== 'customer' && activeTab !== 'orders' && (
+      {/* Placeholder only for tabs not yet implemented */}
+      {activeTab === 'payments' && (
         <div className="flex-1 flex items-center justify-center text-sm text-gray-500">
-          <span>{activeTab[0].toUpperCase() + activeTab.slice(1)} panel coming soon</span>
+          <span>Payments panel coming soon</span>
         </div>
       )}
     </div>
