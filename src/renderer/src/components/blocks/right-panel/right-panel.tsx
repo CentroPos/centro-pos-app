@@ -575,10 +575,11 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                       await window.electronAPI?.proxy?.logout()
                       console.log('4. Proxy logout completed')
                       
-                      // Clear all localStorage
-                      console.log('5. Clearing localStorage...')
-                      localStorage.clear()
-                      console.log('6. localStorage cleared')
+                      // Clear only authentication-related localStorage (preserve POS tabs)
+                      console.log('5. Clearing authentication data...')
+                      localStorage.removeItem('userData')
+                      localStorage.removeItem('auth-store')
+                      console.log('6. Authentication data cleared, POS tabs preserved')
                       
                       // Close dropdown
                       setShowProfileDropdown(false)
@@ -594,7 +595,8 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                       // Force reload even if logout fails
                       console.log('Fallback: Force reloading page...')
                       setShowProfileDropdown(false)
-                      localStorage.clear()
+                      localStorage.removeItem('userData')
+                      localStorage.removeItem('auth-store')
                       window.location.href = '/'
                     }
                   }
@@ -916,7 +918,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                 <div className="text-xs text-gray-500 mb-2">
                   All Orders ({allOrders.filter(order => order.status !== 'Return').length})
                         </div>
-                <div className="max-h-96 overflow-y-auto space-y-2">
+                <div className="space-y-2">
                   {ordersTabLoading && (
                     <div className="text-xs text-gray-500 text-center py-4">Loading orders...</div>
                   )}
@@ -969,7 +971,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                 <div className="text-xs text-gray-500 mb-2">
                   Returns ({allOrders.filter(order => order.status === 'Return').length})
                         </div>
-                <div className="max-h-96 overflow-y-auto space-y-2">
+                <div className="space-y-2">
                   {ordersTabLoading && (
                     <div className="text-xs text-gray-500 text-center py-4">Loading returns...</div>
                   )}

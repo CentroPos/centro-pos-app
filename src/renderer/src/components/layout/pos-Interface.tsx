@@ -20,6 +20,7 @@ const POSInterface: React.FC = () => {
   const [shouldStartEditing, setShouldStartEditing] = useState(false)
   const [rightPanelTab, setRightPanelTab] = useState<'product' | 'customer' | 'prints' | 'payments' | 'orders'>('product')
   const [selectedPriceList, setSelectedPriceList] = useState<string>('Standard Selling')
+  const [saveCompleted, setSaveCompleted] = useState(0)
 
   const {
     getCurrentTabItems,
@@ -204,6 +205,7 @@ const POSInterface: React.FC = () => {
           <ActionButtons 
             onNavigateToPrints={() => setRightPanelTab('prints')} 
             selectedPriceList={selectedPriceList}
+            onSaveCompleted={() => setSaveCompleted(prev => prev + 1)}
           />
           {/* Fixed top: Order details */}
           <OrderDetails onPriceListChange={setSelectedPriceList} />
@@ -217,6 +219,7 @@ const POSInterface: React.FC = () => {
               shouldStartEditing={shouldStartEditing}
               onEditingStarted={() => setShouldStartEditing(false)}
               onAddItemClick={() => setOpen(true)}
+              onSaveCompleted={saveCompleted}
             />
           </div>
 
