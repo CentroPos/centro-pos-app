@@ -121,8 +121,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       setTimeout(() => {
         if (inputRef.current) {
           console.log('🎯 Focusing input after editing state change')
-          inputRef.current.focus()
-          inputRef.current.select()
+      inputRef.current.focus()
+      inputRef.current.select()
         }
       }, 100)
     }
@@ -339,11 +339,27 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       }
     }
 
-    // Check for quantity shortage when saving quantity
-    if (activeField === 'quantity' && typeof finalValue === 'number') {
-      const requiredQty = finalValue
+    // Check for quantity shortage against current warehouse stock
+    const shouldCheckQuantity = activeField === 'quantity' || activeField === 'uom' || activeField === 'standard_rate'
+    
+    if (shouldCheckQuantity) {
+      // Get the current quantity (either from edit or existing item)
+      const currentQuantity = activeField === 'quantity' ? finalValue : item.quantity
+      const requiredQty = typeof currentQuantity === 'number' ? currentQuantity : parseFloat(String(currentQuantity)) || 0
+      
+      // Get the current UOM (either from edit or existing item)
+      const currentUom = activeField === 'uom' ? finalValue : item.uom
+      const uomToCheck = String(currentUom || 'Nos').toLowerCase()
+      
       try {
-        // Fetch live warehouse stock for this item and map to current UOM
+        // Get current warehouse from POS profile first
+        const profileResponse = await (window as any).electronAPI?.proxy?.request({
+          method: 'GET',
+          url: '/api/method/centro_pos_apis.api.profile.get_pos_profile'
+        })
+        const currentWarehouse = profileResponse?.data?.data?.warehouse || 'Stores - NAB'
+        
+        // Fetch warehouse stock for this item
         const res = await (window as any).electronAPI?.proxy?.request({
           url: '/api/method/centro_pos_apis.api.product.item_stock_warehouse_list',
           params: {
@@ -354,22 +370,33 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
           }
         })
         const list = Array.isArray(res?.data?.data) ? res.data.data : []
-        const uomKey = String(item.uom || 'Nos').toLowerCase()
-        const warehouses = list.map((w: any) => {
-          const q = Array.isArray(w.quantities) ? w.quantities : []
-          const match = q.find((qq: any) => String(qq.uom).toLowerCase() === uomKey)
-          return { name: w.warehouse, available: Number(match?.qty || 0) }
-        })
-        const totalAvailable = warehouses.reduce((s: number, w: any) => s + (Number(w.available) || 0), 0)
+        
+        // Find current warehouse stock for the selected UOM
+        const currentWarehouseData = list.find((w: any) => w.warehouse === currentWarehouse)
+        const currentWarehouseQty = currentWarehouseData ? (() => {
+          const q = Array.isArray(currentWarehouseData.quantities) ? currentWarehouseData.quantities : []
+          const match = q.find((qq: any) => String(qq.uom).toLowerCase() === uomToCheck)
+          return Number(match?.qty || 0)
+        })() : 0
 
-        if (requiredQty > totalAvailable) {
-          console.log('⚠️ Shortage detected:', { requiredQty, totalAvailable, warehouses })
-          // Show warehouse allocation popup with live availability for the selected UOM
+        // Check if required quantity exceeds current warehouse stock
+        if (requiredQty > currentWarehouseQty) {
+          // Prepare all warehouses for popup
+          const warehouses = list.map((w: any) => {
+            const q = Array.isArray(w.quantities) ? w.quantities : []
+            const match = q.find((qq: any) => String(qq.uom).toLowerCase() === uomToCheck)
+            return { 
+              name: w.warehouse, 
+              available: Number(match?.qty || 0),
+              selected: w.warehouse === currentWarehouse // Pre-select current warehouse
+            }
+          })
+
           setWarehousePopupData({
             itemCode: item.item_code,
             itemName: item.item_name || item.label || 'Unknown Product',
             requiredQty,
-            currentWarehouseQty: totalAvailable,
+            currentWarehouseQty: currentWarehouseQty,
             warehouses
           })
           setShowWarehousePopup(true)
@@ -379,6 +406,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         console.error('Error checking warehouse quantities:', err)
       }
     }
+
 
     updateItemInTab(activeTabId, selectedItemId, { [activeField]: finalValue })
 
@@ -580,11 +608,6 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       return sum + (Number(allocation.allocated) || 0)
     }, 0)
 
-    console.log('📦 Warehouse allocation:', { 
-      allocations, 
-      totalAllocated, 
-      requiredQty: warehousePopupData.requiredQty 
-    })
 
     // Update the item with the total allocated quantity
     updateItemInTab(activeTabId, warehousePopupData.itemCode, { 
@@ -676,7 +699,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                           className="block truncate"
                           title={item.item_name || ''}
                         >
-                          {item.item_name}
+                        {item.item_name}
                         </span>
                       </TableCell>
 
@@ -695,11 +718,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             
                             // Use a small delay to ensure reset is complete
                             setTimeout(() => {
-                              selectItem(item.item_code)
-                              setActiveField('quantity')
-                              setIsEditing(true)
-                              setEditValue(String(item.quantity ?? ''))
-                              console.log('✅ Started editing quantity for:', item.item_code)
+                            selectItem(item.item_code)
+                            setActiveField('quantity')
+                            setIsEditing(true)
+                            setEditValue(String(item.quantity ?? ''))
+                            console.log('✅ Started editing quantity for:', item.item_code)
                             }, 50)
                           }
                         }}
@@ -746,10 +769,10 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             
                             // Use a small delay to ensure reset is complete
                             setTimeout(() => {
-                              selectItem(item.item_code)
-                              setActiveField('uom')
-                              setIsEditing(true)
-                              setEditValue(String(item.uom ?? 'Nos'))
+                            selectItem(item.item_code)
+                            setActiveField('uom')
+                            setIsEditing(true)
+                            setEditValue(String(item.uom ?? 'Nos'))
                             }, 50)
                           }
                         }}
@@ -797,10 +820,10 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             
                             // Use a small delay to ensure reset is complete
                             setTimeout(() => {
-                              selectItem(item.item_code)
-                              setActiveField('discount_percentage')
-                              setIsEditing(true)
-                              setEditValue(String(item.discount_percentage ?? '0'))
+                            selectItem(item.item_code)
+                            setActiveField('discount_percentage')
+                            setIsEditing(true)
+                            setEditValue(String(item.discount_percentage ?? '0'))
                             }, 50)
                           }
                         }}
@@ -847,10 +870,10 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             
                             // Use a small delay to ensure reset is complete
                             setTimeout(() => {
-                              selectItem(item.item_code)
-                              setActiveField('standard_rate')
-                              setIsEditing(true)
-                              setEditValue(String(item.standard_rate ?? ''))
+                            selectItem(item.item_code)
+                            setActiveField('standard_rate')
+                            setIsEditing(true)
+                            setEditValue(String(item.standard_rate ?? ''))
                             }, 50)
                           }
                         }}

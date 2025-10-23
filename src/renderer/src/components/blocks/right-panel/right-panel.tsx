@@ -251,10 +251,96 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
   const selectedItem = selectedItemId ? items.find(item => item.item_code === selectedItemId) : null
   const currentUom = (selectedItem && (selectedItem.uom || 'Nos')) || 'Nos'
 
+  // Fetch product list data to get on-hand units for selected UOM
+  const fetchProductListData = async (itemCode: string) => {
+    if (!itemCode) return
+    
+    console.log('🔍 Fetching product list data for item:', itemCode)
+    setProductListLoading(true)
+    try {
+      // Try with search_text first
+      let response = await window.electronAPI?.proxy?.request({
+        method: 'GET',
+        url: '/api/method/centro_pos_apis.api.product.product_list',
+        params: {
+          price_list: 'Standard Selling',
+          search_text: itemCode,
+          limit_start: 0,
+          limit_page_length: 10
+        }
+      })
+      
+      console.log('📡 Product list API response (with search):', response)
+      
+      // If no data found, try without search_text to get all items
+      if (!response?.success || !response?.data?.data || response.data.data.length === 0) {
+        console.log('🔄 No data with search, trying without search_text...')
+        response = await window.electronAPI?.proxy?.request({
+          method: 'GET',
+          url: '/api/method/centro_pos_apis.api.product.product_list',
+          params: {
+            price_list: 'Standard Selling',
+            limit_start: 0,
+            limit_page_length: 50
+          }
+        })
+        console.log('📡 Product list API response (without search):', response)
+      }
+      
+      // If still no data, try POST method
+      if (!response?.success || !response?.data?.data || response.data.data.length === 0) {
+        console.log('🔄 No data with GET, trying POST method...')
+        response = await window.electronAPI?.proxy?.request({
+          method: 'POST',
+          url: '/api/method/centro_pos_apis.api.product.product_list',
+          data: {
+            price_list: 'Standard Selling',
+            search_text: itemCode,
+            limit_start: 0,
+            limit_page_length: 50
+          }
+        })
+        console.log('📡 Product list API response (POST):', response)
+      }
+      
+      if (response?.success && response?.data?.data) {
+        console.log('📦 Raw API data:', response.data.data)
+        const productData = response.data.data.find((item: any) => item.item_id === itemCode)
+        console.log('🎯 Found product data:', productData)
+        
+        if (productData) {
+          setProductListData(productData)
+          console.log('✅ Product list data set:', productData)
+          console.log('📊 UOM details:', productData.uom_details)
+        } else {
+          console.log('❌ No product data found for item:', itemCode)
+          console.log('🔍 Available items:', response.data.data.map((item: any) => item.item_id))
+        }
+      } else {
+        console.log('❌ API response not successful or no data:', response)
+      }
+    } catch (error) {
+      console.error('❌ Error fetching product list data:', error)
+    } finally {
+      setProductListLoading(false)
+    }
+  }
+
+  // Update on-hand units when selected item or UOM changes
+  useEffect(() => {
+    if (selectedItemId) {
+      fetchProductListData(selectedItemId)
+    }
+  }, [selectedItemId, currentUom])
+
   // Live warehouse stock fetched from backend (for current UOM)
   const [stockLoading, setStockLoading] = useState(false)
   const [stockError, setStockError] = useState<string | null>(null)
   const [warehouseStock, setWarehouseStock] = useState<{ name: string; qty: number }[]>([])
+
+  // Product list API data for on-hand units
+  const [productListData, setProductListData] = useState<any>(null)
+  const [productListLoading, setProductListLoading] = useState(false)
 
   // Recent orders for selected customer
   const [recentOrders, setRecentOrders] = useState<any[]>([])
@@ -661,6 +747,28 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
     ]
   }
 
+  // Calculate on-hand units from product list API based on selected UOM
+  const getOnHandUnits = () => {
+    if (!productListData || !currentUom) return 0
+    
+    const uomDetails = Array.isArray(productListData.uom_details) ? productListData.uom_details : []
+    const selectedUomDetail = uomDetails.find((detail: any) => 
+      String(detail.uom).toLowerCase() === String(currentUom).toLowerCase()
+    )
+    
+    const onHandUnits = selectedUomDetail ? Number(selectedUomDetail.qty || 0) : 0
+    
+    console.log('📊 On-hand calculation:', {
+      itemCode: selectedItem?.item_code,
+      currentUom,
+      uomDetails,
+      selectedUomDetail,
+      onHandUnits
+    })
+    
+    return onHandUnits
+  }
+
   // Use selected item data or default
   const productData = selectedItem ? {
     item_code: selectedItem.item_code || 'N/A',
@@ -668,7 +776,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
     category: selectedItem.category || 'General',
     location: selectedItem.location || 'Location not specified',
     standard_rate: parseFloat(selectedItem.standard_rate || '0') || 0,
-    on_hand: selectedItem.on_hand || 0,
+    on_hand: getOnHandUnits(), // Use API data instead of selectedItem.on_hand
     cost: selectedItem.cost || 0,
     margin: selectedItem.margin || 0,
     warehouses: warehouseStock.length > 0
@@ -869,7 +977,11 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                   </div>
                   <div className="p-3 bg-gradient-to-r from-red-50 to-pink-50 rounded-xl">
                     <div className="text-xs text-gray-600">On Hand</div>
-                    <div className="font-bold text-red-600">{productData.on_hand} units</div>
+                    {productListLoading ? (
+                      <div className="font-bold text-gray-500">Loading...</div>
+                    ) : (
+                      <div className="font-bold text-red-600">{productData.on_hand} units</div>
+                    )}
                   </div>
                   <div className="p-3 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl">
                     <div className="text-xs text-gray-600">Cost</div>
