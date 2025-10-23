@@ -3,18 +3,17 @@ import { Button } from '@renderer/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@renderer/components/ui/dialog'
 import { Input } from '@renderer/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@renderer/components/ui/select'
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@renderer/components/ui/alert-dialog'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 
 type Props = {
   onNavigateToPrints?: () => void
   selectedPriceList?: string
+  onSaveCompleted?: () => void
 }
 
-const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList = 'Standard Selling' }) => {
+const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList = 'Standard Selling', onSaveCompleted }) => {
   const [open, setOpen] = useState<false | 'confirm' | 'pay'>(false)
-  const [confirmOpen, setConfirmOpen] = useState(false)
   const [orderAmount, setOrderAmount] = useState('0.00')
   const [prevOutstanding] = useState('0.00') // This will come from API
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
@@ -23,10 +22,11 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
   const [isSaving, setIsSaving] = useState(false)
   
   // Get current tab data
-  const { getCurrentTabItems, getCurrentTab, updateTabOrderId, setTabStatus, getCurrentTabCustomer } = usePOSTabStore()
-  const { currentUserPrivileges } = usePOSProfileStore()
+  const { getCurrentTabItems, getCurrentTab, updateTabOrderId, setTabStatus, getCurrentTabCustomer, getCurrentTabGlobalDiscount, setTabEdited } = usePOSTabStore()
+  const { currentUserPrivileges, profile } = usePOSProfileStore()
   const items = getCurrentTabItems()
   const currentTab = getCurrentTab()
+  const globalDiscountPercent = getCurrentTabGlobalDiscount()
 
   // Debug logging (commented out since working)
   // React.useEffect(() => {
@@ -186,7 +186,7 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
     try {
       // Get current customer
       const selectedCustomer = getCurrentTabCustomer()
-      console.log('🔍 Selected customer for order creation:', selectedCustomer)
+      console.log('🔍 Selected customer for order:', selectedCustomer)
       
       // Resolve customer_id by calling customer list API if not available
       let customerId = selectedCustomer?.customer_id
@@ -254,6 +254,7 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
       
       console.log('📊 UI Total (for reference):', orderAmount)
       console.log('📊 Items count:', items.length)
+      console.log('📊 Global discount percentage:', globalDiscountPercent)
       
       // Prepare order data
       const orderData = {
@@ -261,15 +262,73 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
         posting_date: new Date().toISOString().split('T')[0], // Today's date in YYYY-MM-DD format
         selling_price_list: selectedPriceList,
         taxes_and_charges: "VAT 15% - NAB", // Default tax, can be made configurable
-        items: mappedItems
+        additional_discount_percentage: globalDiscountPercent, // Global discount from bottom section
+        items: mappedItems,
+        custom_stock_adjustment_sources: [
+          {
+            item_code: "",
+            source_warehouse: "",
+            qty: 0,
+            uom: ""
+          }
+        ]
       }
       
-      console.log('📦 Creating order with data:', orderData)
+      console.log('📦 Order data:', orderData)
       console.log('📦 Selected Price List:', selectedPriceList)
       console.log('📦 Detailed items data:', JSON.stringify(orderData.items, null, 2))
       
-      // Call create order API
-      const response = await window.electronAPI?.proxy?.request({
+      let response: any
+      
+      // Check if this is an existing order (has orderId) or new order
+      if (currentTab.orderId) {
+        // Edit existing order
+        console.log('📝 Editing existing order:', currentTab.orderId)
+        
+        const editData = {
+          sales_order_id: currentTab.orderId,
+          ...orderData
+        }
+        
+        console.log('📝 Edit order data:', editData)
+        
+        response = await window.electronAPI?.proxy?.request({
+          method: 'POST',
+          url: '/api/method/centro_pos_apis.api.order.edit_order',
+          data: editData
+        })
+        
+        console.log('📝 Edit order response:', response)
+        console.log('📝 Edit order response data:', JSON.stringify(response.data, null, 2))
+        
+        if (response?.success) {
+          console.log('✅ Order updated successfully!')
+          // Mark tab as not edited after successful save
+          setTabEdited(currentTab.id, false)
+          // Trigger save completed callback
+          onSaveCompleted?.()
+          alert(`Order updated successfully!\n\nOrder ID: ${currentTab.orderId}`)
+        } else {
+          // Parse server error message from _server_messages
+          let errorMessage = 'Failed to update order'
+          if (response?.data?._server_messages) {
+            try {
+              const serverMessages = JSON.parse(response.data._server_messages)
+              if (Array.isArray(serverMessages) && serverMessages.length > 0) {
+                const firstMessage = JSON.parse(serverMessages[0])
+                errorMessage = firstMessage.message || errorMessage
+              }
+            } catch (parseError) {
+              console.error('Error parsing server messages:', parseError)
+            }
+          }
+          throw new Error(errorMessage)
+        }
+      } else {
+        // Create new order
+        console.log('📦 Creating new order')
+        
+        response = await window.electronAPI?.proxy?.request({
         method: 'POST',
         url: '/api/method/centro_pos_apis.api.order.create_order',
         data: orderData
@@ -281,144 +340,112 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
       
       if (response?.success) {
         // Update tab with order ID
-        const orderId = response.data?.name || response.data?.order_id
+          const orderId = response.data?.data?.sales_order_id || response.data?.data?.name || response.data?.data?.order_id || response.data?.sales_order_id || response.data?.name || response.data?.order_id
+          
+          console.log('🔍 Extracted order ID:', orderId)
+          console.log('🔍 Response data structure:', response.data)
+          
         if (orderId) {
           updateTabOrderId(currentTab.id, orderId)
-        }
-        
-        // Show success message with relevant information
-        console.log('✅ Order created successfully!')
-        console.log('📦 API Response:', response)
-        
-        // Extract relevant information from response
-        const displayOrderId = response.data?.name || response.data?.order_id || 'Unknown'
-        const orderName = response.data?.order_name || response.data?.name || displayOrderId
-        const grandTotal = response.data?.grand_total || response.data?.total || 'N/A'
-        const status = response.data?.status || 'Created'
-        
-        // Show clean success message
-        alert(`Order created successfully!\n\nOrder ID: ${displayOrderId}\nOrder Name: ${orderName}\nTotal Amount: ${grandTotal}\nStatus: ${status}`)
-        
-        // Handle PDF download (temporary)
-        console.log('🔍 Checking for PDF in response data:', response.data)
-        console.log('🔍 Full response structure:', response)
-        console.log('🔍 PDF data from proxy:', response.pdfData)
-        
-        let pdfUrl: string | null = null
-        
-        // Check for PDF data from the updated proxy response
-        if (response.pdfData) {
-          pdfUrl = response.pdfData
-          console.log('📄 Found PDF data from proxy:', pdfUrl)
-        } else if (response.data?.pdf_url) {
-          pdfUrl = response.data.pdf_url
-          console.log('📄 Found PDF URL:', pdfUrl)
-        } else if (response.data?.pdf_data) {
-          pdfUrl = `data:application/pdf;base64,${response.data.pdf_data}`
-          console.log('📄 Created PDF data URL from base64')
-        } else if (response.data?.pdf) {
-          // Handle if PDF is directly in response.data.pdf
-          if (typeof response.data.pdf === 'string') {
-            if (response.data.pdf.startsWith('data:')) {
-              pdfUrl = response.data.pdf
-            } else {
-              pdfUrl = `data:application/pdf;base64,${response.data.pdf}`
-            }
+            // Mark tab as not edited after successful save
+            setTabEdited(currentTab.id, false)
+            // Trigger save completed callback
+            onSaveCompleted?.()
           }
-          console.log('📄 Found PDF in response.data.pdf:', pdfUrl)
-        } else if (response.data?.file_url) {
-          pdfUrl = response.data.file_url
-          console.log('📄 Found file URL:', pdfUrl)
-        } else if (response.data?.download_url) {
-          pdfUrl = response.data.download_url
-          console.log('📄 Found download URL:', pdfUrl)
-        } else if (response.data?.url) {
-          pdfUrl = response.data.url
-          console.log('📄 Found URL:', pdfUrl)
-        } else if (response.data?.message && typeof response.data.message === 'string' && response.data.message.includes('pdf')) {
-          // Check if message contains PDF data
-          pdfUrl = response.data.message
-          console.log('📄 Found PDF in message:', pdfUrl)
-        } else if (response?.pdf_url) {
-          // Check if PDF is at root level
-          pdfUrl = response.pdf_url
-          console.log('📄 Found PDF URL at root level:', pdfUrl)
-        } else if (response?.pdf_data) {
-          // Check if PDF data is at root level
-          pdfUrl = `data:application/pdf;base64,${response.pdf_data}`
-          console.log('📄 Found PDF data at root level')
-        } else if (response?.data && typeof response.data === 'string' && response.data.includes('pdf')) {
-          // Check if entire data is PDF
-          pdfUrl = response.data
-          console.log('📄 Found PDF in entire data field')
-        }
-        
-        if (pdfUrl) {
-          console.log('📄 Opening PDF for printing:', pdfUrl)
           
-          try {
-            // Method 1: Try to open in new window first
-            const printWindow = window.open(pdfUrl, '_blank', 'width=800,height=600,scrollbars=yes,resizable=yes')
-            
-            if (printWindow) {
-              printWindow.onload = () => {
-                console.log('📄 PDF loaded, triggering print dialog')
-                printWindow.print()
-              }
-              
-              // Fallback: if onload doesn't work, try after a short delay
-              setTimeout(() => {
-                if (printWindow && !printWindow.closed) {
-                  console.log('📄 Fallback: triggering print dialog after delay')
-                  printWindow.print()
-                }
-              }, 1000)
+          // Show success message with relevant information
+          console.log('✅ Order created successfully!')
+          console.log('📦 API Response:', response)
+          
+          // Extract relevant information from response
+          const displayOrderId = orderId || 'Unknown'
+          const orderName = response.data?.data?.order_name || response.data?.data?.name || displayOrderId
+          const grandTotal = response.data?.data?.grand_total || response.data?.data?.total || 'N/A'
+          const status = response.data?.data?.status || 'Created'
+          
+          // Show clean success message
+          alert(`Order created successfully!\n\nOrder ID: ${displayOrderId}\nOrder Name: ${orderName}\nTotal Amount: ${grandTotal}\nStatus: ${status}`)
+          
+          // Navigate to prints tab
+          onNavigateToPrints?.()
             } else {
-              // Method 2: If popup blocked, create a temporary link and click it
-              console.log('📄 Popup blocked, trying download method')
-              const link = document.createElement('a')
-              link.href = pdfUrl
-              link.target = '_blank'
-              link.download = `order-${displayOrderId || 'receipt'}.pdf`
-              document.body.appendChild(link)
-              link.click()
-              document.body.removeChild(link)
-              
-              // Method 3: Create an iframe for printing
-              setTimeout(() => {
-                const iframe = document.createElement('iframe')
-                iframe.style.display = 'none'
-                iframe.src = pdfUrl
-                document.body.appendChild(iframe)
-                
-                iframe.onload = () => {
-                  try {
-                    iframe.contentWindow?.print()
-                    setTimeout(() => {
-                      document.body.removeChild(iframe)
-                    }, 1000)
-                  } catch {
-                    console.log('📄 Iframe print failed, PDF will open in new tab')
-                    document.body.removeChild(iframe)
-                  }
-                }
-              }, 500)
-              
-              alert('Order created successfully! PDF is being downloaded/opened.')
+          // Parse server error message from _server_messages
+          let errorMessage = 'Failed to create order'
+          if (response?.data?._server_messages) {
+            try {
+              const serverMessages = JSON.parse(response.data._server_messages)
+              if (Array.isArray(serverMessages) && serverMessages.length > 0) {
+                const firstMessage = JSON.parse(serverMessages[0])
+                errorMessage = firstMessage.message || errorMessage
+              }
+            } catch (parseError) {
+              console.error('Error parsing server messages:', parseError)
             }
-          } catch (error) {
-            console.error('❌ Error opening PDF:', error)
-            alert('Order created successfully! PDF generated but could not be opened automatically.')
           }
-        } else {
-          console.log('📄 No PDF found in response, showing success message')
+          throw new Error(errorMessage)
         }
+      }
+      
+    } catch (error) {
+      console.error('❌ Error saving order:', error)
+      alert(`Failed to save order: ${(error as any)?.message || 'Please try again.'}`)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // Order confirmation API function
+  const handleOrderConfirmation = async (paymentAmount: number = 0) => {
+    if (!currentTab || !currentTab.orderId) {
+      alert('No order found. Please save the order first.')
+      return
+    }
+
+    if (!profile?.name) {
+      alert('POS profile not found. Please check your profile settings.')
+      return
+    }
+
+    try {
+      console.log('🔄 Calling order confirmation API...')
+      
+      const confirmationData = {
+        sales_order_id: currentTab.orderId,
+        pos_profile: profile.name,
+        payments: [
+          {
+            mode_of_payment: mode,
+            amount: paymentAmount
+          }
+        ]
+      }
+
+      console.log('📦 Order confirmation data:', confirmationData)
+
+      const response = await window.electronAPI?.proxy?.request({
+        method: 'POST',
+        url: '/api/method/centro_pos_apis.api.order.order_confirmation',
+        data: confirmationData
+      })
+
+      console.log('📦 Order confirmation response:', response)
+      console.log('📦 Response data:', JSON.stringify(response.data, null, 2))
+
+      if (response?.success) {
+        console.log('✅ Order confirmed successfully!')
         
-        // Navigate to prints tab
-        onNavigateToPrints?.()
+        // Update tab status based on payment amount
+        const newStatus = paymentAmount > 0 ? 'paid' : 'confirmed'
+        setTabStatus(currentTab.id, newStatus)
+        
+        const action = paymentAmount > 0 ? 'paid' : 'confirmed'
+        alert(`Order ${action} successfully!\n\nOrder ID: ${currentTab.orderId}\nAmount: $${paymentAmount.toFixed(2)}`)
+        
+        // Close the dialog
+        setOpen(false)
       } else {
-        // Parse server error message from _server_messages
-        let errorMessage = 'Failed to create order'
+        // Parse server error message
+        let errorMessage = 'Failed to confirm order'
         if (response?.data?._server_messages) {
           try {
             const serverMessages = JSON.parse(response.data._server_messages)
@@ -432,12 +459,9 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
         }
         throw new Error(errorMessage)
       }
-      
     } catch (error) {
-      console.error('❌ Error creating order:', error)
-      alert(`Failed to create order: ${(error as any)?.message || 'Please try again.'}`)
-    } finally {
-      setIsSaving(false)
+      console.error('❌ Error confirming order:', error)
+      alert(`Failed to confirm order: ${(error as any)?.message || 'Please try again.'}`)
     }
   }
 
@@ -521,12 +545,12 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
               {isSaving ? (
                 <>
                   <i className="fas fa-spinner fa-spin text-lg"></i>
-                  Creating Order...
+                  {currentTab?.orderId ? 'Updating Order...' : 'Creating Order...'}
                 </>
               ) : (
                 <>
               <i className="fas fa-save text-lg"></i>
-              Save <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+S</span>
+              {currentTab?.orderId ? 'Update Order' : 'Save Order'} <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+S</span>
                 </>
               )}
             </Button>
@@ -622,9 +646,20 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
 
           <DialogFooter className="pt-6">
             <Button 
-              onClick={() => {
+               onClick={async () => {
                 console.log('💳 Confirm and Pay clicked in dialog')
-                setConfirmOpen(true)
+                 
+                 // Get payment amount from dialog
+                 const paymentAmount = parseFloat(amount) || 0
+                 
+                 // Call order confirmation API with payment amount from dialog
+                 await handleOrderConfirmation(paymentAmount)
+                 
+                 // Reset form and close dialogs
+                 setOpen(false)
+                 setAmount('')
+                 setMode('Cash')
+                 setDate(new Date().toISOString().slice(0, 10))
               }} 
               className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 text-lg font-semibold"
             >
@@ -635,53 +670,6 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
         </DialogContent>
       </Dialog>
 
-      {/* Final confirm */}
-      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent className="max-w-md bg-white border-2 shadow-2xl">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-xl font-bold text-gray-800">Confirm Payment</AlertDialogTitle>
-          </AlertDialogHeader>
-          <div className="py-4">
-            <p className="text-gray-600 mb-2">Payment Details:</p>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span>Amount:</span>
-                <span className="font-semibold">${amount || '0.00'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Mode:</span>
-                <span className="font-semibold">{mode}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Date:</span>
-                <span className="font-semibold">{date}</span>
-              </div>
-            </div>
-          </div>
-          <AlertDialogFooter className="pt-6">
-            <AlertDialogCancel className="px-6 py-3 text-lg font-semibold">Cancel</AlertDialogCancel>
-            <AlertDialogAction 
-              autoFocus 
-              className="px-6 py-3 text-lg font-semibold bg-blue-600 hover:bg-blue-700"
-              onClick={() => {
-                console.log('✅ Final payment confirmation - processing payment')
-                // Process the payment here
-                if (currentTab) {
-                  setTabStatus(currentTab.id, 'paid')
-                  setOpen(false)
-                  setConfirmOpen(false)
-                  // Reset form
-                  setAmount('')
-                  setMode('Cash')
-                  setDate(new Date().toISOString().slice(0, 10))
-                }
-              }}
-            >
-              Confirm Payment
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
       {/* <PaymentSubmissionModal
         open={showPaymentModal}
         onClose={() => setShowPaymentModal(false)}

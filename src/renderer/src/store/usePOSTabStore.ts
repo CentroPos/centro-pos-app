@@ -19,6 +19,7 @@ interface Tab {
   isEdited?: boolean
   taxAmount?: number
   invoiceData?: any
+  globalDiscountPercent?: number
 }
 
 interface POSTabStore {
@@ -41,6 +42,10 @@ interface POSTabStore {
   setTabEdited: (tabId: string, isEdited: boolean) => void
   updateTabInvoiceData: (tabId: string, invoiceData: any) => void
   
+  // Global discount methods
+  updateTabGlobalDiscount: (tabId: string, globalDiscountPercent: number) => void
+  getCurrentTabGlobalDiscount: () => number
+  
   // Customer management methods
   updateTabCustomer: (tabId: string, customer: { name: string; gst: string; customer_id?: string }) => void
   
@@ -48,6 +53,9 @@ interface POSTabStore {
   getCurrentTab: () => Tab | undefined
   getCurrentTabItems: () => any[]
   getCurrentTabCustomer: () => { name: string; gst: string; customer_id?: string }
+  
+  // Clear all tabs (use with caution)
+  clearAllTabs: () => void
   itemExistsInTab: (tabId: string, itemCode: string) => boolean
 }
 
@@ -198,6 +206,19 @@ export const usePOSTabStore = create<POSTabStore>()(
         }))
       },
 
+      // Global discount methods
+      updateTabGlobalDiscount: (tabId: string, globalDiscountPercent: number) => {
+        set((state) => ({
+          tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, globalDiscountPercent, isEdited: true } : tab))
+        }))
+      },
+
+      getCurrentTabGlobalDiscount: () => {
+        const state = get()
+        const currentTab = state.tabs.find(tab => tab.id === state.activeTabId)
+        return currentTab?.globalDiscountPercent || 0
+      },
+
       // Customer management methods
       updateTabCustomer: (tabId: string, customer: { name: string; gst: string; customer_id?: string }) => {
         set((state) => ({
@@ -227,11 +248,33 @@ export const usePOSTabStore = create<POSTabStore>()(
         const state = get()
         const tab = state.tabs.find(tab => tab.id === tabId)
         return tab ? tab.items.some(item => item.item_code === itemCode) : false
+      },
+
+      // Clear all tabs (use with caution - only for explicit clearing)
+      clearAllTabs: () => {
+        console.log('🗑️ Clearing all POS tabs')
+        set({ tabs: [], activeTabId: null })
       }
     }),
     {
       name: 'pos-tab-store',
-      partialize: (state) => ({ tabs: state.tabs, activeTabId: state.activeTabId })
+      partialize: (state) => ({ 
+        tabs: state.tabs, 
+        activeTabId: state.activeTabId 
+      }),
+      // Ensure the store persists across browser sessions
+      storage: {
+        getItem: (name) => {
+          const str = localStorage.getItem(name)
+          return str ? JSON.parse(str) : null
+        },
+        setItem: (name, value) => {
+          localStorage.setItem(name, JSON.stringify(value))
+        },
+        removeItem: (name) => {
+          localStorage.removeItem(name)
+        }
+      }
     }
   )
 )

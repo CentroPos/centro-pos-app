@@ -23,16 +23,41 @@ type Props = {
   shouldStartEditing?: boolean
   onEditingStarted?: () => void
   onAddItemClick?: () => void
+  onSaveCompleted?: number
 }
 
 type EditField = 'quantity' | 'standard_rate' | 'uom' | 'discount_percentage'
 
-const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem, shouldStartEditing = false, onEditingStarted, onAddItemClick }) => {
+const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem, shouldStartEditing = false, onEditingStarted, onAddItemClick, onSaveCompleted }) => {
   const { getCurrentTabItems, activeTabId, updateItemInTab, getCurrentTab } = usePOSTabStore();
   const items = getCurrentTabItems();
   const currentTab = getCurrentTab();
   const isReadOnly = false; // Temporarily disabled for debugging
   // const isReadOnly = currentTab?.status === 'confirmed' || currentTab?.status === 'paid';
+  
+  // Reset editing state when tab is no longer edited (after save)
+  useEffect(() => {
+    if (currentTab && !currentTab.isEdited) {
+      console.log('🔄 Tab saved, resetting editing state', { isEdited: currentTab.isEdited, isEditing })
+      resetEditingState()
+    }
+  }, [currentTab?.isEdited])
+
+  // Additional reset when tab changes
+  useEffect(() => {
+    if (activeTabId) {
+      console.log('🔄 Tab changed, resetting editing state')
+      resetEditingState()
+    }
+  }, [activeTabId])
+
+  // Reset when save is completed (direct callback)
+  useEffect(() => {
+    if (onSaveCompleted && onSaveCompleted > 0) {
+      console.log('🔄 Save completed callback received, resetting editing state', onSaveCompleted)
+      resetEditingState()
+    }
+  }, [onSaveCompleted])
   
   const [activeField, setActiveField] = useState<EditField>('quantity');
   const [isEditing, setIsEditing] = useState(false);
@@ -40,6 +65,21 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   const [forceFocus, setForceFocus] = useState(0)
   const [invalidUomMessage, setInvalidUomMessage] = useState<string>('')
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Function to completely reset editing state
+  const resetEditingState = () => {
+    console.log('🔄 Resetting editing state completely')
+    setIsEditing(false)
+    setActiveField('quantity')
+    setEditValue('')
+    setInvalidUomMessage('')
+    setForceFocus(0)
+    
+    // Force a complete re-render by updating the force focus counter
+    setTimeout(() => {
+      setForceFocus(prev => prev + 1)
+    }, 10)
+  }
   
   console.log('🔧 ItemsTable Debug:', {
     activeTabId,
@@ -77,10 +117,16 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
-      inputRef.current.focus()
-      inputRef.current.select()
+      // Use a longer delay to ensure the input is fully rendered and reset
+      setTimeout(() => {
+        if (inputRef.current) {
+          console.log('🎯 Focusing input after editing state change')
+          inputRef.current.focus()
+          inputRef.current.select()
+        }
+      }, 100)
     }
-  }, [isEditing, activeField, selectedItemId])
+  }, [isEditing, activeField, selectedItemId, forceFocus])
 
   // Set initial edit value when editing starts.
   // Important: do NOT depend on items, or we may overwrite user typing after store updates.
@@ -141,15 +187,6 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       })
     }
   }, [selectedItemId, isEditing, activeField, items])
-
-  // Function to completely reset editing state
-  const resetEditingState = () => {
-    console.log('🔄 Completely resetting editing state')
-    setIsEditing(false)
-    setActiveField('quantity')
-    setEditValue('')
-    setForceFocus(0)
-  }
 
   // Function to refresh item data from API
   const refreshItemData = async (itemCode: string) => {
@@ -362,6 +399,12 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       setIsEditing(false)
     }
   }
+
+  // Emergency reset hotkey
+  useHotkeys('ctrl+r', () => {
+    console.log('🔄 Emergency reset triggered')
+    resetEditingState()
+  }, { preventDefault: true, enableOnFormTags: true })
 
   useHotkeys(
     'space',
@@ -647,16 +690,23 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                           e.stopPropagation()
                           console.log('🖱️ Quantity cell clicked:', item.item_code, 'isReadOnly:', isReadOnly)
                           if (!isReadOnly) {
-                            selectItem(item.item_code)
-                            setActiveField('quantity')
-                            setIsEditing(true)
-                            setEditValue(String(item.quantity ?? ''))
-                            console.log('✅ Started editing quantity for:', item.item_code)
+                            // Always reset editing state first, regardless of current state
+                            resetEditingState()
+                            
+                            // Use a small delay to ensure reset is complete
+                            setTimeout(() => {
+                              selectItem(item.item_code)
+                              setActiveField('quantity')
+                              setIsEditing(true)
+                              setEditValue(String(item.quantity ?? ''))
+                              console.log('✅ Started editing quantity for:', item.item_code)
+                            }, 50)
                           }
                         }}
                       >
                         {isEditingQuantity ? (
                           <input
+                            key={`qty-${item.item_code}-${isEditingQuantity}-${forceFocus}`}
                             ref={inputRef}
                             type="number"
                             value={editValue}
@@ -691,10 +741,16 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                         onClick={(e) => {
                           e.stopPropagation()
                           if (!isReadOnly) {
-                            selectItem(item.item_code)
-                            setActiveField('uom')
-                            setIsEditing(true)
-                            setEditValue(String(item.uom ?? 'Nos'))
+                            // Always reset editing state first, regardless of current state
+                            resetEditingState()
+                            
+                            // Use a small delay to ensure reset is complete
+                            setTimeout(() => {
+                              selectItem(item.item_code)
+                              setActiveField('uom')
+                              setIsEditing(true)
+                              setEditValue(String(item.uom ?? 'Nos'))
+                            }, 50)
                           }
                         }}
                       >
@@ -736,15 +792,22 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                         onClick={(e) => {
                           e.stopPropagation()
                           if (!isReadOnly) {
-                            selectItem(item.item_code)
-                            setActiveField('discount_percentage')
-                            setIsEditing(true)
-                            setEditValue(String(item.discount_percentage ?? '0'))
+                            // Always reset editing state first, regardless of current state
+                            resetEditingState()
+                            
+                            // Use a small delay to ensure reset is complete
+                            setTimeout(() => {
+                              selectItem(item.item_code)
+                              setActiveField('discount_percentage')
+                              setIsEditing(true)
+                              setEditValue(String(item.discount_percentage ?? '0'))
+                            }, 50)
                           }
                         }}
                       >
                         {isEditingDiscount ? (
                           <input
+                            key={`discount-${item.item_code}-${isEditingDiscount}-${forceFocus}`}
                             ref={inputRef}
                             type="number"
                             value={editValue}
@@ -779,15 +842,22 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                         onClick={(e) => {
                           e.stopPropagation()
                           if (!isReadOnly) {
-                            selectItem(item.item_code)
-                            setActiveField('standard_rate')
-                            setIsEditing(true)
-                            setEditValue(String(item.standard_rate ?? ''))
+                            // Always reset editing state first, regardless of current state
+                            resetEditingState()
+                            
+                            // Use a small delay to ensure reset is complete
+                            setTimeout(() => {
+                              selectItem(item.item_code)
+                              setActiveField('standard_rate')
+                              setIsEditing(true)
+                              setEditValue(String(item.standard_rate ?? ''))
+                            }, 50)
                           }
                         }}
                       >
                         {isEditingRate ? (
                           <input
+                            key={`rate-${item.item_code}-${isEditingRate}-${forceFocus}`}
                             ref={inputRef}
                             type="number"
                             value={editValue}
