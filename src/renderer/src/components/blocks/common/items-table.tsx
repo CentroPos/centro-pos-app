@@ -24,11 +24,12 @@ type Props = {
   onEditingStarted?: () => void
   onAddItemClick?: () => void
   onSaveCompleted?: number
+  isProductModalOpen?: boolean
 }
 
 type EditField = 'quantity' | 'standard_rate' | 'uom' | 'discount_percentage'
 
-const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem, shouldStartEditing = false, onEditingStarted, onAddItemClick, onSaveCompleted }) => {
+const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem, shouldStartEditing = false, onEditingStarted, onAddItemClick, onSaveCompleted, isProductModalOpen = false }) => {
   const { getCurrentTabItems, activeTabId, updateItemInTab, getCurrentTab } = usePOSTabStore();
   const items = getCurrentTabItems();
   const currentTab = getCurrentTab();
@@ -64,6 +65,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   const [editValue, setEditValue] = useState<string>('')
   const [forceFocus, setForceFocus] = useState(0)
   const [invalidUomMessage, setInvalidUomMessage] = useState<string>('')
+  const [warehouseAllocatedItems, setWarehouseAllocatedItems] = useState<Set<string>>(new Set())
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Function to completely reset editing state
@@ -74,6 +76,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     setEditValue('')
     setInvalidUomMessage('')
     setForceFocus(0)
+    setWarehouseAllocatedItems(new Set()) // Clear warehouse-allocated items
     
     // Force a complete re-render by updating the force focus counter
     setTimeout(() => {
@@ -120,10 +123,9 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       // Use a longer delay to ensure the input is fully rendered and reset
       setTimeout(() => {
         if (inputRef.current) {
-          console.log('🎯 Focusing input after editing state change')
       inputRef.current.focus()
       inputRef.current.select()
-        }
+    }
       }, 100)
     }
   }, [isEditing, activeField, selectedItemId, forceFocus])
@@ -132,13 +134,13 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   // Important: do NOT depend on items, or we may overwrite user typing after store updates.
   useEffect(() => {
     if (!isEditing || !selectedItemId) return
-    const item = items.find((i) => i.item_code === selectedItemId)
+      const item = items.find((i) => i.item_code === selectedItemId)
     if (!item) return
     // Only set if editValue is empty or we switched fields
     if (editValue === '' || (activeField && String(item[activeField]) !== editValue)) {
-      const value = item[activeField]
-      setEditValue(value?.toString() || '')
-    }
+        const value = item[activeField]
+        setEditValue(value?.toString() || '')
+      }
     // Clear invalid UOM message when starting to edit
     if (activeField === 'uom') {
       setInvalidUomMessage('')
@@ -218,6 +220,74 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     } catch (error) {
       console.error('Error refreshing item data:', error)
     }
+  }
+
+  // Quantity validation function for warehouse popup
+  const validateQuantityAndShowPopup = async (item: any, quantity: number, uom: string) => {
+    // Skip popup if this item has already been warehouse-allocated
+    if (warehouseAllocatedItems.has(item.item_code)) {
+      console.log('⏭️ Skipping warehouse popup for already allocated item:', item.item_code)
+      return false
+    }
+
+    const requiredQty = typeof quantity === 'number' ? quantity : parseFloat(String(quantity)) || 0
+    const uomToCheck = String(uom || 'Nos').toLowerCase()
+    
+    try {
+      // Get current warehouse from POS profile first
+      const profileResponse = await (window as any).electronAPI?.proxy?.request({
+        method: 'GET',
+        url: '/api/method/centro_pos_apis.api.profile.get_pos_profile'
+      })
+      const currentWarehouse = profileResponse?.data?.data?.warehouse || 'Stores - NAB'
+      
+      // Fetch warehouse stock for this item
+      const res = await (window as any).electronAPI?.proxy?.request({
+        url: '/api/method/centro_pos_apis.api.product.item_stock_warehouse_list',
+        params: {
+          item_id: item.item_code,
+          search_text: '',
+          limit_start: 0,
+          limit_page_length: 20
+        }
+      })
+      const list = Array.isArray(res?.data?.data) ? res.data.data : []
+      
+      // Find current warehouse stock for the selected UOM
+      const currentWarehouseData = list.find((w: any) => w.warehouse === currentWarehouse)
+      const currentWarehouseQty = currentWarehouseData ? (() => {
+        const q = Array.isArray(currentWarehouseData.quantities) ? currentWarehouseData.quantities : []
+        const match = q.find((qq: any) => String(qq.uom).toLowerCase() === uomToCheck)
+        return Number(match?.qty || 0)
+      })() : 0
+
+      // Check if required quantity exceeds current warehouse stock
+      if (requiredQty > currentWarehouseQty) {
+        // Prepare all warehouses for popup
+        const warehouses = list.map((w: any) => {
+          const q = Array.isArray(w.quantities) ? w.quantities : []
+          const match = q.find((qq: any) => String(qq.uom).toLowerCase() === uomToCheck)
+          return { 
+            name: w.warehouse, 
+            available: Number(match?.qty || 0),
+            selected: w.warehouse === currentWarehouse // Pre-select current warehouse
+          }
+        })
+
+        setWarehousePopupData({
+          itemCode: item.item_code,
+          itemName: item.item_name || item.label || 'Unknown Product',
+          requiredQty,
+          currentWarehouseQty: currentWarehouseQty,
+          warehouses
+        })
+        setShowWarehousePopup(true)
+        return true // Indicates popup was shown
+      }
+    } catch (err) {
+      console.error('Error checking warehouse quantities:', err)
+    }
+    return false // No popup needed
   }
 
   const handleSaveEdit = async () => {
@@ -382,8 +452,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         // Check if required quantity exceeds current warehouse stock
         if (requiredQty > currentWarehouseQty) {
           // Prepare all warehouses for popup
-          const warehouses = list.map((w: any) => {
-            const q = Array.isArray(w.quantities) ? w.quantities : []
+        const warehouses = list.map((w: any) => {
+          const q = Array.isArray(w.quantities) ? w.quantities : []
             const match = q.find((qq: any) => String(qq.uom).toLowerCase() === uomToCheck)
             return { 
               name: w.warehouse, 
@@ -410,22 +480,9 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
     updateItemInTab(activeTabId, selectedItemId, { [activeField]: finalValue })
 
-    // Move to next field automatically
-    // Navigate through all editable fields: Qty → UOM → Discount → Unit Price
-    const fieldOrder: EditField[] = ['quantity', 'uom', 'discount_percentage', 'standard_rate']
-    const currentIndex = fieldOrder.indexOf(activeField)
-
-    if (currentIndex < fieldOrder.length - 1) {
-      // Move to next field
-      const nextField = fieldOrder[currentIndex + 1];
-      setTimeout(() => {
-        setActiveField(nextField);
-        setIsEditing(true);
-      }, 50)
-    } else {
-      // Done editing this item
+    // Don't auto-navigate - let user use arrow keys for navigation
+    // Just save the value and stay in current field
       setIsEditing(false)
-    }
   }
 
   // Emergency reset hotkey
@@ -438,9 +495,9 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     'space',
     async () => {
       console.log('⌨️ Space key pressed. Active field:', activeField, 'Selected item:', selectedItemId)
-      // New behavior: Space toggles/cycles UOM for the selected item
+      // New behavior: Space toggles/cycles UOM for the selected item from any field
+      if (isProductModalOpen) return // Disable when product modal is open
       if (!selectedItemId || isReadOnly) return
-      if (activeField !== 'uom') return
 
       try {
         const item = items.find((i) => i.item_code === selectedItemId)
@@ -516,21 +573,49 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     { preventDefault: true }
   )
 
-  // Arrow key navigation
+  // Shift key to show product list popup immediately
+  useHotkeys(
+    'shift',
+    async () => {
+      console.log('⌨️ Shift key pressed - showing product list popup')
+      if (onAddItemClick && !isProductModalOpen) {
+        // If currently editing, save the current value first
+        if (isEditing && selectedItemId && activeTabId) {
+          console.log('💾 Saving current edit before opening product modal')
+          await handleSaveEdit()
+        }
+        onAddItemClick()
+      }
+    },
+    { preventDefault: true, enableOnFormTags: true }
+  )
+
+  // Arrow key navigation - only between qty and unit price
   useHotkeys(
     'ArrowLeft',
     () => {
-      if (isEditing && selectedItemId) {
-        const fieldOrder: EditField[] = ['quantity', 'uom', 'discount_percentage', 'standard_rate']
-        const currentIndex = fieldOrder.indexOf(activeField)
-        
-        if (currentIndex > 0) {
-          const prevField = fieldOrder[currentIndex - 1]
-          setActiveField(prevField)
-          const item = items.find((i) => i.item_code === selectedItemId)
-          if (item) {
-            setEditValue(String(item[prevField] ?? ''))
+      if (isProductModalOpen) return // Disable when product modal is open
+      if (isEditing && selectedItemId && activeField === 'standard_rate') {
+        // Save current value and navigate from unit price back to quantity
+        const item = items.find((i) => i.item_code === selectedItemId)
+        if (item && activeTabId) {
+          // Save current unit price value
+          const numValue = parseFloat(editValue)
+          if (!isNaN(numValue) && numValue >= 0) {
+            updateItemInTab(activeTabId, selectedItemId, { standard_rate: numValue })
           }
+          // Navigate to quantity and keep editing
+        setActiveField('quantity')
+          setEditValue(String(item.quantity ?? ''))
+        setIsEditing(true)
+        }
+      } else if (isEditing && selectedItemId && activeField === 'quantity') {
+        // If already at quantity, stay at quantity but keep editing
+        const item = items.find((i) => i.item_code === selectedItemId)
+        if (item) {
+          setActiveField('quantity')
+          setEditValue(String(item.quantity ?? ''))
+          setIsEditing(true)
         }
       }
     },
@@ -539,18 +624,36 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
   useHotkeys(
     'ArrowRight',
-    () => {
-      if (isEditing && selectedItemId) {
-        const fieldOrder: EditField[] = ['quantity', 'uom', 'discount_percentage', 'standard_rate']
-        const currentIndex = fieldOrder.indexOf(activeField)
-        
-        if (currentIndex < fieldOrder.length - 1) {
-          const nextField = fieldOrder[currentIndex + 1]
-          setActiveField(nextField)
-          const item = items.find((i) => i.item_code === selectedItemId)
-          if (item) {
-            setEditValue(String(item[nextField] ?? ''))
+    async () => {
+      if (isProductModalOpen) return // Disable when product modal is open
+      if (isEditing && selectedItemId && activeField === 'quantity') {
+        // Save current value and navigate from quantity to unit price
+        const item = items.find((i) => i.item_code === selectedItemId)
+        if (item && activeTabId) {
+          // Save current quantity value
+          const numValue = parseFloat(editValue)
+          if (!isNaN(numValue) && numValue >= 0) {
+            updateItemInTab(activeTabId, selectedItemId, { quantity: numValue })
+            
+            // Check for quantity validation and show warehouse popup if needed
+            const popupShown = await validateQuantityAndShowPopup(item, numValue, item.uom || 'Nos')
+            if (popupShown) {
+              // Don't navigate if popup is shown - wait for user to handle allocation
+              return
+            }
           }
+          // Navigate to unit price and keep editing
+          setActiveField('standard_rate')
+          setEditValue(String(item.standard_rate ?? ''))
+          setIsEditing(true)
+        }
+      } else if (isEditing && selectedItemId && activeField === 'standard_rate') {
+        // If already at unit price, stay at unit price but keep editing
+        const item = items.find((i) => i.item_code === selectedItemId)
+        if (item) {
+          setActiveField('standard_rate')
+          setEditValue(String(item.standard_rate ?? ''))
+          setIsEditing(true)
         }
       }
     },
@@ -560,19 +663,27 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   useHotkeys(
     'ArrowUp',
     () => {
+      if (isProductModalOpen) return // Disable when product modal is open
       if (selectedItemId && !isReadOnly) {
         const currentIndex = items.findIndex((i) => i.item_code === selectedItemId)
         if (currentIndex > 0) {
           const prevItem = items[currentIndex - 1]
+          console.log('⬆️ Arrow Up: Moving from', selectedItemId, 'to', prevItem.item_code)
           selectItem(prevItem.item_code)
           if (isEditing) {
             // Keep editing mode but switch to the previous item
-            const item = items.find((i) => i.item_code === prevItem.item_code)
-            if (item) {
-              setEditValue(String(item[activeField] ?? ''))
-            }
+            setTimeout(() => {
+              const item = items.find((i) => i.item_code === prevItem.item_code)
+              if (item) {
+                setEditValue(String(item[activeField] ?? ''))
+              }
+            }, 10)
           }
         }
+      } else if (items.length > 0 && !isReadOnly) {
+        // No item selected, select the last item
+        console.log('⬆️ Arrow Up: No item selected, selecting last item')
+        selectItem(items[items.length - 1].item_code)
       }
     },
     { preventDefault: true, enableOnFormTags: true }
@@ -581,19 +692,27 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   useHotkeys(
     'ArrowDown',
     () => {
+      if (isProductModalOpen) return // Disable when product modal is open
       if (selectedItemId && !isReadOnly) {
         const currentIndex = items.findIndex((i) => i.item_code === selectedItemId)
         if (currentIndex < items.length - 1) {
           const nextItem = items[currentIndex + 1]
+          console.log('⬇️ Arrow Down: Moving from', selectedItemId, 'to', nextItem.item_code)
           selectItem(nextItem.item_code)
           if (isEditing) {
             // Keep editing mode but switch to the next item
-            const item = items.find((i) => i.item_code === nextItem.item_code)
-            if (item) {
-              setEditValue(String(item[activeField] ?? ''))
-            }
+            setTimeout(() => {
+              const item = items.find((i) => i.item_code === nextItem.item_code)
+              if (item) {
+                setEditValue(String(item[activeField] ?? ''))
+              }
+            }, 10)
           }
         }
+      } else if (items.length > 0 && !isReadOnly) {
+        // No item selected, select the first item
+        console.log('⬇️ Arrow Down: No item selected, selecting first item')
+        selectItem(items[0].item_code)
       }
     },
     { preventDefault: true, enableOnFormTags: true }
@@ -608,26 +727,29 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       return sum + (Number(allocation.allocated) || 0)
     }, 0)
 
-
     // Update the item with the total allocated quantity
     updateItemInTab(activeTabId, warehousePopupData.itemCode, { 
       quantity: totalAllocated,
       warehouseAllocations: allocations 
     })
 
-    // Move to next field after successful allocation
-    const fieldOrder: EditField[] = ['quantity', 'uom', 'discount_percentage', 'standard_rate']
-    const currentIndex = fieldOrder.indexOf(activeField)
+    // Mark this item as warehouse-allocated to prevent future popups
+    setWarehouseAllocatedItems(prev => new Set([...prev, warehousePopupData.itemCode]))
 
-    if (currentIndex < fieldOrder.length - 1) {
-      const nextField = fieldOrder[currentIndex + 1];
+    // Close the popup
+    setShowWarehousePopup(false)
+
+    // Move focus to unit price field
       setTimeout(() => {
-        setActiveField(nextField);
-        setIsEditing(true);
-      }, 50)
-    } else {
-      setIsEditing(false)
-    }
+      const item = items.find(i => i.item_code === warehousePopupData.itemCode)
+      if (item) {
+        selectItem(warehousePopupData.itemCode)
+        setActiveField('standard_rate')
+        setIsEditing(true)
+        setEditValue(String(item.standard_rate || 0))
+        console.log('🎯 Moved to unit price after warehouse allocation')
+      }
+    }, 100)
   }
 
   return (
@@ -640,9 +762,9 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         <TabsContent value="items" className="mt-4">
           <div className="border rounded-lg">
             {/* Fixed header (outside scroll) */}
-            <Table className="table-fixed w-full">
+              <Table className="table-fixed w-full">
               <TableHeader>
-                <TableRow>
+                  <TableRow>
                   <TableHead className="w-[140px]">Product Code</TableHead>
                   <TableHead className="w-[200px]">Label</TableHead>
                   <TableHead className="w-[70px] text-center">Qty</TableHead>
@@ -651,8 +773,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                   <TableHead className="w-[100px] text-center">Unit Price</TableHead>
                   <TableHead className="w-[100px] text-left pl-5">Total</TableHead>
                   <TableHead className="w-[60px] text-center pl-1">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
+                  </TableRow>
+                </TableHeader>
             </Table>
 
             {/* Scrollable body only */}
@@ -705,10 +827,9 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
                       {/* Quantity Cell */}
                       <TableCell
-                        className={`${isSelected && activeField === 'quantity'
-                            ? 'ring-2 ring-blue-500 ring-inset bg-blue-50'
-                            : ''
-                          } ${isSelected ? 'font-medium' : ''} w-[70px] text-center`}
+                        className={`${isSelected ? 'font-medium' : ''} w-[70px] text-center`}
+                        data-item-code={item.item_code}
+                        data-field="quantity"
                         onClick={(e) => {
                           e.stopPropagation()
                           console.log('🖱️ Quantity cell clicked:', item.item_code, 'isReadOnly:', isReadOnly)
@@ -733,11 +854,51 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             ref={inputRef}
                             type="number"
                             value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            onKeyDown={(e) => {
+                            onChange={(e) => {
+                              const newValue = e.target.value
+                              setEditValue(newValue)
+                              // Real-time update for quantity
+                              if (selectedItemId && activeTabId) {
+                                const numValue = parseFloat(newValue)
+                                if (!isNaN(numValue) && numValue >= 0) {
+                                  updateItemInTab(activeTabId, selectedItemId, { quantity: numValue })
+                                  
+                                  // Clear warehouse-allocated status when quantity changes
+                                  if (warehouseAllocatedItems.has(selectedItemId)) {
+                                    console.log('🔄 Quantity changed for warehouse-allocated item, clearing allocation status:', selectedItemId)
+                                    setWarehouseAllocatedItems(prev => {
+                                      const newSet = new Set(prev)
+                                      newSet.delete(selectedItemId)
+                                      return newSet
+                                    })
+                                    
+                                    // Clear warehouse allocation data from the item
+                                    updateItemInTab(activeTabId, selectedItemId, { 
+                                      warehouseAllocations: [] // Clear previous warehouse allocations
+                                    })
+                                    console.log('🧹 Cleared warehouse allocation data for item:', selectedItemId)
+                                  }
+                                }
+                              }
+                            }}
+                            onKeyDown={async (e) => {
                               if (e.key === 'Enter') {
                                 e.preventDefault()
-                                handleSaveEdit()
+                                // Save qty value directly without ending editing
+                                const numValue = parseFloat(editValue)
+                                if (!isNaN(numValue) && numValue >= 0 && activeTabId) {
+                                  updateItemInTab(activeTabId, selectedItemId, { quantity: numValue })
+                                  
+                                  // Check for quantity validation and show warehouse popup if needed
+                                  const popupShown = await validateQuantityAndShowPopup(item, numValue, item.uom || 'Nos')
+                                  if (popupShown) {
+                                    // Don't navigate if popup is shown - wait for user to handle allocation
+                                    return
+                                  }
+                                }
+                                // Navigate to unit price and keep editing
+                                setActiveField('standard_rate')
+                                setEditValue(String(item.standard_rate || 0))
                               } else if (e.key === 'Escape') {
                                 e.preventDefault()
                                 setIsEditing(false)
@@ -746,7 +907,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             onBlur={handleSaveEdit}
                             inputMode="numeric"
                             pattern="[0-9]*"
-                            className="w-[50px] mx-auto px-2 py-1 border-2 border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-600 text-center"
+                            className="w-[50px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
                             min="0"
                             step="0.01"
                           />
@@ -757,10 +918,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
                       {/* UOM Cell */}
                       <TableCell
-                        className={`${isSelected && activeField === 'uom'
-                            ? 'ring-2 ring-blue-500 ring-inset bg-blue-50'
-                            : ''
-                          } ${isSelected ? 'font-medium' : ''} w-[80px] text-center`}
+                        className={`${isSelected ? 'font-medium' : ''} w-[80px] text-center`}
                         onClick={(e) => {
                           e.stopPropagation()
                           if (!isReadOnly) {
@@ -787,19 +945,19 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                               const val = e.target.value
                               console.log('📝 UOM input onChange:', val)
                               setEditValue(val)
-                              // Don't validate on every keystroke - only on blur/enter
+                              // Real-time update for UOM
+                              if (selectedItemId && activeTabId) {
+                                updateItemInTab(activeTabId, selectedItemId, { uom: val })
+                              }
                             }}
                             onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault()
-                                handleSaveEdit()
-                              } else if (e.key === 'Escape') {
+                              if (e.key === 'Escape') {
                                 e.preventDefault()
                                 setIsEditing(false)
                               }
                             }}
                             onBlur={handleSaveEdit}
-                            className="w-[70px] mx-auto px-2 py-1 border-2 border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-600 text-center truncate"
+                            className="w-[70px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center truncate"
                           />
                         ) : (
                           <div className="px-2 py-1">{item.uom || 'Nos'}</div>
@@ -808,10 +966,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
                       {/* Discount Cell */}
                       <TableCell
-                        className={`${isSelected && activeField === 'discount_percentage'
-                            ? 'ring-2 ring-blue-500 ring-inset bg-blue-50'
-                            : ''
-                          } ${isSelected ? 'font-medium' : ''} w-[80px] text-center`}
+                        className={`${isSelected ? 'font-medium' : ''} w-[80px] text-center`}
                         onClick={(e) => {
                           e.stopPropagation()
                           if (!isReadOnly) {
@@ -845,7 +1000,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                               }
                             }}
                             onBlur={handleSaveEdit}
-                            className="w-[60px] mx-auto px-2 py-1 border-2 border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-600 text-center"
+                            className="w-[60px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
                             min="0"
                             max="100"
                             step="0.01"
@@ -857,11 +1012,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
                       {/* Unit Price (editable) */}
                       <TableCell
-                        className={`${isSelected ? 'font-medium' : ''} w-[100px] text-center ${
-                          isSelected && activeField === 'standard_rate'
-                            ? 'ring-2 ring-blue-500 ring-inset bg-blue-50'
-                            : ''
-                        }`}
+                        className={`${isSelected ? 'font-medium' : ''} w-[100px] text-center`}
                         onClick={(e) => {
                           e.stopPropagation()
                           if (!isReadOnly) {
@@ -884,11 +1035,23 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             ref={inputRef}
                             type="number"
                             value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
+                            onChange={(e) => {
+                              const newValue = e.target.value
+                              setEditValue(newValue)
+                              // Real-time update for unit price
+                              if (selectedItemId && activeTabId) {
+                                const numValue = parseFloat(newValue)
+                                if (!isNaN(numValue) && numValue >= 0) {
+                                  updateItemInTab(activeTabId, selectedItemId, { standard_rate: numValue })
+                                }
+                              }
+                            }}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
                                 e.preventDefault()
                                 handleSaveEdit()
+                                // End editing - no further navigation
+                                setIsEditing(false)
                               } else if (e.key === 'Escape') {
                                 e.preventDefault()
                                 setIsEditing(false)
@@ -897,7 +1060,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             onBlur={handleSaveEdit}
                             min="0"
                             step="0.01"
-                            className="w-[80px] mx-auto px-2 py-1 border-2 border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-600 text-center"
+                            className="w-[80px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
                           />
                         ) : (
                           <>{Number(item.standard_rate || 0).toFixed(2)}</>
@@ -983,7 +1146,23 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       {warehousePopupData && (
         <MultiWarehousePopup
           open={showWarehousePopup}
-          onClose={() => setShowWarehousePopup(false)}
+          onClose={() => {
+            setShowWarehousePopup(false)
+            // Programmatically click on the qty field to make it editable
+            if (selectedItemId) {
+              console.log('🔄 Warehouse popup closed, clicking on qty field')
+              setTimeout(() => {
+                // Find the qty cell for the selected item and click it
+                const qtyCell = document.querySelector(`[data-item-code="${selectedItemId}"] [data-field="quantity"]`)
+                if (qtyCell) {
+                  console.log('🎯 Clicking on qty field')
+                  ;(qtyCell as HTMLElement).click()
+                } else {
+                  console.log('❌ Qty cell not found for item:', selectedItemId)
+                }
+              }, 100)
+            }
+          }}
           onAssign={handleWarehouseAllocation}
           itemCode={warehousePopupData.itemCode}
           itemName={warehousePopupData.itemName}

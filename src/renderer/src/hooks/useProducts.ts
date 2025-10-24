@@ -8,7 +8,7 @@ export const useProductList = (searchText = '', priceList = 'Standard Selling', 
     queryParams: {
       price_list: priceList,
       search_text: searchText,
-      limit_start: 1,
+      limit_start: 0,
       limit_page_length: limit
     },
     dependency: [searchText, priceList, limit],

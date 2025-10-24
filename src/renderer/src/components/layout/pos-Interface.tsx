@@ -220,6 +220,7 @@ const POSInterface: React.FC = () => {
               onEditingStarted={() => setShouldStartEditing(false)}
               onAddItemClick={() => setOpen(true)}
               onSaveCompleted={saveCompleted}
+              isProductModalOpen={open}
             />
           </div>
 

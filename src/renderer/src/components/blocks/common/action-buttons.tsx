@@ -261,8 +261,14 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
       
       // Process each item to check for multi-warehouse allocations
       for (const item of items) {
+        console.log(`🔍 Processing item ${item.item_code || item.code}:`, {
+          hasWarehouseAllocations: !!(item.warehouseAllocations && Array.isArray(item.warehouseAllocations) && item.warehouseAllocations.length > 0),
+          warehouseAllocations: item.warehouseAllocations
+        })
+        
         if (item.warehouseAllocations && Array.isArray(item.warehouseAllocations) && item.warehouseAllocations.length > 0) {
           // Item has multi-warehouse allocations
+          console.log(`📦 Item ${item.item_code || item.code} has warehouse allocations:`, item.warehouseAllocations)
           for (const allocation of item.warehouseAllocations) {
             if (allocation.allocated > 0) {
               customStockAdjustmentSources.push({
@@ -275,6 +281,7 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
           }
         } else {
           // Item has no multi-warehouse allocations - add empty entry
+          console.log(`📦 Item ${item.item_code || item.code} has no warehouse allocations - adding empty entry`)
           customStockAdjustmentSources.push({
             item_code: "",
             source_warehouse: "",

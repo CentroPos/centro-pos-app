@@ -119,6 +119,13 @@ const ProductSearch: React.FC<{
   
   console.log('🔍 Processed Product List:', productList.slice(0, 2))
 
+  // Auto-focus first item when modal opens
+  useEffect(() => {
+    if (productList.length > 0 && selectedIndex === -1) {
+      setSelectedIndex(0)
+    }
+  }, [productList.length])
+
   useEffect(() => {
     if (selectedIndex >= 0 && itemRefs.current[selectedIndex]) {
       itemRefs.current[selectedIndex]?.scrollIntoView({
