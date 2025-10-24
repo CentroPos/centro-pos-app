@@ -49,13 +49,20 @@ const proxyAPI = {
   logout: () => ipcRenderer.invoke('proxy-logout')
 }
 
+// Print API for Electron native printing
+const printAPI = {
+  printPDF: (pdfDataUrl: string) => ipcRenderer.invoke('print-pdf', pdfDataUrl),
+  printPDFMain: (pdfDataUrl: string) => ipcRenderer.invoke('print-pdf-main', pdfDataUrl)
+}
+
 // Combined custom API
 const customAPI = {
   auth: authAPI,
   app: appAPI,
   events: eventsAPI,
   log: logAPI,
-  proxy: proxyAPI
+  proxy: proxyAPI,
+  print: printAPI
 }
 
 // Type definitions for our custom API
@@ -65,6 +72,7 @@ interface CustomElectronAPI {
   events: typeof eventsAPI
   log: typeof logAPI
   proxy: typeof proxyAPI
+  print: typeof printAPI
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to
