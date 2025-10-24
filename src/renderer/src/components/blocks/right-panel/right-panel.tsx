@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState, useRef } from 'react'
 import { useAuthStore } from '@renderer/store/useAuthStore'
 import { useNavigate } from '@tanstack/react-router'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
@@ -15,6 +15,7 @@ const PrintsTabContent: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pdfPreviews, setPdfPreviews] = useState<Record<string, string>>({})
+  const prevOrderIdRef = useRef<string | null>(null)
 
   // Load PDF preview for a specific item
   const loadPDFPreview = async (item: any) => {
@@ -72,10 +73,20 @@ const PrintsTabContent: React.FC = () => {
   // Fetch print items when component mounts or order changes
   useEffect(() => {
     const fetchPrintItems = async () => {
-      console.log('🖨️ useEffect triggered - currentTab:', currentTab)
-      console.log('🖨️ useEffect triggered - orderId:', currentTab?.orderId)
+      const currentOrderId = currentTab?.orderId
+      console.log('🖨️ useEffect triggered - currentOrderId:', currentOrderId)
+      console.log('🖨️ useEffect triggered - prevOrderId:', prevOrderIdRef.current)
       
-      if (!currentTab?.orderId) {
+      // Only fetch if order ID actually changed
+      if (currentOrderId === prevOrderIdRef.current) {
+        console.log('🖨️ Order ID unchanged, skipping fetch')
+        return
+      }
+      
+      // Update the ref
+      prevOrderIdRef.current = currentOrderId || null
+      
+      if (!currentOrderId) {
         console.log('🖨️ No orderId, setting empty array')
         setPrintItems([])
         return
@@ -211,6 +222,7 @@ const PrintsTabContent: React.FC = () => {
               <div className="flex items-center justify-between mb-3">
                 <h4 className="font-semibold text-gray-800">{item.report_title}</h4>
                 <button
+                  type="button"
                   onClick={async () => {
                     try {
                       const itemKey = `${item.report_title}-${item.url}`
@@ -220,8 +232,6 @@ const PrintsTabContent: React.FC = () => {
                         alert('PDF preview not loaded yet. Please wait for it to load.')
                         return
                       }
-                      
-                     
                       
                       // Use the print function with proper error handling
                       const result = await window.electronAPI?.print.printPDF(pdfDataUrl)
@@ -236,6 +246,13 @@ const PrintsTabContent: React.FC = () => {
                     } catch (error: any) {
                       console.error('❌ Print error:', error)
                       alert(`Print error: ${error.message}`)
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    // Prevent Enter key from triggering print
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      e.stopPropagation()
                     }
                   }}
                   className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center gap-2"

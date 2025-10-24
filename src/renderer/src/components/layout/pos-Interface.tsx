@@ -177,7 +177,22 @@ const POSInterface: React.FC = () => {
       newIndex = currentIndex > 0 ? currentIndex - 1 : items.length - 1;
     }
 
-    setSelectedItemId(items[newIndex].item_code);
+    console.log('🔄 Navigation:', { 
+      direction, 
+      currentIndex, 
+      newIndex, 
+      totalItems: items.length, 
+      selectedItemId, 
+      newItemCode: items[newIndex]?.item_code,
+      items: items.map(item => item.item_code)
+    });
+    
+    // Ensure we have a valid item at the new index
+    if (items[newIndex]) {
+      setSelectedItemId(items[newIndex].item_code);
+    } else {
+      console.error('❌ Invalid navigation index:', newIndex, 'items length:', items.length);
+    }
   };
 
   useHotkeys('shift', () => setOpen(true))
@@ -186,8 +201,8 @@ const POSInterface: React.FC = () => {
       removeItem(selectedItemId);
     }
   }, { enableOnFormTags: false })
-  useHotkeys('down', () => navigateItem('down'), { enableOnFormTags: false })
-  useHotkeys('up', () => navigateItem('up'), { enableOnFormTags: false })
+  // Arrow keys are handled by the items table component, so we don't need global handlers here
+  // Enter key is handled by the items table component, so we don't need a global handler here
   useHotkeys('space', () => {
     if (selectedItemId) {
       toast.info('Press Space on a selected item to edit');
