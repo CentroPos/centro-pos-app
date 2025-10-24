@@ -336,15 +336,8 @@ function setupAuthHandlers(): void {
 
       // Load the PDF data URL directly
       await printWindow.loadURL(pdfDataUrl)
+      console.log('📄 PDF loaded in print window')
       
-      // Wait for the PDF to load
-      await new Promise<void>((resolve) => {
-        printWindow.webContents.once('did-finish-load', () => {
-          console.log('📄 PDF loaded in print window')
-          resolve()
-        })
-      })
-
       // Wait for PDF to fully render
       await new Promise(resolve => setTimeout(resolve, 1000))
 
@@ -358,36 +351,19 @@ function setupAuthHandlers(): void {
       }, (success, errorType) => {
         if (!success) {
           console.log('❌ Print failed:', errorType)
-          // Fallback: try with main window
-          const mainWindow = global.mainWindow
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            console.log('🖨️ Trying fallback print with main window...')
-            mainWindow.webContents.print({
-              silent: false,
-              printBackground: true,
-              deviceName: ''
-            }, (fallbackSuccess, fallbackError) => {
-              if (!fallbackSuccess) {
-                console.log('❌ Fallback print also failed:', fallbackError)
-              } else {
-                console.log('✅ Fallback print job started')
-              }
-            })
-          }
         } else {
           console.log('✅ Print job started')
         }
       })
       
-      console.log('✅ Print dialog should have opened')
-      
-      // Close the print window after a delay to allow user to interact with print dialog
+      // Close the print window after a delay
       setTimeout(() => {
         if (!printWindow.isDestroyed()) {
           printWindow.close()
         }
       }, 3000)
       
+      // Return success immediately - the print dialog should open
       return { success: true }
     } catch (error: any) {
       console.error('❌ Error printing PDF:', error)

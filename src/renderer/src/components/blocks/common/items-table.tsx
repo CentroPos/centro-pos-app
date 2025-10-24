@@ -718,6 +718,31 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     { preventDefault: true, enableOnFormTags: true }
   )
 
+  // Enter key handler for navigation
+  useHotkeys(
+    'enter',
+    () => {
+      if (isProductModalOpen) return // Disable when product modal is open
+      if (selectedItemId && !isReadOnly && !isEditing) {
+        const currentIndex = items.findIndex((i) => i.item_code === selectedItemId)
+        if (currentIndex < items.length - 1) {
+          const nextItem = items[currentIndex + 1]
+          console.log('⏎ Enter: Moving from', selectedItemId, 'to', nextItem.item_code)
+          selectItem(nextItem.item_code)
+        } else {
+          // If at last item, go to first item
+          console.log('⏎ Enter: At last item, moving to first item')
+          selectItem(items[0].item_code)
+        }
+      } else if (items.length > 0 && !isReadOnly && !selectedItemId) {
+        // No item selected, select the first item
+        console.log('⏎ Enter: No item selected, selecting first item')
+        selectItem(items[0].item_code)
+      }
+    },
+    { preventDefault: true, enableOnFormTags: false }
+  )
+
   // Handle warehouse allocation
   const handleWarehouseAllocation = (allocations: any[]) => {
     if (!warehousePopupData || !activeTabId) return
@@ -884,6 +909,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             onKeyDown={async (e) => {
                               if (e.key === 'Enter') {
                                 e.preventDefault()
+                                e.stopPropagation()
                                 // Save qty value directly without ending editing
                                 const numValue = parseFloat(editValue)
                                 if (!isNaN(numValue) && numValue >= 0 && activeTabId) {
@@ -901,6 +927,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                 setEditValue(String(item.standard_rate || 0))
                               } else if (e.key === 'Escape') {
                                 e.preventDefault()
+                                e.stopPropagation()
                                 setIsEditing(false)
                               }
                             }}
@@ -993,9 +1020,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
                                 e.preventDefault()
+                                e.stopPropagation()
                                 handleSaveEdit()
                               } else if (e.key === 'Escape') {
                                 e.preventDefault()
+                                e.stopPropagation()
                                 setIsEditing(false)
                               }
                             }}
