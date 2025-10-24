@@ -101,7 +101,15 @@ const MultiWarehousePopup: React.FC<MultiWarehousePopupProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl bg-white border-2 shadow-2xl">
+      <DialogContent 
+        className="max-w-2xl bg-white border-2 shadow-2xl"
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            onClose()
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle className="text-xl font-bold text-gray-800">
             Multi Warehouse Assign Qtys
