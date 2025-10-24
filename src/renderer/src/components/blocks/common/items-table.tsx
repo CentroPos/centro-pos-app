@@ -110,6 +110,21 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     warehouses: any[]
   } | null>(null)
 
+  // Function to scroll selected item into view
+  const scrollToSelectedItem = (itemCode: string) => {
+    setTimeout(() => {
+      const selectedRow = document.querySelector(`[data-item-code="${itemCode}"]`)
+      if (selectedRow) {
+        selectedRow.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+          inline: 'nearest'
+        })
+        console.log('📜 Scrolled to selected item:', itemCode)
+      }
+    }, 50)
+  }
+
   useEffect(() => {
     if (shouldStartEditing && selectedItemId && !isEditing) {
       setActiveField('quantity');
@@ -670,6 +685,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
           const prevItem = items[currentIndex - 1]
           console.log('⬆️ Arrow Up: Moving from', selectedItemId, 'to', prevItem.item_code)
           selectItem(prevItem.item_code)
+          scrollToSelectedItem(prevItem.item_code)
           if (isEditing) {
             // Keep editing mode but switch to the previous item
             setTimeout(() => {
@@ -684,6 +700,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         // No item selected, select the last item
         console.log('⬆️ Arrow Up: No item selected, selecting last item')
         selectItem(items[items.length - 1].item_code)
+        scrollToSelectedItem(items[items.length - 1].item_code)
       }
     },
     { preventDefault: true, enableOnFormTags: true }
@@ -699,6 +716,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
           const nextItem = items[currentIndex + 1]
           console.log('⬇️ Arrow Down: Moving from', selectedItemId, 'to', nextItem.item_code)
           selectItem(nextItem.item_code)
+          scrollToSelectedItem(nextItem.item_code)
           if (isEditing) {
             // Keep editing mode but switch to the next item
             setTimeout(() => {
@@ -713,6 +731,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         // No item selected, select the first item
         console.log('⬇️ Arrow Down: No item selected, selecting first item')
         selectItem(items[0].item_code)
+        scrollToSelectedItem(items[0].item_code)
       }
     },
     { preventDefault: true, enableOnFormTags: true }
@@ -729,15 +748,18 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
           const nextItem = items[currentIndex + 1]
           console.log('⏎ Enter: Moving from', selectedItemId, 'to', nextItem.item_code)
           selectItem(nextItem.item_code)
+          scrollToSelectedItem(nextItem.item_code)
         } else {
           // If at last item, go to first item
           console.log('⏎ Enter: At last item, moving to first item')
           selectItem(items[0].item_code)
+          scrollToSelectedItem(items[0].item_code)
         }
       } else if (items.length > 0 && !isReadOnly && !selectedItemId) {
         // No item selected, select the first item
         console.log('⏎ Enter: No item selected, selecting first item')
         selectItem(items[0].item_code)
+        scrollToSelectedItem(items[0].item_code)
       }
     },
     { preventDefault: true, enableOnFormTags: false }
@@ -825,14 +847,16 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
                   return (
                     <TableRow
+                      key={item.item_code}
+                      data-item-code={item.item_code}
                       onClick={(e) => {
                         e.stopPropagation()
                         console.log('🖱️ Row clicked:', item.item_code, 'isEditing:', isEditing, 'isReadOnly:', isReadOnly)
                         if (!isEditing && !isReadOnly) {
                           selectItem(item.item_code)
+                          scrollToSelectedItem(item.item_code)
                         }
                       }}
-                      key={item.item_code}
                       className={`transition-all ${isSelected
                           ? 'bg-gradient-to-r from-blue-50 to-blue-100 border-l-4 border-l-blue-500 shadow-md'
                           : 'hover:bg-gray-50'
