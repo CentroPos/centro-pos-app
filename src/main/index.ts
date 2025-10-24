@@ -318,6 +318,129 @@ function setupAuthHandlers(): void {
     return { success: true }
   })
 
+  // Electron native printing handlers
+  ipcMain.handle('print-pdf', async (_event, pdfDataUrl: string) => {
+    try {
+      console.log('🖨️ Printing PDF from data URL')
+      
+      // Create a new window for printing
+      const printWindow = new BrowserWindow({
+        show: true,
+        width: 800,
+        height: 600,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true
+        }
+      })
+
+      // Load the PDF data URL directly
+      await printWindow.loadURL(pdfDataUrl)
+      
+      // Wait for the PDF to load
+      await new Promise<void>((resolve) => {
+        printWindow.webContents.once('did-finish-load', () => {
+          console.log('📄 PDF loaded in print window')
+          resolve()
+        })
+      })
+
+      // Wait for PDF to fully render
+      await new Promise(resolve => setTimeout(resolve, 1000))
+
+      console.log('🖨️ Opening print dialog...')
+      
+      // Use the correct print approach with callback
+      printWindow.webContents.print({
+        silent: false,            // false = show dialog
+        printBackground: true,    // include background colors/images
+        deviceName: ''            // leave blank to let user choose
+      }, (success, errorType) => {
+        if (!success) {
+          console.log('❌ Print failed:', errorType)
+          // Fallback: try with main window
+          const mainWindow = global.mainWindow
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            console.log('🖨️ Trying fallback print with main window...')
+            mainWindow.webContents.print({
+              silent: false,
+              printBackground: true,
+              deviceName: ''
+            }, (fallbackSuccess, fallbackError) => {
+              if (!fallbackSuccess) {
+                console.log('❌ Fallback print also failed:', fallbackError)
+              } else {
+                console.log('✅ Fallback print job started')
+              }
+            })
+          }
+        } else {
+          console.log('✅ Print job started')
+        }
+      })
+      
+      console.log('✅ Print dialog should have opened')
+      
+      // Close the print window after a delay to allow user to interact with print dialog
+      setTimeout(() => {
+        if (!printWindow.isDestroyed()) {
+          printWindow.close()
+        }
+      }, 3000)
+      
+      return { success: true }
+    } catch (error: any) {
+      console.error('❌ Error printing PDF:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  // Alternative print method using main window
+  ipcMain.handle('print-pdf-main', async (_event, pdfDataUrl: string) => {
+    try {
+      console.log('🖨️ Printing PDF using main window')
+      
+      const mainWindow = global.mainWindow
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        throw new Error('Main window not available')
+      }
+
+      // Load the PDF in the main window
+      await mainWindow.loadURL(pdfDataUrl)
+      
+      // Wait for the PDF to load
+      await new Promise<void>((resolve) => {
+        mainWindow.webContents.once('did-finish-load', () => {
+          console.log('📄 PDF loaded in main window')
+          resolve()
+        })
+      })
+
+      // Wait for PDF to fully render
+      await new Promise(resolve => setTimeout(resolve, 1000))
+
+      console.log('🖨️ Opening print dialog from main window...')
+      
+      // Print with dialog using main window
+      mainWindow.webContents.print({
+        silent: false,            // false = show dialog
+        printBackground: true,    // include background colors/images
+        deviceName: ''            // leave blank to let user choose
+      }, (success, errorType) => {
+        if (!success) {
+          console.log('❌ Print failed:', errorType)
+        } else {
+          console.log('✅ Print job started from main window')
+        }
+      })
+      
+      return { success: true }
+    } catch (error: any) {
+      console.error('❌ Error printing PDF from main window:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
   // Session cookie management for Frappe
   ipcMain.handle('set-session-cookie', async (_event, cookieDetails) => {
     try {

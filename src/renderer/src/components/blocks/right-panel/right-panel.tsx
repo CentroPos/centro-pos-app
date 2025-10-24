@@ -14,6 +14,60 @@ const PrintsTabContent: React.FC = () => {
   const [printItems, setPrintItems] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [pdfPreviews, setPdfPreviews] = useState<Record<string, string>>({})
+
+  // Load PDF preview for a specific item
+  const loadPDFPreview = async (item: any) => {
+    const pdfUrl = `${window.location.origin}${item.url}`
+    const itemKey = `${item.report_title}-${item.url}`
+    
+    if (pdfPreviews[itemKey]) {
+      return // Already loaded
+    }
+
+    try {
+      console.log('📄 Loading PDF preview for:', item.report_title)
+      
+      const response = await fetch(pdfUrl, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/pdf,application/json',
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch PDF: ${response.status}`)
+      }
+
+      const contentType = response.headers.get('content-type')
+      
+      if (contentType?.includes('application/pdf')) {
+        const arrayBuffer = await response.arrayBuffer()
+        const uint8Array = new Uint8Array(arrayBuffer)
+        
+        // Check if it's actually a PDF
+        const isPDF = uint8Array.length >= 4 && 
+                     uint8Array[0] === 0x25 && // %
+                     uint8Array[1] === 0x50 && // P
+                     uint8Array[2] === 0x44 && // D
+                     uint8Array[3] === 0x46    // F
+        
+        if (isPDF) {
+          const base64 = btoa(String.fromCharCode(...uint8Array))
+          const dataUrl = `data:application/pdf;base64,${base64}`
+          setPdfPreviews(prev => ({ ...prev, [itemKey]: dataUrl }))
+          console.log('📄 PDF preview loaded for:', item.report_title)
+        } else {
+          console.error('📄 Invalid PDF format for:', item.report_title)
+        }
+      } else {
+        console.error('📄 Non-PDF response for:', item.report_title)
+      }
+    } catch (error) {
+      console.error('📄 Error loading PDF preview:', error)
+    }
+  }
 
   // Fetch print items when component mounts or order changes
   useEffect(() => {
@@ -59,6 +113,16 @@ const PrintsTabContent: React.FC = () => {
           console.log('🖨️ Processed print items data:', data)
           console.log('🖨️ Data length:', data.length)
           setPrintItems(data)
+          
+          // Auto-load PDF previews for all items
+          if (data.length > 0) {
+            data.forEach((item: any, index: number) => {
+              // Load previews with a small delay to avoid overwhelming the server
+              setTimeout(() => {
+                loadPDFPreview(item)
+              }, index * 500) // 500ms delay between each load
+            })
+          }
         } else {
           console.log('🖨️ No valid data in response, setting empty array')
           console.log('🖨️ Response success was:', response?.success)
@@ -138,73 +202,87 @@ const PrintsTabContent: React.FC = () => {
       </div>
 
       <div className="space-y-4 flex-1 overflow-y-auto">
-        {Array.isArray(printItems) && printItems.map((item, index) => (
-          <div key={index} className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="font-semibold text-gray-800">{item.report_title}</h4>
-              <div className="flex gap-2">
+        {Array.isArray(printItems) && printItems.map((item, index) => {
+          const itemKey = `${item.report_title}-${item.url}`
+          const pdfPreview = pdfPreviews[itemKey]
+          
+          return (
+            <div key={index} className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-semibold text-gray-800">{item.report_title}</h4>
                 <button
-                  onClick={() => {
-                    const pdfUrl = `${window.location.origin}${item.url}`
-                    window.open(pdfUrl, '_blank')
-                  }}
-                  className="p-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-                  title="Download PDF"
-                >
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
-                  </svg>
-                </button>
-                <button
-                  onClick={() => {
-                    const pdfUrl = `${window.location.origin}${item.url}`
-                    
-                    // Open PDF in new window with proper headers to force display
-                    const printWindow = window.open('', '_blank', 'width=800,height=600,scrollbars=yes,resizable=yes')
-                    
-                    if (printWindow) {
-                      // Write HTML that embeds the PDF for display
-                      printWindow.document.write(`
-                        <html>
-                          <head>
-                            <title>Print PDF</title>
-                            <style>
-                              body { margin: 0; padding: 0; }
-                              iframe { width: 100%; height: 100vh; border: none; }
-                            </style>
-                          </head>
-                          <body>
-                            <iframe src="${pdfUrl}" onload="setTimeout(() => { this.contentWindow.print(); }, 1000);"></iframe>
-                          </body>
-                        </html>
-                      `)
-                      printWindow.document.close()
-                    } else {
-                      // Fallback if popup blocked
-                      window.open(pdfUrl, '_blank')
+                  onClick={async () => {
+                    try {
+                      const itemKey = `${item.report_title}-${item.url}`
+                      const pdfDataUrl = pdfPreviews[itemKey]
+                      
+                      if (!pdfDataUrl) {
+                        alert('PDF preview not loaded yet. Please wait for it to load.')
+                        return
+                      }
+                      
+                     
+                      
+                      // Use the print function with proper error handling
+                      const result = await window.electronAPI?.print.printPDF(pdfDataUrl)
+                      console.log('🖨️ Print result:', result)
+                      
+                      if (result?.success) {
+                        console.log('✅ Print dialog opened successfully')
+                      } else {
+                        console.error('❌ Print failed:', result?.error)
+                        alert(`Print failed: ${result?.error || 'Unknown error'}`)
+                      }
+                    } catch (error: any) {
+                      console.error('❌ Print error:', error)
+                      alert(`Print error: ${error.message}`)
                     }
                   }}
-                  className="p-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 transition-colors"
-                  title="Print PDF"
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center gap-2"
+                  title="Print with Printer Selection"
+                  disabled={!pdfPreviews[`${item.report_title}-${item.url}`]}
                 >
                   <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v3a2 2 0 002 2h1v2a2 2 0 002 2h6a2 2 0 002-2v-2h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clipRule="evenodd" />
                   </svg>
+                  Print
                 </button>
               </div>
-            </div>
-            
-            {/* PDF Preview */}
-            <div className="bg-gray-50 rounded border p-3">
-              <div className="flex items-center justify-center h-24 bg-white rounded border-2 border-dashed border-gray-300">
-                <div className="text-center">
-                  <i className="fas fa-file-pdf text-3xl text-red-500 mb-1"></i>
-                  <p className="text-xs text-gray-500">{item.report_title}</p>
+              
+              {/* PDF Preview */}
+              <div className="bg-gray-50 rounded border p-3">
+                <div className="h-48 bg-white rounded border overflow-hidden">
+                  {pdfPreview ? (
+                    <iframe
+                      src={pdfPreview}
+                      className="w-full h-full border-0"
+                      title={item.report_title}
+                      onLoad={() => console.log('📄 PDF preview loaded:', item.report_title)}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center">
+                        <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                          <svg className="w-6 h-6 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                        </div>
+                        <p className="text-sm text-gray-500">Loading preview...</p>
+                        <button
+                          onClick={() => loadPDFPreview(item)}
+                          className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline"
+                        >
+                          Click to load preview
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
 
         {(!Array.isArray(printItems) || printItems.length === 0) && (
           <div className="text-center py-8">

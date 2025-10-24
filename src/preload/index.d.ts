@@ -32,6 +32,10 @@ interface CustomElectronAPI {
     removeAllListeners: (channel: string) => void
     onThemeChanged: (callback: (theme: string) => void) => void
   }
+  print: {
+    printPDF: (pdfDataUrl: string) => Promise<{ success: boolean; error?: string }>
+    printPDFMain: (pdfDataUrl: string) => Promise<{ success: boolean; error?: string }>
+  }
 }
 
 declare global {
