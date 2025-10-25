@@ -9,12 +9,14 @@ interface ErrorMessage {
   message: string
   title: string
   indicator: string
+  itemCode: string
 }
 
 type Props = {
   errors?: ErrorMessage[]
   onCloseErrors?: () => void
   onErrorBoxFocusChange?: (isFocused: boolean) => void
+  onFocusItem?: (itemCode: string) => void
 }
 
 function roundToNearest(value: number, step = 0.05) {
@@ -22,7 +24,7 @@ function roundToNearest(value: number, step = 0.05) {
   return Number(rounded.toFixed(2))
 }
 
-const DiscountSection: React.FC<Props> = ({ errors = [], onCloseErrors, onErrorBoxFocusChange }) => {
+const DiscountSection: React.FC<Props> = ({ errors = [], onCloseErrors, onErrorBoxFocusChange, onFocusItem }) => {
   const { getCurrentTabItems, getCurrentTabGlobalDiscount, updateTabGlobalDiscount, getCurrentTab, setTabEdited } = usePOSTabStore()
   const items = getCurrentTabItems()
   const currentTab = getCurrentTab()
@@ -196,6 +198,7 @@ const DiscountSection: React.FC<Props> = ({ errors = [], onCloseErrors, onErrorB
           isVisible={errors.length > 0}
           onClose={onCloseErrors || (() => {})}
           onFocusChange={onErrorBoxFocusChange}
+          onFocusItem={onFocusItem}
         />
       )}
     </div>

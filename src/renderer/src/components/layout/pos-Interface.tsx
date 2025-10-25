@@ -22,7 +22,7 @@ const POSInterface: React.FC = () => {
   const [saveCompleted, setSaveCompleted] = useState(0)
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false)
   const [isItemTableEditing, setIsItemTableEditing] = useState(false)
-  const [insufficientStockErrors, setInsufficientStockErrors] = useState<Array<{message: string, title: string, indicator: string}>>([])
+  const [insufficientStockErrors, setInsufficientStockErrors] = useState<Array<{message: string, title: string, indicator: string, itemCode: string}>>([])
   const [isErrorBoxFocused, setIsErrorBoxFocused] = useState(false)
 
   // Handle item selection - switch to product tab
@@ -40,6 +40,52 @@ const POSInterface: React.FC = () => {
   // Handle closing insufficient stock errors
   const handleCloseInsufficientStockErrors = () => {
     setInsufficientStockErrors([])
+  }
+
+  // Handle focusing on a specific item from error box
+  const handleFocusItem = (itemCode: string) => {
+    console.log('🎯 Focusing on item:', itemCode)
+    // Find the item by code and select it
+    const items = getCurrentTabItems()
+    const item = items.find(item => item.item_code === itemCode || item.code === itemCode)
+    console.log('🔍 Found item:', item)
+    if (item) {
+      setSelectedItemId(item.item_code) // Use item_code for consistency
+      setRightPanelTab('product')
+      console.log('✅ Selected item and switched to product tab')
+      
+      // Trigger editing mode for the quantity field
+      setTimeout(() => {
+        // Find the quantity cell and click it to start editing
+        const quantityCell = document.querySelector(`[data-item-code="${item.item_code}"][data-field="quantity"]`) as HTMLElement
+        console.log('🔍 Found quantity cell:', quantityCell)
+        if (quantityCell) {
+          quantityCell.click()
+          console.log('🖱️ Clicked quantity cell')
+          
+          // Wait a bit more for the input to appear, then focus it
+          setTimeout(() => {
+            // Look for the specific input with data attributes
+            const quantityInput = document.querySelector(`input[data-item-code="${item.item_code}"][data-field="quantity"]`) as HTMLInputElement
+            console.log('🔍 Found quantity input:', quantityInput)
+            if (quantityInput) {
+              quantityInput.focus()
+              quantityInput.select()
+              console.log('✅ Focused and selected quantity input')
+            } else {
+              // Fallback: find any number input in the quantity cell
+              const fallbackInput = quantityCell.querySelector(`input[type="number"]`) as HTMLInputElement
+              console.log('🔍 Found fallback input:', fallbackInput)
+              if (fallbackInput) {
+                fallbackInput.focus()
+                fallbackInput.select()
+                console.log('✅ Focused and selected fallback input')
+              }
+            }
+          }, 150)
+        }
+      }, 100)
+    }
   }
 
   const {
@@ -276,12 +322,13 @@ const POSInterface: React.FC = () => {
           {/* <button onClick={() => setOpen(true)} className="m-4 p-2 bg-blue-500 text-white rounded">
             Open
           </button> */}
-        <ActionButtons 
-          onNavigateToPrints={() => setRightPanelTab('prints')} 
+        <ActionButtons
+          onNavigateToPrints={() => setRightPanelTab('prints')}
           selectedPriceList={selectedPriceList}
           onSaveCompleted={() => setSaveCompleted(prev => prev + 1)}
           isItemTableEditing={isItemTableEditing}
           onInsufficientStockErrors={setInsufficientStockErrors}
+          onFocusItem={handleFocusItem}
         />
           {/* Fixed top: Order details */}
           <OrderDetails 
@@ -304,6 +351,7 @@ const POSInterface: React.FC = () => {
               isCustomerModalOpen={isCustomerModalOpen}
               isErrorBoxFocused={isErrorBoxFocused}
               onEditingStateChange={setIsItemTableEditing}
+              errorItems={insufficientStockErrors.map(error => error.itemCode).filter(Boolean)}
             />
           </div>
 
@@ -312,6 +360,7 @@ const POSInterface: React.FC = () => {
             errors={insufficientStockErrors}
             onCloseErrors={handleCloseInsufficientStockErrors}
             onErrorBoxFocusChange={setIsErrorBoxFocused}
+            onFocusItem={handleFocusItem}
           />
         </div>
         <RightPanel 

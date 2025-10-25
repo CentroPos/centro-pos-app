@@ -4,6 +4,7 @@ interface ErrorMessage {
   message: string
   title: string
   indicator: string
+  itemCode: string
 }
 
 interface BottomErrorBoxProps {
@@ -11,13 +12,15 @@ interface BottomErrorBoxProps {
   isVisible: boolean
   onClose: () => void
   onFocusChange?: (isFocused: boolean) => void
+  onFocusItem?: (itemCode: string) => void
 }
 
 const BottomErrorBox: React.FC<BottomErrorBoxProps> = ({
   errors,
   isVisible,
   onClose,
-  onFocusChange
+  onFocusChange,
+  onFocusItem
 }) => {
   const [currentErrorIndex, setCurrentErrorIndex] = useState(0)
   const errorBoxRef = useRef<HTMLDivElement>(null)
@@ -29,6 +32,13 @@ const BottomErrorBox: React.FC<BottomErrorBoxProps> = ({
   const goToNextError = useCallback(() => {
     setCurrentErrorIndex((prev) => (prev < errors.length - 1 ? prev + 1 : 0))
   }, [errors.length])
+
+  const handleErrorClick = useCallback(() => {
+    const currentError = errors[currentErrorIndex]
+    if (currentError?.itemCode && onFocusItem) {
+      onFocusItem(currentError.itemCode)
+    }
+  }, [currentErrorIndex, errors, onFocusItem])
 
   // Keyboard navigation
   useEffect(() => {
@@ -99,7 +109,11 @@ const BottomErrorBox: React.FC<BottomErrorBoxProps> = ({
           </div>
 
           {/* Error Content */}
-          <div className="flex-1 min-w-0">
+          <div
+            className="flex-1 min-w-0 cursor-pointer hover:bg-red-100 rounded p-2 transition-colors"
+            onClick={handleErrorClick}
+            title="Click to focus on this item in the table"
+          >
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-semibold text-red-800">
                 {currentError.title || 'Error'}
