@@ -3,15 +3,26 @@ import { Input } from '@renderer/components/ui/input'
 import { useMemo, useState, useRef, useEffect } from 'react'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { useHotkeys } from 'react-hotkeys-hook'
+import BottomErrorBox from '../common/bottom-error-box'
 
-type Props = unknown
+interface ErrorMessage {
+  message: string
+  title: string
+  indicator: string
+}
+
+type Props = {
+  errors?: ErrorMessage[]
+  onCloseErrors?: () => void
+  onErrorBoxFocusChange?: (isFocused: boolean) => void
+}
 
 function roundToNearest(value: number, step = 0.05) {
   const rounded = Math.round(value / step) * step
   return Number(rounded.toFixed(2))
 }
 
-const DiscountSection: React.FC<Props> = () => {
+const DiscountSection: React.FC<Props> = ({ errors = [], onCloseErrors, onErrorBoxFocusChange }) => {
   const { getCurrentTabItems, getCurrentTabGlobalDiscount, updateTabGlobalDiscount, getCurrentTab, setTabEdited } = usePOSTabStore()
   const items = getCurrentTabItems()
   const currentTab = getCurrentTab()
@@ -177,6 +188,16 @@ const DiscountSection: React.FC<Props> = () => {
           </div>
         </div>
       </div>
+      
+      {/* Bottom Error Box */}
+      {errors.length > 0 && (
+        <BottomErrorBox
+          errors={errors}
+          isVisible={errors.length > 0}
+          onClose={onCloseErrors || (() => {})}
+          onFocusChange={onErrorBoxFocusChange}
+        />
+      )}
     </div>
   )
 }

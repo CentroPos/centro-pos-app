@@ -2,7 +2,6 @@ import React, { Fragment, useState } from 'react'
 import ActionButtons from '../blocks/common/action-buttons'
 import OrderDetails from '../blocks/order/order-details'
 import ItemsTable from '../blocks/common/items-table'
-import PaymentAlert from '../blocks/payment/payment-alert'
 import RightPanel from '../blocks/right-panel/right-panel'
 import Header from '../blocks/common/header'
 import DiscountSection from '../blocks/products/discount-section'
@@ -23,6 +22,8 @@ const POSInterface: React.FC = () => {
   const [saveCompleted, setSaveCompleted] = useState(0)
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false)
   const [isItemTableEditing, setIsItemTableEditing] = useState(false)
+  const [insufficientStockErrors, setInsufficientStockErrors] = useState<Array<{message: string, title: string, indicator: string}>>([])
+  const [isErrorBoxFocused, setIsErrorBoxFocused] = useState(false)
 
   // Handle item selection - switch to product tab
   const handleItemSelect = (itemId: string) => {
@@ -34,6 +35,11 @@ const POSInterface: React.FC = () => {
   const handleCustomerSelect = (customer: any) => {
     setSelectedItemId(undefined) // Unselect all items
     setRightPanelTab('customer')
+  }
+
+  // Handle closing insufficient stock errors
+  const handleCloseInsufficientStockErrors = () => {
+    setInsufficientStockErrors([])
   }
 
   const {
@@ -235,6 +241,16 @@ const POSInterface: React.FC = () => {
     createNewTab()
   }, { enableOnFormTags: false })
   
+  // Ctrl+R for return
+  useHotkeys('ctrl+r', (event) => {
+    event.preventDefault()
+    // Trigger return by clicking the return button
+    const returnButton = document.querySelector('[data-testid="return-button"]') as HTMLButtonElement
+    if (returnButton && !returnButton.disabled) {
+      returnButton.click()
+    }
+  }, { enableOnFormTags: false })
+  
   // Arrow keys are handled by the items table component, so we don't need global handlers here
   // Enter key is handled by the items table component, so we don't need a global handler here
   useHotkeys('space', () => {
@@ -260,12 +276,13 @@ const POSInterface: React.FC = () => {
           {/* <button onClick={() => setOpen(true)} className="m-4 p-2 bg-blue-500 text-white rounded">
             Open
           </button> */}
-          <ActionButtons 
-            onNavigateToPrints={() => setRightPanelTab('prints')} 
-            selectedPriceList={selectedPriceList}
-            onSaveCompleted={() => setSaveCompleted(prev => prev + 1)}
-            isItemTableEditing={isItemTableEditing}
-          />
+        <ActionButtons 
+          onNavigateToPrints={() => setRightPanelTab('prints')} 
+          selectedPriceList={selectedPriceList}
+          onSaveCompleted={() => setSaveCompleted(prev => prev + 1)}
+          isItemTableEditing={isItemTableEditing}
+          onInsufficientStockErrors={setInsufficientStockErrors}
+        />
           {/* Fixed top: Order details */}
           <OrderDetails 
             onPriceListChange={setSelectedPriceList} 
@@ -285,13 +302,17 @@ const POSInterface: React.FC = () => {
               onSaveCompleted={saveCompleted}
               isProductModalOpen={open}
               isCustomerModalOpen={isCustomerModalOpen}
+              isErrorBoxFocused={isErrorBoxFocused}
               onEditingStateChange={setIsItemTableEditing}
             />
           </div>
 
           {/* Fixed bottom: Discount/Summary section */}
-          <DiscountSection />
-          <PaymentAlert orderNumber={currentTab?.orderId || ''} />
+          <DiscountSection 
+            errors={insufficientStockErrors}
+            onCloseErrors={handleCloseInsufficientStockErrors}
+            onErrorBoxFocusChange={setIsErrorBoxFocused}
+          />
         </div>
         <RightPanel 
           key={`${selectedCustomer?.name || 'no-customer'}-${selectedItemId || 'no-item'}`}

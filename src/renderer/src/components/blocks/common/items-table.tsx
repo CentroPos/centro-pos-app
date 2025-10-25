@@ -27,12 +27,13 @@ type Props = {
   onSaveCompleted?: number
   isProductModalOpen?: boolean
   isCustomerModalOpen?: boolean
+  isErrorBoxFocused?: boolean
   onEditingStateChange?: (isEditing: boolean) => void
 }
 
 type EditField = 'quantity' | 'standard_rate' | 'uom' | 'discount_percentage' | 'item_name'
 
-const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem, shouldStartEditing = false, onEditingStarted, onAddItemClick, onSaveCompleted, isProductModalOpen = false, isCustomerModalOpen = false, onEditingStateChange }) => {
+const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem, shouldStartEditing = false, onEditingStarted, onAddItemClick, onSaveCompleted, isProductModalOpen = false, isCustomerModalOpen = false, isErrorBoxFocused = false, onEditingStateChange }) => {
   const { getCurrentTabItems, activeTabId, updateItemInTab, getCurrentTab, setTabEdited } = usePOSTabStore();
   const items = getCurrentTabItems();
   const currentTab = getCurrentTab();
@@ -705,6 +706,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     'ArrowUp',
     () => {
       if (isProductModalOpen) return // Disable when product modal is open
+      if (isErrorBoxFocused) return // Disable when error box is focused
       if (selectedItemId && !isReadOnly) {
         const currentIndex = items.findIndex((i) => i.item_code === selectedItemId)
         if (currentIndex > 0) {
@@ -736,6 +738,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     'ArrowDown',
     () => {
       if (isProductModalOpen) return // Disable when product modal is open
+      if (isErrorBoxFocused) return // Disable when error box is focused
       if (selectedItemId && !isReadOnly) {
         const currentIndex = items.findIndex((i) => i.item_code === selectedItemId)
         if (currentIndex < items.length - 1) {
