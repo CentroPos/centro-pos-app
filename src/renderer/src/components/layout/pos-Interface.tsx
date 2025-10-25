@@ -43,7 +43,8 @@ const POSInterface: React.FC = () => {
     activeTabId,
     itemExistsInTab,
     getCurrentTab,
-    getCurrentTabCustomer
+    getCurrentTabCustomer,
+    createNewTab
   } = usePOSTabStore();
 
   // Get selected customer from store
@@ -215,6 +216,25 @@ const POSInterface: React.FC = () => {
       removeItem(selectedItemId);
     }
   }, { enableOnFormTags: false })
+  
+  // Ctrl+S for save/update order
+  useHotkeys('ctrl+s', (event) => {
+    event.preventDefault()
+    if (!isItemTableEditing && getCurrentTab()?.isEdited) {
+      // Trigger save by clicking the save button
+      const saveButton = document.querySelector('[data-testid="save-button"]') as HTMLButtonElement
+      if (saveButton && !saveButton.disabled) {
+        saveButton.click()
+      }
+    }
+  }, { enableOnFormTags: false })
+  
+  // Ctrl+N for new order
+  useHotkeys('ctrl+n', (event) => {
+    event.preventDefault()
+    createNewTab()
+  }, { enableOnFormTags: false })
+  
   // Arrow keys are handled by the items table component, so we don't need global handlers here
   // Enter key is handled by the items table component, so we don't need a global handler here
   useHotkeys('space', () => {
