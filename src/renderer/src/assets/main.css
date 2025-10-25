@@ -1,6 +1,7 @@
 @import 'tw-animate-css';
 @import './base.css';
 @import '@fortawesome/fontawesome-free/css/all.min.css';
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -12,12 +13,18 @@ html {
 
 /* Override body styles for login page only */
 body {
+  font-family: 'Inter', sans-serif !important;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   background-size: cover;
   user-select: none;
+}
+
+/* Preserve Font Awesome icons */
+.fa, .fas, .far, .fal, .fab {
+  font-family: "Font Awesome 6 Free", "Font Awesome 6 Brands" !important;
 }
 
 #root {
@@ -178,6 +185,7 @@ body {
 
 /* Override body styles for POS app when needed */
 body.pos-app {
+  font-family: 'Inter', sans-serif !important;
   display: block;
   overflow: auto;
   user-select: auto;
