@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@renderer/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter
+} from '@renderer/components/ui/dialog'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
 
@@ -39,16 +45,20 @@ const MultiWarehousePopup: React.FC<MultiWarehousePopupProps> = ({
   useEffect(() => {
     if (open) {
       // Initialize warehouse data with pre-selected warehouses from props
-      setWarehouseData(warehouses.map((warehouse) => ({
-        ...warehouse,
-        allocated: 0,
-        selected: warehouse.selected || false // Use the selected property from props
-      })))
+      setWarehouseData(
+        warehouses.map((warehouse) => ({
+          ...warehouse,
+          allocated: 0,
+          selected: warehouse.selected || false // Use the selected property from props
+        }))
+      )
       // Focus the first selected input after render
       setTimeout(() => {
-        const firstSelectedIndex = warehouses.findIndex(w => w.selected)
+        const firstSelectedIndex = warehouses.findIndex((w) => w.selected)
         if (firstSelectedIndex >= 0) {
-          const inputElement = document.querySelector(`input[data-warehouse-index="${firstSelectedIndex}"]`) as HTMLInputElement
+          const inputElement = document.querySelector(
+            `input[data-warehouse-index="${firstSelectedIndex}"]`
+          ) as HTMLInputElement
           if (inputElement) {
             inputElement.focus()
             inputElement.select()
@@ -62,46 +72,52 @@ const MultiWarehousePopup: React.FC<MultiWarehousePopupProps> = ({
   }, [open, warehouses])
 
   const handleWarehouseToggle = (index: number, checked: boolean) => {
-    setWarehouseData(prev => prev.map((warehouse, i) => 
-      i === index 
-        ? { ...warehouse, selected: checked, allocated: checked ? 0 : warehouse.allocated }
-        : warehouse
-    ))
+    setWarehouseData((prev) =>
+      prev.map((warehouse, i) =>
+        i === index
+          ? { ...warehouse, selected: checked, allocated: checked ? 0 : warehouse.allocated }
+          : warehouse
+      )
+    )
   }
 
   const handleAllocationChange = (index: number, value: string) => {
     const allocatedQty = parseInt(value) || 0
     const warehouse = warehouseData[index]
-    
+
     if (allocatedQty > warehouse.available) {
       return // Don't allow more than available
     }
 
-    setWarehouseData(prev => prev.map((w, i) => 
-      i === index ? { ...w, allocated: allocatedQty } : w
-    ))
+    setWarehouseData((prev) =>
+      prev.map((w, i) => (i === index ? { ...w, allocated: allocatedQty } : w))
+    )
   }
 
   const handleAssign = () => {
-    const selectedWarehouses = warehouseData.filter(w => w.selected && w.allocated > 0)
+    const selectedWarehouses = warehouseData.filter((w) => w.selected && w.allocated > 0)
     onAssign(selectedWarehouses)
     onClose()
   }
 
   const totalAllocated = warehouseData.reduce((sum, w) => sum + w.allocated, 0)
-  const isValidAllocation = totalAllocated >= requiredQty && warehouseData.some(w => w.selected)
-  
+  const isValidAllocation = totalAllocated >= requiredQty && warehouseData.some((w) => w.selected)
+
   console.log('📊 Allocation summary:', {
     totalAllocated,
     shortage,
     requiredQty,
     isValidAllocation,
-    warehouses: warehouseData.map(w => ({ name: w.name, allocated: w.allocated, selected: w.selected }))
+    warehouses: warehouseData.map((w) => ({
+      name: w.name,
+      allocated: w.allocated,
+      selected: w.selected
+    }))
   })
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent 
+      <DialogContent
         className="max-w-2xl bg-white border-2 shadow-2xl"
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
@@ -111,9 +127,7 @@ const MultiWarehousePopup: React.FC<MultiWarehousePopupProps> = ({
         }}
       >
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-gray-800">
-            Multi Warehouse Assign Qtys
-          </DialogTitle>
+          <DialogTitle className="text-xl font-bold text-gray-800">Multi Warehouse</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -125,9 +139,6 @@ const MultiWarehousePopup: React.FC<MultiWarehousePopupProps> = ({
             <div className="text-sm text-red-700">
               <strong>Enough qty not available in current warehouse</strong>
             </div>
-            <div className="text-lg font-bold text-red-800">
-              {shortage} shortage
-            </div>
           </div>
 
           {/* Warehouse Allocation Table */}
@@ -135,8 +146,12 @@ const MultiWarehousePopup: React.FC<MultiWarehousePopupProps> = ({
             <table className="w-full">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Allocate</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Available</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                    Allocate
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                    Available
+                  </th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Total</th>
                 </tr>
               </thead>
@@ -151,15 +166,11 @@ const MultiWarehousePopup: React.FC<MultiWarehousePopupProps> = ({
                           onChange={(e) => handleWarehouseToggle(index, e.target.checked)}
                           className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
                         />
-                        <span className="text-sm font-medium text-gray-700">
-                          {warehouse.name}
-                        </span>
+                        <span className="text-sm font-medium text-gray-700">{warehouse.name}</span>
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-sm text-gray-600">
-                        {warehouse.available}
-                      </span>
+                      <span className="text-sm text-gray-600">{warehouse.available}</span>
                     </td>
                     <td className="px-4 py-3">
                       <Input
@@ -195,8 +206,10 @@ const MultiWarehousePopup: React.FC<MultiWarehousePopupProps> = ({
               <div className="text-sm text-gray-700">
                 <strong>Required:</strong> {requiredQty} units
               </div>
-              <div className={`text-sm font-semibold ${totalAllocated >= requiredQty ? 'text-green-600' : 'text-red-600'}`}>
-                {totalAllocated >= requiredQty ? '✅ Sufficient' : '❌ Insufficient'}
+              <div
+                className={`text-sm font-semibold ${totalAllocated >= requiredQty ? 'text-green-600' : 'text-red-600'}`}
+              >
+                {totalAllocated >= requiredQty ? 'Sufficient' : 'Insufficient'}
               </div>
             </div>
           </div>
@@ -206,9 +219,9 @@ const MultiWarehousePopup: React.FC<MultiWarehousePopupProps> = ({
           <Button variant="outline" onClick={onClose} className="px-6 py-2">
             Cancel
           </Button>
-          <Button 
+          <Button
             ref={assignBtnRef}
-            onClick={handleAssign} 
+            onClick={handleAssign}
             disabled={!isValidAllocation}
             className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white"
           >

@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Plus, Search, User } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
+import { handleServerErrorMessages } from '@renderer/lib/error-handler'
 
 import { useCreateCustomer, useCustomers } from '@renderer/hooks/useCustomer'
 import { customersAPI } from '@renderer/api/customer'
@@ -19,7 +20,13 @@ import { Input } from '@renderer/components/ui/input'
 import { ScrollArea } from '@renderer/components/ui/scroll-area'
 import { Badge } from '@renderer/components/ui/badge'
 import { Separator } from '@renderer/components/ui/separator'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@renderer/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@renderer/components/ui/select'
 
 // Default walking customer (unchanged)
 const walkingCustomer = { name: 'Walking Customer', gst: 'Not Applicable' }
@@ -63,14 +70,14 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
   const [apiCustomers, setApiCustomers] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<any>(null)
-  
+
   // Extract loadCustomers function to be reusable
   const loadCustomers = async () => {
     setIsLoading(true)
     setError(null)
     try {
       console.log('🧪 Loading customers via direct proxy request...')
-      const res = await window.electronAPI.proxy.request({
+      const res = await window.electronAPI?.proxy?.request({
         url: '/api/method/centro_pos_apis.api.customer.customer_list',
         params: {
           search_term: '',
@@ -79,11 +86,11 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
         }
       })
       console.log('🧪 Proxy response:', res)
-      
+
       // Extract customers from response.data.data array
       const customers = Array.isArray(res?.data?.data) ? res.data.data : []
       console.log('🧪 Extracted customers:', customers)
-      
+
       // Transform to the format expected by the UI
       const transformedCustomers = customers.map((customer: any) => {
         console.log('🔍 Raw customer from API:', customer)
@@ -113,7 +120,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
         console.log('🔍 Transformed customer:', transformed)
         return transformed
       })
-      
+
       console.log('🧪 Transformed customers:', transformedCustomers)
       setApiCustomers(transformedCustomers)
     } catch (err) {
@@ -139,14 +146,14 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
       loadCustomers()
     }
   }, [view])
-  
-  console.log('👥 Customer data:', { 
-    apiCustomers, 
-    isLoading, 
+
+  console.log('👥 Customer data:', {
+    apiCustomers,
+    isLoading,
     error,
     apiCustomersLength: apiCustomers.length
   })
-  
+
   // Add test command to window for debugging
   ;(window as any).testCustomerAPI = async () => {
     try {
@@ -165,25 +172,22 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
       return e
     }
   }
-  
+
   const createCustomerMutation = useCreateCustomer()
 
   // Build customer list - apiCustomers is already transformed by customersAPI.getAll()
   const customersFromAPI = apiCustomers || []
-  const allCustomers = useMemo(
-    () => {
-      console.log('📋 Raw API customers:', customersFromAPI)
-      // apiCustomers is already Customer[] objects from customersAPI.getAll()
-      // Just map to the format needed for display
-      const mapped = customersFromAPI.map((customer: any) => ({
-        name: customer.name, // Customer.name is already the display name
-        gst: customer.gst || 'Not Available'
-      }))
-      console.log('📋 Mapped customers for display:', mapped)
-      return mapped
-    },
-    [customersFromAPI]
-  )
+  const allCustomers = useMemo(() => {
+    console.log('📋 Raw API customers:', customersFromAPI)
+    // apiCustomers is already Customer[] objects from customersAPI.getAll()
+    // Just map to the format needed for display
+    const mapped = customersFromAPI.map((customer: any) => ({
+      name: customer.name, // Customer.name is already the display name
+      gst: customer.gst || 'Not Available'
+    }))
+    console.log('📋 Mapped customers for display:', mapped)
+    return mapped
+  }, [customersFromAPI])
 
   // Filter (kept)
   const filtered = useMemo(() => {
@@ -235,14 +239,14 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
     try {
       if (!newCustomer.customer_name.trim()) {
         toast.error('Customer name is required', {
-          duration: 5000,
+          duration: 5000
         })
         return
       }
 
       if (!newCustomer.email.trim()) {
         toast.error('Email is required', {
-          duration: 5000,
+          duration: 5000
         })
         return
       }
@@ -251,19 +255,19 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
       if (newCustomer.customer_type === 'Company') {
         if (!newCustomer.tax_id.trim()) {
           toast.error('Tax ID is required for Company customers', {
-            duration: 5000,
+            duration: 5000
           })
           return
         }
         if (!newCustomer.customer_id_type_for_zatca.trim()) {
           toast.error('Customer ID Type for ZATCA is required for Company customers', {
-            duration: 5000,
+            duration: 5000
           })
           return
         }
         if (!newCustomer.customer_id_number_for_zatca.trim()) {
           toast.error('Customer ID Number for ZATCA is required for Company customers', {
-            duration: 5000,
+            duration: 5000
           })
           return
         }
@@ -273,7 +277,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
       setIsCreatingCustomer(true)
 
       // Call the API directly using proxy
-      const response = await window.electronAPI.proxy.request({
+      const response = await window.electronAPI?.proxy?.request({
         method: 'POST',
         url: '/api/method/centro_pos_apis.api.customer.create_customer',
         data: newCustomer
@@ -285,9 +289,9 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
       if (response?.status === 200) {
         // Show success message
         toast.success('Customer created successfully!', {
-          duration: 2000,
+          duration: 2000
         })
-        
+
         // Reset create form
         setNewCustomer({
           customer_name: '',
@@ -312,44 +316,52 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
         }
 
         console.log('👤 New customer created for order:', newCustomerForSelection)
-        
+
         // Refresh customer list to show the newly created customer
         console.log('🔄 Refreshing customer list after creation...')
         await loadCustomers()
-        
+
         onSelect(newCustomerForSelection)
         resetAndClose()
       } else {
-        // Parse server error message
-        let errorMessage = 'Failed to create customer'
-        
-        if (response?.data?._server_messages) {
-          try {
-            // Parse the server messages array
-            const serverMessages = JSON.parse(response.data._server_messages)
-            if (Array.isArray(serverMessages) && serverMessages.length > 0) {
-              // Parse the first message
-              const firstMessage = JSON.parse(serverMessages[0])
-              if (firstMessage.message) {
-                errorMessage = firstMessage.message
-              }
-            }
-          } catch (parseError) {
-            console.error('Error parsing server messages:', parseError)
-            // Fallback to generic error
-            errorMessage = `Failed to create customer. Status: ${response?.status || 'Unknown'}`
-          }
-        } else {
-          errorMessage = `Failed to create customer. Status: ${response?.status || 'Unknown'}`
-        }
-        
-        throw new Error(errorMessage)
+        // Handle server error messages
+        handleServerErrorMessages(response?.data?._server_messages, 'Failed to create customer')
+        return
       }
     } catch (err: any) {
       console.error('Error creating customer:', err)
-      toast.error(`Failed to create customer: ${err?.message || 'Please try again.'}`, {
-        duration: 5000,
-      })
+
+      // Check if this is a server message error that was already handled
+      const errorMessage = err?.message || 'Please try again.'
+
+      // If the error message contains validation errors or server messages,
+      // it means the error was already handled by handleServerErrorMessages
+      if (
+        errorMessage.includes('Multiple validation errors') ||
+        errorMessage.includes('Failed to create customer') ||
+        errorMessage.includes('Missing mandatory fields') ||
+        errorMessage.includes('Invalid format or value for') ||
+        errorMessage.includes('Buyer ID Type') ||
+        errorMessage.includes('Pincode must be') ||
+        errorMessage.includes('VAT Number') ||
+        errorMessage.includes('Building Number') ||
+        errorMessage.includes('customer_id_type_for_zatca') ||
+        errorMessage.includes('tax_id') ||
+        errorMessage.includes('building_number') ||
+        errorMessage.includes('Validation Error') ||
+        errorMessage.includes('exactly 5 digits') ||
+        errorMessage.includes('exactly 15 digits') ||
+        errorMessage.includes("must be 'CRN' or 'OTH'")
+      ) {
+        // Server messages were already handled, don't show generic error
+        console.log('🔍 Server messages already handled, skipping generic error display')
+        console.log('🔍 Error message that was handled:', errorMessage)
+      } else {
+        // Show generic error for other types of errors
+        toast.error(`Failed to create customer: ${errorMessage}`, {
+          duration: 5000
+        })
+      }
     } finally {
       // Always reset loading state
       setIsCreatingCustomer(false)
@@ -450,8 +462,8 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                       return msg || 'Unknown error'
                     })()}
                   </span>
-                  <button 
-                    onClick={() => window.location.reload()} 
+                  <button
+                    onClick={() => window.location.reload()}
                     className="mt-2 px-3 py-1 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200"
                   >
                     Retry
@@ -472,8 +484,11 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                       ref={(el) => {
                         itemRefs.current[index] = el
                       }}
-                      className={`p-3 rounded-lg cursor-pointer transition-all duration-200 ${selectedIndex === index ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
-                        }`}
+                      className={`p-3 rounded-lg cursor-pointer transition-all duration-200 ${
+                        selectedIndex === index
+                          ? 'bg-primary text-primary-foreground'
+                          : 'hover:bg-muted'
+                      }`}
                       onClick={() => {
                         setSelectedIndex(index)
                         handleSelect()
@@ -484,10 +499,11 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                         <div className="flex-1">
                           <h4 className="font-medium text-sm leading-tight">{c.name}</h4>
                           <p
-                            className={`text-xs mt-1 ${selectedIndex === index
+                            className={`text-xs mt-1 ${
+                              selectedIndex === index
                                 ? 'text-primary-foreground/80'
                                 : 'text-muted-foreground'
-                              }`}
+                            }`}
                           >
                             GST: {c.gst || 'Not Available'}
                           </p>
@@ -755,8 +771,8 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
             </div>
 
             <DialogFooter className="gap-2 mt-4">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={() => setView('search')}
                 disabled={isCreatingCustomer}
               >
@@ -765,13 +781,13 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
               <Button
                 onClick={handleCreateCustomer}
                 disabled={
-                  isCreatingCustomer || 
-                  !newCustomer.customer_name.trim() || 
+                  isCreatingCustomer ||
+                  !newCustomer.customer_name.trim() ||
                   !newCustomer.email.trim() ||
-                  !newCustomer.mobile.trim() || 
-                  !newCustomer.address_line1.trim() || 
-                  !newCustomer.city.trim() || 
-                  !newCustomer.state.trim() || 
+                  !newCustomer.mobile.trim() ||
+                  !newCustomer.address_line1.trim() ||
+                  !newCustomer.city.trim() ||
+                  !newCustomer.state.trim() ||
                   !newCustomer.pincode.trim()
                 }
               >

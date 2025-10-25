@@ -19,6 +19,7 @@ import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 import { toast } from 'sonner'
 import ReturnModal from '../return/return-modal'
+import { handleServerErrorMessages } from '@renderer/lib/error-handler'
 
 type Props = {
   onNavigateToPrints?: () => void
@@ -177,6 +178,7 @@ const ActionButtons: React.FC<Props> = ({
   const [isConfirming, setIsConfirming] = useState(false)
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false)
+  const [paymentModes, setPaymentModes] = useState<string[]>(['Cash', 'Card', 'UPI', 'Bank'])
 
   // Get current tab data
   const {
@@ -192,6 +194,57 @@ const ActionButtons: React.FC<Props> = ({
   const items = getCurrentTabItems()
   const currentTab = getCurrentTab()
   const globalDiscountPercent = getCurrentTabGlobalDiscount()
+
+  // Load POS profile data
+  const loadPOSProfile = async () => {
+    try {
+      console.log('📋 Loading POS profile in ActionButtons...')
+      const response = await window.electronAPI?.proxy?.request({
+        url: '/api/method/centro_pos_apis.api.profile.get_pos_profile'
+      })
+
+      console.log('📋 POS profile API response in ActionButtons:', response)
+      console.log('📋 Full response structure in ActionButtons:', JSON.stringify(response, null, 2))
+
+      if (response?.data?.data) {
+        const profileData = response.data.data
+        console.log('📋 Profile data in ActionButtons:', profileData)
+        console.log('📋 Payments array in ActionButtons:', profileData.payments)
+
+        // Extract payment modes from payments array
+        if (profileData.payments && Array.isArray(profileData.payments)) {
+          console.log(
+            '📋 Processing payments array with length in ActionButtons:',
+            profileData.payments.length
+          )
+          const modes = profileData.payments.map((payment: any) => {
+            console.log('📋 Processing payment in ActionButtons:', payment)
+            return payment.mode_of_payment
+          }) as string[]
+          // Remove duplicates and filter out any undefined/null values
+          const uniqueModes = [...new Set(modes.filter((mode) => mode && mode.trim() !== ''))]
+          console.log('💳 Payment modes from profile in ActionButtons:', modes)
+          console.log('💳 Unique payment modes in ActionButtons:', uniqueModes)
+          console.log(
+            '💳 Number of payment methods found in ActionButtons:',
+            profileData.payments.length
+          )
+          setPaymentModes(uniqueModes)
+        } else {
+          console.log('📋 No payments array found or not an array in ActionButtons')
+        }
+
+        console.log('✅ Successfully loaded POS profile data in ActionButtons')
+      }
+    } catch (error) {
+      console.error('📋 Error loading POS profile in ActionButtons:', error)
+    }
+  }
+
+  // Load POS profile on component mount
+  useEffect(() => {
+    loadPOSProfile()
+  }, [])
 
   // Debug logging (commented out since working)
   // React.useEffect(() => {
@@ -544,16 +597,10 @@ const ActionButtons: React.FC<Props> = ({
             duration: 2000
           })
         } else {
-          // Parse server error message from _server_messages
-          let errorMessage = 'Failed to update order'
-          let errorDetails = ''
-
+          // Check for insufficient stock errors first
           if (response?.data?._server_messages) {
             try {
               const serverMessages = JSON.parse(response.data._server_messages)
-              console.log('📝 Parsed server messages:', serverMessages)
-
-              // Check for insufficient stock errors
               const stockErrors = parseInsufficientStockErrors(serverMessages)
               if (stockErrors.length > 0) {
                 console.log('📝 Found insufficient stock errors:', stockErrors)
@@ -561,32 +608,13 @@ const ActionButtons: React.FC<Props> = ({
                 // Don't show toast for stock errors, they'll be shown in the bottom error box
                 return
               }
-
-              if (Array.isArray(serverMessages) && serverMessages.length > 0) {
-                const firstMessage = serverMessages[0] // Already an object, no need to parse again
-                console.log('📝 First server message:', firstMessage)
-                errorMessage = firstMessage.message || errorMessage
-                errorDetails = firstMessage.title || firstMessage.description || ''
-              }
             } catch (parseError) {
-              console.error('Error parsing server messages:', parseError)
+              console.error('Error parsing server messages for stock errors:', parseError)
             }
           }
 
-          // Check for other error fields
-          if (response?.data?.message && !errorMessage.includes(response.data.message)) {
-            errorMessage = response.data.message
-          }
-
-          console.log('📝 Final edit error message:', errorMessage)
-          console.log('📝 Error details:', errorDetails)
-
-          // Create comprehensive error message
-          const fullErrorMessage = errorDetails
-            ? `${errorMessage}\n\nDetails: ${errorDetails}`
-            : errorMessage
-
-          throw new Error(fullErrorMessage)
+          // Handle other server error messages
+          handleServerErrorMessages(response?.data?._server_messages, 'Failed to update order')
         }
       } else {
         // Create new order
@@ -640,16 +668,10 @@ const ActionButtons: React.FC<Props> = ({
           // Navigate to prints tab
           onNavigateToPrints?.()
         } else {
-          // Parse server error message from _server_messages
-          let errorMessage = 'Failed to create order'
-          let errorDetails = ''
-
+          // Check for insufficient stock errors first
           if (response?.data?._server_messages) {
             try {
               const serverMessages = JSON.parse(response.data._server_messages)
-              console.log('📦 Parsed server messages:', serverMessages)
-
-              // Check for insufficient stock errors
               const stockErrors = parseInsufficientStockErrors(serverMessages)
               if (stockErrors.length > 0) {
                 console.log('📦 Found insufficient stock errors:', stockErrors)
@@ -657,57 +679,65 @@ const ActionButtons: React.FC<Props> = ({
                 // Don't show toast for stock errors, they'll be shown in the bottom error box
                 return
               }
-
-              if (Array.isArray(serverMessages) && serverMessages.length > 0) {
-                const firstMessage = serverMessages[0] // Already an object, no need to parse again
-                console.log('📦 First server message:', firstMessage)
-                errorMessage = firstMessage.message || errorMessage
-                errorDetails = firstMessage.title || firstMessage.description || ''
-              }
             } catch (parseError) {
-              console.error('Error parsing server messages:', parseError)
+              console.error('Error parsing server messages for stock errors:', parseError)
             }
           }
 
-          // Check for other error fields
-          if (response?.data?.message && !errorMessage.includes(response.data.message)) {
-            errorMessage = response.data.message
-          }
-
-          console.log('📦 Final create error message:', errorMessage)
-          console.log('📦 Error details:', errorDetails)
-
-          // Create comprehensive error message
-          const fullErrorMessage = errorDetails
-            ? `${errorMessage}\n\nDetails: ${errorDetails}`
-            : errorMessage
-
-          throw new Error(fullErrorMessage)
+          // Handle other server error messages
+          handleServerErrorMessages(response?.data?._server_messages, 'Failed to create order')
         }
       }
     } catch (error) {
       console.error('❌ Error saving order:', error)
 
-      // Create a more detailed error message
+      // Check if this is a server message error that was already handled
       const errorMessage = (error as any)?.message || 'Please try again.'
-      const isBackendError = errorMessage !== 'Please try again.'
 
-      // Format the error message properly
-      const { mainMessage, details } = formatErrorMessage(errorMessage)
+      // If the error message contains validation errors or server messages,
+      // it means the error was already handled by handleServerErrorMessages
+      if (
+        errorMessage.includes('Multiple validation errors') ||
+        errorMessage.includes('Failed to update order') ||
+        errorMessage.includes('Failed to create order') ||
+        errorMessage.includes('Missing mandatory fields') ||
+        errorMessage.includes('Invalid format or value for') ||
+        errorMessage.includes('Buyer ID Type') ||
+        errorMessage.includes('Pincode must be') ||
+        errorMessage.includes('VAT Number') ||
+        errorMessage.includes('Building Number') ||
+        errorMessage.includes('customer_id_type_for_zatca') ||
+        errorMessage.includes('tax_id') ||
+        errorMessage.includes('building_number') ||
+        errorMessage.includes('Validation Error') ||
+        errorMessage.includes('exactly 5 digits') ||
+        errorMessage.includes('exactly 15 digits') ||
+        errorMessage.includes("must be 'CRN' or 'OTH'")
+      ) {
+        // Server messages were already handled, don't show generic error
+        console.log('🔍 Server messages already handled, skipping generic error display')
+        console.log('🔍 Error message that was handled:', errorMessage)
+      } else {
+        // Show generic error for other types of errors
+        const isBackendError = errorMessage !== 'Please try again.'
 
-      // Format the error message for better display
-      const displayMessage = isBackendError
-        ? `Backend Error: ${mainMessage}`
-        : `Failed to save order: ${mainMessage}`
+        // Format the error message properly
+        const { mainMessage, details } = formatErrorMessage(errorMessage)
 
-      toast.error(displayMessage, {
-        duration: 8000, // Longer duration for backend errors
-        description:
-          details ||
-          (isBackendError
-            ? 'Please check the order details and try again.'
-            : 'An unexpected error occurred. Please try again.')
-      })
+        // Format the error message for better display
+        const displayMessage = isBackendError
+          ? `Backend Error: ${mainMessage}`
+          : `Failed to save order: ${mainMessage}`
+
+        toast.error(displayMessage, {
+          duration: 8000, // Longer duration for backend errors
+          description:
+            details ||
+            (isBackendError
+              ? 'Please check the order details and try again.'
+              : 'An unexpected error occurred. Please try again.')
+        })
+      }
     } finally {
       setIsSaving(false)
     }
@@ -792,44 +822,9 @@ const ActionButtons: React.FC<Props> = ({
         console.log('❌ API call failed - response.success is false')
         console.log('❌ Response:', response)
 
-        // Parse server error message
-        let errorMessage = 'Failed to confirm order'
-        let errorDetails = ''
-
-        if (response?.data?._server_messages) {
-          console.log('❌ Server messages found:', response.data._server_messages)
-          try {
-            const serverMessages = JSON.parse(response.data._server_messages)
-            console.log('❌ Parsed server messages:', serverMessages)
-            if (Array.isArray(serverMessages) && serverMessages.length > 0) {
-              const firstMessage = JSON.parse(serverMessages[0])
-              console.log('❌ First server message:', firstMessage)
-              errorMessage = firstMessage.message || errorMessage
-              errorDetails = firstMessage.description || firstMessage.detail || ''
-            }
-          } catch (parseError) {
-            console.error('❌ Error parsing server messages:', parseError)
-          }
-        }
-
-        // Check for other error fields in response
-        if (response?.data?.message && !errorMessage.includes(response.data.message)) {
-          errorMessage = response.data.message
-        }
-        if (response?.data?.error && !errorMessage.includes(response.data.error)) {
-          errorMessage = response.data.error
-        }
-
-        console.log('❌ Final error message:', errorMessage)
-        console.log('❌ Error details:', errorDetails)
-        console.log('❌ ===== ORDER CONFIRMATION FAILED END =====')
-
-        // Create a comprehensive error message
-        const fullErrorMessage = errorDetails
-          ? `${errorMessage}\n\nDetails: ${errorDetails}`
-          : errorMessage
-
-        throw new Error(fullErrorMessage)
+        // Handle server error messages
+        handleServerErrorMessages(response?.data?._server_messages, 'Failed to confirm order')
+        return
       }
     } catch (error) {
       console.log('❌ ===== ORDER CONFIRMATION CATCH ERROR =====')
@@ -838,26 +833,52 @@ const ActionButtons: React.FC<Props> = ({
       console.error('❌ Error stack:', (error as any)?.stack)
       console.log('❌ ===== ORDER CONFIRMATION CATCH ERROR END =====')
 
-      // Create a more detailed error message
+      // Check if this is a server message error that was already handled
       const errorMessage = (error as any)?.message || 'Please try again.'
-      const isBackendError = errorMessage !== 'Please try again.'
 
-      // Format the error message properly
-      const { mainMessage, details } = formatErrorMessage(errorMessage)
+      // If the error message contains validation errors or server messages,
+      // it means the error was already handled by handleServerErrorMessages
+      if (
+        errorMessage.includes('Multiple validation errors') ||
+        errorMessage.includes('Failed to confirm order') ||
+        errorMessage.includes('Missing mandatory fields') ||
+        errorMessage.includes('Invalid format or value for') ||
+        errorMessage.includes('Buyer ID Type') ||
+        errorMessage.includes('Pincode must be') ||
+        errorMessage.includes('VAT Number') ||
+        errorMessage.includes('Building Number') ||
+        errorMessage.includes('customer_id_type_for_zatca') ||
+        errorMessage.includes('tax_id') ||
+        errorMessage.includes('building_number') ||
+        errorMessage.includes('Validation Error') ||
+        errorMessage.includes('exactly 5 digits') ||
+        errorMessage.includes('exactly 15 digits') ||
+        errorMessage.includes("must be 'CRN' or 'OTH'")
+      ) {
+        // Server messages were already handled, don't show generic error
+        console.log('🔍 Server messages already handled, skipping generic error display')
+        console.log('🔍 Error message that was handled:', errorMessage)
+      } else {
+        // Show generic error for other types of errors
+        const isBackendError = errorMessage !== 'Please try again.'
 
-      // Format the error message for better display
-      const displayMessage = isBackendError
-        ? `Backend Error: ${mainMessage}`
-        : `Failed to confirm order: ${mainMessage}`
+        // Format the error message properly
+        const { mainMessage, details } = formatErrorMessage(errorMessage)
 
-      toast.error(displayMessage, {
-        duration: 8000, // Longer duration for backend errors
-        description:
-          details ||
-          (isBackendError
-            ? 'Please check the order details and try again.'
-            : 'An unexpected error occurred. Please try again.')
-      })
+        // Format the error message for better display
+        const displayMessage = isBackendError
+          ? `Backend Error: ${mainMessage}`
+          : `Failed to confirm order: ${mainMessage}`
+
+        toast.error(displayMessage, {
+          duration: 8000, // Longer duration for backend errors
+          description:
+            details ||
+            (isBackendError
+              ? 'Please check the order details and try again.'
+              : 'An unexpected error occurred. Please try again.')
+        })
+      }
     } finally {
       console.log('🔄 Setting isProcessingPayment to false')
       setIsProcessingPayment(false)
@@ -1085,11 +1106,12 @@ const ActionButtons: React.FC<Props> = ({
                 <SelectTrigger className="w-full text-lg py-3">
                   <SelectValue placeholder="Select mode" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Cash">Cash</SelectItem>
-                  <SelectItem value="Card">Card</SelectItem>
-                  <SelectItem value="UPI">UPI</SelectItem>
-                  <SelectItem value="Bank">Bank</SelectItem>
+                <SelectContent className="bg-white border-gray-200 shadow-lg">
+                  {paymentModes.map((mode) => (
+                    <SelectItem key={mode} value={mode}>
+                      {mode}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
