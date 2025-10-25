@@ -5,14 +5,37 @@ import { Input } from '@renderer/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@renderer/components/ui/select'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
+import { toast } from 'sonner'
 
 type Props = {
   onNavigateToPrints?: () => void
   selectedPriceList?: string
   onSaveCompleted?: () => void
+  isItemTableEditing?: boolean
 }
 
-const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList = 'Standard Selling', onSaveCompleted }) => {
+// Helper function to format HTML content for display
+const formatErrorMessage = (message: string): { mainMessage: string; details: string } => {
+  // Remove HTML tags and format the content
+  let cleanMessage = message
+    .replace(/<br\s*\/?>/gi, '\n') // Convert <br> to newlines
+    .replace(/<ul>/gi, '\n') // Convert <ul> to newline
+    .replace(/<\/ul>/gi, '') // Remove </ul>
+    .replace(/<li>/gi, '• ') // Convert <li> to bullet points
+    .replace(/<\/li>/gi, '\n') // Convert </li> to newlines
+    .replace(/<[^>]*>/g, '') // Remove any remaining HTML tags
+    .replace(/\n\s*\n/g, '\n') // Remove multiple consecutive newlines
+    .trim()
+  
+  // Split into main message and details
+  const lines = cleanMessage.split('\n')
+  const mainMessage = lines[0] || message
+  const details = lines.slice(1).join('\n').trim()
+  
+  return { mainMessage, details }
+}
+
+const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList = 'Standard Selling', onSaveCompleted, isItemTableEditing = false }) => {
   const [open, setOpen] = useState<false | 'confirm' | 'pay'>(false)
   const [orderAmount, setOrderAmount] = useState('0.00')
   const [prevOutstanding] = useState('0.00') // This will come from API
@@ -20,6 +43,8 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
   const [mode, setMode] = useState('Cash')
   const [amount, setAmount] = useState('')
   const [isSaving, setIsSaving] = useState(false)
+  const [isConfirming, setIsConfirming] = useState(false)
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false)
   
   // Get current tab data
   const { getCurrentTabItems, getCurrentTab, updateTabOrderId, setTabStatus, getCurrentTabCustomer, getCurrentTabGlobalDiscount, setTabEdited } = usePOSTabStore()
@@ -188,10 +213,19 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
       const selectedCustomer = getCurrentTabCustomer()
       console.log('🔍 Selected customer for order:', selectedCustomer)
       
-      // Resolve customer_id by calling customer list API if not available
+      // Use customer_id from stored customer object
       let customerId = selectedCustomer?.customer_id
       
-      if (!customerId && selectedCustomer?.name && selectedCustomer.name !== 'Walking Customer') {
+      console.log('🔍 Customer data for order:', {
+        selectedCustomer,
+        customer_id: selectedCustomer?.customer_id,
+        name: selectedCustomer?.name
+      })
+      
+      // If customer_id is already stored, use it directly
+      if (customerId) {
+        console.log('✅ Using stored customer ID:', customerId)
+      } else if (selectedCustomer?.name && selectedCustomer.name !== 'Walking Customer') {
         console.log('🔍 Customer ID not found, fetching from customer list API...')
         
         try {
@@ -207,10 +241,15 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
           console.log('🔍 Customer list API response:', customerListResponse)
           
           const customers = customerListResponse?.data?.data || []
+          console.log('🔍 Available customers for lookup:', customers.map(c => ({ 
+            customer_name: c.customer_name, 
+            name: c.name, 
+            id: c.id 
+          })))
           const matchingCustomer = customers.find((c: any) => c.customer_name === selectedCustomer.name)
           
           if (matchingCustomer) {
-            customerId = matchingCustomer.name // This is the actual customer_id
+            customerId = matchingCustomer.name // This is the actual customer_id (CUS-XXXXX)
             console.log('✅ Found customer ID:', customerId, 'for customer name:', selectedCustomer.name)
           } else {
             console.log('❌ No matching customer found for name:', selectedCustomer.name)
@@ -257,7 +296,12 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
       console.log('📊 Global discount percentage:', globalDiscountPercent)
       
       // Prepare custom stock adjustment sources from multi-warehouse allocations
-      const customStockAdjustmentSources = []
+      const customStockAdjustmentSources: Array<{
+        item_code: string
+        source_warehouse: string
+        qty: number
+        uom: string
+      }> = []
       
       // Process each item to check for multi-warehouse allocations
       for (const item of items) {
@@ -300,7 +344,7 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
           uom: ""
         })
       }
-
+      
       // Prepare order data
       const orderData = {
         customer: finalCustomerId,
@@ -346,22 +390,45 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
           setTabEdited(currentTab.id, false)
           // Trigger save completed callback
           onSaveCompleted?.()
-          alert(`Order updated successfully!\n\nOrder ID: ${currentTab.orderId}`)
+          // Navigate to prints tab
+          onNavigateToPrints?.()
+          toast.success(`Order updated successfully! Order ID: ${currentTab.orderId}`, {
+            duration: 2000,
+          })
         } else {
           // Parse server error message from _server_messages
           let errorMessage = 'Failed to update order'
+          let errorDetails = ''
+          
           if (response?.data?._server_messages) {
             try {
               const serverMessages = JSON.parse(response.data._server_messages)
+              console.log('📝 Parsed server messages:', serverMessages)
               if (Array.isArray(serverMessages) && serverMessages.length > 0) {
-                const firstMessage = JSON.parse(serverMessages[0])
+                const firstMessage = serverMessages[0] // Already an object, no need to parse again
+                console.log('📝 First server message:', firstMessage)
                 errorMessage = firstMessage.message || errorMessage
+                errorDetails = firstMessage.title || firstMessage.description || ''
               }
             } catch (parseError) {
               console.error('Error parsing server messages:', parseError)
             }
           }
-          throw new Error(errorMessage)
+          
+          // Check for other error fields
+          if (response?.data?.message && !errorMessage.includes(response.data.message)) {
+            errorMessage = response.data.message
+          }
+          
+          console.log('📝 Final edit error message:', errorMessage)
+          console.log('📝 Error details:', errorDetails)
+          
+          // Create comprehensive error message
+          const fullErrorMessage = errorDetails 
+            ? `${errorMessage}\n\nDetails: ${errorDetails}`
+            : errorMessage
+            
+          throw new Error(fullErrorMessage)
         }
       } else {
         // Create new order
@@ -390,6 +457,8 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
             setTabEdited(currentTab.id, false)
             // Trigger save completed callback
             onSaveCompleted?.()
+            // Navigate to prints tab
+            onNavigateToPrints?.()
           }
           
           // Show success message with relevant information
@@ -398,36 +467,72 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
           
           // Extract relevant information from response
           const displayOrderId = orderId || 'Unknown'
-          const orderName = response.data?.data?.order_name || response.data?.data?.name || displayOrderId
-          const grandTotal = response.data?.data?.grand_total || response.data?.data?.total || 'N/A'
-          const status = response.data?.data?.status || 'Created'
           
           // Show clean success message
-          alert(`Order created successfully!\n\nOrder ID: ${displayOrderId}\nOrder Name: ${orderName}\nTotal Amount: ${grandTotal}\nStatus: ${status}`)
+          toast.success(`Order created successfully! Order ID: ${displayOrderId}`, {
+            duration: 2000,
+          })
           
           // Navigate to prints tab
           onNavigateToPrints?.()
             } else {
           // Parse server error message from _server_messages
           let errorMessage = 'Failed to create order'
+          let errorDetails = ''
+          
           if (response?.data?._server_messages) {
             try {
               const serverMessages = JSON.parse(response.data._server_messages)
+              console.log('📦 Parsed server messages:', serverMessages)
               if (Array.isArray(serverMessages) && serverMessages.length > 0) {
-                const firstMessage = JSON.parse(serverMessages[0])
+                const firstMessage = serverMessages[0] // Already an object, no need to parse again
+                console.log('📦 First server message:', firstMessage)
                 errorMessage = firstMessage.message || errorMessage
+                errorDetails = firstMessage.title || firstMessage.description || ''
               }
             } catch (parseError) {
               console.error('Error parsing server messages:', parseError)
             }
           }
-          throw new Error(errorMessage)
+          
+          // Check for other error fields
+          if (response?.data?.message && !errorMessage.includes(response.data.message)) {
+            errorMessage = response.data.message
+          }
+          
+          console.log('📦 Final create error message:', errorMessage)
+          console.log('📦 Error details:', errorDetails)
+          
+          // Create comprehensive error message
+          const fullErrorMessage = errorDetails 
+            ? `${errorMessage}\n\nDetails: ${errorDetails}`
+            : errorMessage
+            
+          throw new Error(fullErrorMessage)
         }
       }
       
     } catch (error) {
       console.error('❌ Error saving order:', error)
-      alert(`Failed to save order: ${(error as any)?.message || 'Please try again.'}`)
+      
+      // Create a more detailed error message
+      const errorMessage = (error as any)?.message || 'Please try again.'
+      const isBackendError = errorMessage !== 'Please try again.'
+      
+      // Format the error message properly
+      const { mainMessage, details } = formatErrorMessage(errorMessage)
+      
+      // Format the error message for better display
+      const displayMessage = isBackendError 
+        ? `Backend Error: ${mainMessage}`
+        : `Failed to save order: ${mainMessage}`
+      
+      toast.error(displayMessage, {
+        duration: 8000, // Longer duration for backend errors
+        description: details || (isBackendError 
+          ? 'Please check the order details and try again.' 
+          : 'An unexpected error occurred. Please try again.'),
+      })
     } finally {
       setIsSaving(false)
     }
@@ -436,17 +541,27 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
   // Order confirmation API function
   const handleOrderConfirmation = async (paymentAmount: number = 0) => {
     if (!currentTab || !currentTab.orderId) {
-      alert('No order found. Please save the order first.')
+      toast.error('No order found. Please save the order first.', {
+        duration: 5000,
+      })
       return
     }
 
     if (!profile?.name) {
-      alert('POS profile not found. Please check your profile settings.')
+      toast.error('POS profile not found. Please check your profile settings.', {
+        duration: 5000,
+      })
       return
     }
 
+    setIsProcessingPayment(true)
     try {
-      console.log('🔄 Calling order confirmation API...')
+      console.log('🔄 ===== ORDER CONFIRMATION API CALL START =====')
+      console.log('🔄 API Endpoint: /api/method/centro_pos_apis.api.order.order_confirmation')
+      console.log('🔄 Payment Amount:', paymentAmount)
+      console.log('🔄 Payment Mode:', mode)
+      console.log('🔄 Order ID:', currentTab.orderId)
+      console.log('🔄 POS Profile:', profile.name)
       
       const confirmationData = {
         sales_order_id: currentTab.orderId,
@@ -459,7 +574,7 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
         ]
       }
 
-      console.log('📦 Order confirmation data:', confirmationData)
+      console.log('📦 Request Data:', JSON.stringify(confirmationData, null, 2))
 
       const response = await window.electronAPI?.proxy?.request({
         method: 'POST',
@@ -467,52 +582,124 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
         data: confirmationData
       })
 
-      console.log('📦 Order confirmation response:', response)
-      console.log('📦 Response data:', JSON.stringify(response.data, null, 2))
+      console.log('📦 ===== ORDER CONFIRMATION API RESPONSE =====')
+      console.log('📦 Full Response Object:', response)
+      console.log('📦 Response Status:', response?.status)
+      console.log('📦 Response Success:', response?.success)
+      console.log('📦 Response Data:', JSON.stringify(response?.data, null, 2))
+      console.log('📦 Response Headers:', response?.headers)
+      console.log('📦 ===== END API RESPONSE =====')
 
       if (response?.success) {
+        console.log('✅ ===== ORDER CONFIRMATION SUCCESS =====')
         console.log('✅ Order confirmed successfully!')
+        console.log('✅ Payment Amount:', paymentAmount)
+        console.log('✅ Payment Mode:', mode)
+        console.log('✅ Order ID:', currentTab.orderId)
         
         // Update tab status based on payment amount
         const newStatus = paymentAmount > 0 ? 'paid' : 'confirmed'
+        console.log('✅ Setting tab status to:', newStatus)
         setTabStatus(currentTab.id, newStatus)
         
         const action = paymentAmount > 0 ? 'paid' : 'confirmed'
-        alert(`Order ${action} successfully!\n\nOrder ID: ${currentTab.orderId}\nAmount: $${paymentAmount.toFixed(2)}`)
+        console.log('✅ Showing success toast for action:', action)
+        toast.success(`Order ${action} successfully! Order ID: ${currentTab.orderId}`, {
+          duration: 2000,
+        })
         
+        console.log('✅ Closing dialog and resetting form')
         // Close the dialog
         setOpen(false)
+        console.log('✅ ===== ORDER CONFIRMATION SUCCESS END =====')
       } else {
+        console.log('❌ ===== ORDER CONFIRMATION FAILED =====')
+        console.log('❌ API call failed - response.success is false')
+        console.log('❌ Response:', response)
+        
         // Parse server error message
         let errorMessage = 'Failed to confirm order'
+        let errorDetails = ''
+        
         if (response?.data?._server_messages) {
+          console.log('❌ Server messages found:', response.data._server_messages)
           try {
             const serverMessages = JSON.parse(response.data._server_messages)
+            console.log('❌ Parsed server messages:', serverMessages)
             if (Array.isArray(serverMessages) && serverMessages.length > 0) {
               const firstMessage = JSON.parse(serverMessages[0])
+              console.log('❌ First server message:', firstMessage)
               errorMessage = firstMessage.message || errorMessage
+              errorDetails = firstMessage.description || firstMessage.detail || ''
             }
           } catch (parseError) {
-            console.error('Error parsing server messages:', parseError)
+            console.error('❌ Error parsing server messages:', parseError)
           }
         }
-        throw new Error(errorMessage)
+        
+        // Check for other error fields in response
+        if (response?.data?.message && !errorMessage.includes(response.data.message)) {
+          errorMessage = response.data.message
+        }
+        if (response?.data?.error && !errorMessage.includes(response.data.error)) {
+          errorMessage = response.data.error
+        }
+        
+        console.log('❌ Final error message:', errorMessage)
+        console.log('❌ Error details:', errorDetails)
+        console.log('❌ ===== ORDER CONFIRMATION FAILED END =====')
+        
+        // Create a comprehensive error message
+        const fullErrorMessage = errorDetails 
+          ? `${errorMessage}\n\nDetails: ${errorDetails}`
+          : errorMessage
+          
+        throw new Error(fullErrorMessage)
       }
     } catch (error) {
+      console.log('❌ ===== ORDER CONFIRMATION CATCH ERROR =====')
       console.error('❌ Error confirming order:', error)
-      alert(`Failed to confirm order: ${(error as any)?.message || 'Please try again.'}`)
+      console.error('❌ Error message:', (error as any)?.message)
+      console.error('❌ Error stack:', (error as any)?.stack)
+      console.log('❌ ===== ORDER CONFIRMATION CATCH ERROR END =====')
+      
+      // Create a more detailed error message
+      const errorMessage = (error as any)?.message || 'Please try again.'
+      const isBackendError = errorMessage !== 'Please try again.'
+      
+      // Format the error message properly
+      const { mainMessage, details } = formatErrorMessage(errorMessage)
+      
+      // Format the error message for better display
+      const displayMessage = isBackendError 
+        ? `Backend Error: ${mainMessage}`
+        : `Failed to confirm order: ${mainMessage}`
+      
+      toast.error(displayMessage, {
+        duration: 8000, // Longer duration for backend errors
+        description: details || (isBackendError 
+          ? 'Please check the order details and try again.' 
+          : 'An unexpected error occurred. Please try again.'),
+      })
+    } finally {
+      console.log('🔄 Setting isProcessingPayment to false')
+      setIsProcessingPayment(false)
     }
   }
 
   const handleConfirm = () => {
     if (!currentTab) return
     console.log('🔘 Confirm button clicked - opening payment dialog')
+    setAmount('0') // Set amount to 0 for confirm mode
+    setIsConfirming(true) // Set confirming state
     setOpen('confirm')
   }
 
   const handlePay = () => {
     if (!currentTab) return
     console.log('💳 Pay button clicked - opening payment dialog')
+    setAmount('') // Clear amount for pay mode
+    setIsConfirming(false) // Reset confirming state
     setOpen('pay')
   }
 
@@ -578,7 +765,7 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
             {currentUserPrivileges?.sales && (
             <Button
               className="px-2 py-2 bg-gradient-to-r from-yellow-400 to-yellow-500 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs"
-              disabled={!currentTab?.isEdited || isSaving}
+              disabled={!currentTab?.isEdited || isSaving || isItemTableEditing}
               onClick={handleSave}
             >
               {isSaving ? (
@@ -599,6 +786,7 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
             {currentUserPrivileges?.billing && (
               <Button
                 className="px-2 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs"
+                disabled={isItemTableEditing}
                 onClick={handleConfirm}
               >
                 <i className="fas fa-check text-lg"></i>
@@ -606,7 +794,11 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
               </Button>
             )}
             {currentUserPrivileges?.billing && (
-              <Button className="px-2 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs" onClick={handlePay}>
+              <Button 
+                className="px-2 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs" 
+                disabled={isItemTableEditing}
+                onClick={handlePay}
+              >
                 <i className="fas fa-credit-card text-lg"></i>
                 Pay <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+P</span>
               </Button>
@@ -630,7 +822,7 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
       <Dialog open={!!open} onOpenChange={(v) => setOpen(v ? (open || 'confirm') : false)}>
         <DialogContent className="max-w-4xl w-[90vw] bg-white border-2 shadow-2xl">
           <DialogHeader className="pb-4">
-            <DialogTitle className="text-xl font-bold text-gray-800">{open === 'pay' ? 'Payment' : 'Confirm and Pay'}</DialogTitle>
+            <DialogTitle className="text-xl font-bold text-gray-800">{open === 'pay' ? 'Payment' : 'Confirm'}</DialogTitle>
           </DialogHeader>
 
           {/* Row: amounts */}
@@ -671,7 +863,13 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
             </div>
             <div>
               <div className="text-sm font-medium text-gray-700 mb-2">Amount</div>
-              <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="text-lg py-3" />
+              <Input 
+                type="number" 
+                value={amount} 
+                onChange={(e) => setAmount(e.target.value)} 
+                readOnly={isConfirming}
+                className={`text-lg py-3 ${isConfirming ? 'bg-gray-100' : ''}`}
+              />
             </div>
           </div>
 
@@ -686,7 +884,7 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
           <DialogFooter className="pt-6">
             <Button 
                onClick={async () => {
-                console.log('💳 Confirm and Pay clicked in dialog')
+                console.log('💳 Confirm/Pay clicked in dialog')
                  
                  // Get payment amount from dialog
                  const paymentAmount = parseFloat(amount) || 0
@@ -699,12 +897,24 @@ const ActionButtons: React.FC<Props> = ({ onNavigateToPrints, selectedPriceList 
                  setAmount('')
                  setMode('Cash')
                  setDate(new Date().toISOString().slice(0, 10))
+                 setIsConfirming(false)
               }} 
-              className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 text-lg font-semibold"
+              disabled={isProcessingPayment}
+              className={`px-8 py-3 text-lg font-semibold ${isProcessingPayment ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'} text-white`}
             >
-              Confirm and Pay
+              {isProcessingPayment ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  {isConfirming ? 'Confirming...' : 'Processing...'}
+                </div>
+              ) : (
+                isConfirming ? 'Confirm' : 'Confirm and Pay'
+              )}
             </Button>
-            <Button variant="outline" onClick={() => setOpen(false)} className="px-8 py-3 text-lg font-semibold">Cancel</Button>
+            <Button variant="outline" onClick={() => {
+              setOpen(false)
+              setIsConfirming(false)
+            }} className="px-8 py-3 text-lg font-semibold">Cancel</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

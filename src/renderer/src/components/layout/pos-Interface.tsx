@@ -21,6 +21,20 @@ const POSInterface: React.FC = () => {
   const [rightPanelTab, setRightPanelTab] = useState<'product' | 'customer' | 'prints' | 'payments' | 'orders'>('product')
   const [selectedPriceList, setSelectedPriceList] = useState<string>('Standard Selling')
   const [saveCompleted, setSaveCompleted] = useState(0)
+  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false)
+  const [isItemTableEditing, setIsItemTableEditing] = useState(false)
+
+  // Handle item selection - switch to product tab
+  const handleItemSelect = (itemId: string) => {
+    setSelectedItemId(itemId)
+    setRightPanelTab('product')
+  }
+
+  // Handle customer selection - switch to customer tab and unselect all items
+  const handleCustomerSelect = (customer: any) => {
+    setSelectedItemId(undefined) // Unselect all items
+    setRightPanelTab('customer')
+  }
 
   const {
     getCurrentTabItems,
@@ -204,14 +218,23 @@ const POSInterface: React.FC = () => {
   // Arrow keys are handled by the items table component, so we don't need global handlers here
   // Enter key is handled by the items table component, so we don't need a global handler here
   useHotkeys('space', () => {
-    if (selectedItemId) {
-      toast.info('Press Space on a selected item to edit');
+    // Check if we're in a text input field - if so, don't prevent default spacebar behavior
+    const activeElement = document.activeElement
+    if (activeElement && (
+      activeElement.tagName === 'INPUT' || 
+      activeElement.tagName === 'TEXTAREA' || 
+      activeElement.contentEditable === 'true'
+    )) {
+      return // Allow normal spacebar behavior in text fields
     }
-  }, { enableOnFormTags: false, preventDefault: true })
+    
+    // Spacebar functionality is handled by individual components
+    // No need for global notification
+  }, { enableOnFormTags: false, preventDefault: false })
 
   return (
     <Fragment>
-      <div className="h-screen bg-gray-50 flex w-screen">
+      <div className="h-screen bg-gray-50 flex w-screen overflow-hidden scrollbar-hide">
         <div className="flex-1 flex flex-col">
           <Header />
           {/* <button onClick={() => setOpen(true)} className="m-4 p-2 bg-blue-500 text-white rounded">
@@ -221,21 +244,28 @@ const POSInterface: React.FC = () => {
             onNavigateToPrints={() => setRightPanelTab('prints')} 
             selectedPriceList={selectedPriceList}
             onSaveCompleted={() => setSaveCompleted(prev => prev + 1)}
+            isItemTableEditing={isItemTableEditing}
           />
           {/* Fixed top: Order details */}
-          <OrderDetails onPriceListChange={setSelectedPriceList} />
+          <OrderDetails 
+            onPriceListChange={setSelectedPriceList} 
+            onCustomerModalChange={setIsCustomerModalOpen}
+            onCustomerSelect={handleCustomerSelect}
+          />
 
           {/* Items area takes remaining space; inner table handles its own scroll */}
           <div className="flex-1">
             <ItemsTable
               onRemoveItem={removeItem}
               selectedItemId={selectedItemId}
-              selectItem={selectItem}
+              selectItem={handleItemSelect}
               shouldStartEditing={shouldStartEditing}
               onEditingStarted={() => setShouldStartEditing(false)}
               onAddItemClick={() => setOpen(true)}
               onSaveCompleted={saveCompleted}
               isProductModalOpen={open}
+              isCustomerModalOpen={isCustomerModalOpen}
+              onEditingStateChange={setIsItemTableEditing}
             />
           </div>
 

@@ -2,6 +2,14 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+// Helper function to abbreviate order ID to last 5 digits
+const abbreviateOrderId = (orderId: string) => {
+  if (!orderId) return orderId
+  // Extract last 5 digits from order ID
+  const last5Digits = orderId.slice(-5)
+  return `#${last5Digits}`
+}
+
 interface Tab {
   id: string
   orderId: string | null
@@ -72,7 +80,7 @@ export const usePOSTabStore = create<POSTabStore>()(
           orderId,
           orderData,
           type: 'existing',
-          displayName: `#${orderId}`,
+          displayName: abbreviateOrderId(orderId),
           status: 'draft',
           privilege: 'billing',
           customer: { name: 'Walking Customer', gst: 'Not Applicable' },
@@ -184,7 +192,7 @@ export const usePOSTabStore = create<POSTabStore>()(
       // Other tab data methods
       updateTabOrderId: (tabId: string, orderId: string) => {
         set((state) => ({
-          tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, orderId, type: 'existing', displayName: `#${orderId}`, isEdited: false } : tab))
+          tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, orderId, type: 'existing', displayName: abbreviateOrderId(orderId), isEdited: false } : tab))
         }))
       },
 

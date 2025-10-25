@@ -12,7 +12,7 @@ function roundToNearest(value: number, step = 0.05) {
 }
 
 const DiscountSection: React.FC<Props> = () => {
-  const { getCurrentTabItems, getCurrentTabGlobalDiscount, updateTabGlobalDiscount, getCurrentTab } = usePOSTabStore()
+  const { getCurrentTabItems, getCurrentTabGlobalDiscount, updateTabGlobalDiscount, getCurrentTab, setTabEdited } = usePOSTabStore()
   const items = getCurrentTabItems()
   const currentTab = getCurrentTab()
   const globalDiscountPercent = getCurrentTabGlobalDiscount()
@@ -87,6 +87,7 @@ const DiscountSection: React.FC<Props> = () => {
     if (currentTab) {
       const newValue = parseFloat(globalDiscountValue) || 0
       updateTabGlobalDiscount(currentTab.id, newValue)
+      setTabEdited(currentTab.id, true) // Mark tab as edited when global discount changes
       setIsEditingGlobalDiscount(false)
     }
   }

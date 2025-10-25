@@ -241,7 +241,7 @@ const PrintsTabContent: React.FC = () => {
         {/* <p className="text-xs text-gray-500">Debug: printItems = {JSON.stringify(printItems)}</p> */}
       </div>
 
-      <div className="space-y-4 flex-1 overflow-y-auto">
+      <div className="space-y-4 flex-1 overflow-y-auto scrollbar-hide">
         {Array.isArray(printItems) && printItems.map((item, index) => {
           const itemKey = `${item.report_title}-${item.url}`
           const pdfPreview = pdfPreviews[itemKey]
@@ -369,6 +369,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
   const [subTab, setSubTab] = useState<'orders' | 'returns'>('orders')
   const [customerSubTab, setCustomerSubTab] = useState<'recent' | 'most'>('recent')
   const [ordersSubTab, setOrdersSubTab] = useState<'orders' | 'returns'>('orders')
+  const [productSubTab, setProductSubTab] = useState<'customer-history' | 'purchase-history'>('customer-history')
   
   // Get logout function from useAuthStore
   const { logout } = useAuthStore()
@@ -466,6 +467,202 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
     }
   }, [selectedItemId, currentUom])
 
+  // Fetch customer history for selected product
+  const fetchCustomerHistory = async (itemCode: string) => {
+    if (!itemCode || !selectedCustomer) {
+      console.log('🚫 Customer history fetch skipped - missing itemCode or selectedCustomer:', { itemCode, selectedCustomer })
+      return
+    }
+    
+    // Get the correct customer_id by fetching customer list and finding the matching customer
+    let customerId = selectedCustomer.customer_id || selectedCustomer.name
+    
+    try {
+      console.log('📊 ===== FETCHING CUSTOMER LIST FOR CUSTOMER_ID MAPPING =====')
+      const customerListResponse = await window.electronAPI?.proxy?.request({
+        method: 'GET',
+        url: '/api/method/centro_pos_apis.api.customer.customer_list',
+        params: {
+          search_term: '',
+          limit_start: 0,
+          limit_page_length: 1000
+        }
+      })
+      
+      if (customerListResponse?.success && customerListResponse?.data?.data) {
+        const customers = customerListResponse.data.data
+        console.log('📊 Customer list from API:', customers)
+        
+        // Find the customer where customer_name matches selectedCustomer.name
+        const matchingCustomer = customers.find((c: any) => c.customer_name === selectedCustomer.name)
+        console.log('📊 Matching customer found:', matchingCustomer)
+        
+        if (matchingCustomer) {
+          customerId = matchingCustomer.name // This should be the CUS-ID
+          console.log('📊 Corrected customer_id from API:', customerId)
+        } else {
+          console.log('❌ No matching customer found in API response')
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error fetching customer list for mapping:', error)
+    }
+    
+    console.log('📊 ===== CUSTOMER HISTORY API CALL =====')
+    console.log('📊 Item Code:', itemCode)
+    console.log('📊 Customer ID (final):', customerId)
+    console.log('📊 Selected Customer Object:', selectedCustomer)
+    console.log('📊 Selected Customer Keys:', Object.keys(selectedCustomer))
+    console.log('📊 Selected Customer customer_id:', selectedCustomer.customer_id)
+    console.log('📊 Selected Customer name:', selectedCustomer.name)
+    console.log('📊 Selected Customer id:', selectedCustomer.id)
+    
+    setCustomerHistoryLoading(true)
+    try {
+      const apiUrl = '/api/method/centro_pos_apis.api.product.get_product_customer_history'
+      const apiParams = {
+        item_id: itemCode,
+        customer_id: customerId
+      }
+      
+      console.log('📊 API URL:', apiUrl)
+      console.log('📊 API Params:', apiParams)
+      console.log('📊 Making API request...')
+      
+      const response = await window.electronAPI?.proxy?.request({
+        method: 'GET',
+        url: apiUrl,
+        params: apiParams
+      })
+      
+      console.log('📊 ===== CUSTOMER HISTORY API RESPONSE =====')
+      console.log('📊 Full Response:', response)
+      console.log('📊 Response Success:', response?.success)
+      console.log('📊 Response Data:', response?.data)
+      console.log('📊 Response Status:', response?.status)
+      console.log('📊 Response Headers:', response?.headers)
+      
+      if (response?.success && response?.data?.data) {
+        setCustomerHistory(response.data.data)
+        console.log('✅ Customer history loaded successfully:', response.data.data)
+        console.log('✅ Number of history items:', response.data.data.length)
+      } else {
+        console.log('❌ No customer history data found')
+        console.log('❌ Response success:', response?.success)
+        console.log('❌ Response data:', response?.data)
+        setCustomerHistory([])
+      }
+    } catch (error) {
+      console.error('❌ ===== CUSTOMER HISTORY API ERROR =====')
+      console.error('❌ Error details:', error)
+      console.error('❌ Error message:', error?.message)
+      console.error('❌ Error stack:', error?.stack)
+      setCustomerHistory([])
+    } finally {
+      setCustomerHistoryLoading(false)
+      console.log('📊 Customer history loading completed')
+    }
+  }
+
+  // Fetch purchase history for selected product
+  const fetchPurchaseHistory = async (itemCode: string) => {
+    if (!itemCode) {
+      console.log('🚫 Purchase history fetch skipped - missing itemCode:', itemCode)
+      return
+    }
+    
+    console.log('📦 ===== PURCHASE HISTORY API CALL =====')
+    console.log('📦 Item Code:', itemCode)
+    
+    setPurchaseHistoryLoading(true)
+    try {
+      const apiUrl = '/api/method/centro_pos_apis.api.product.get_product_purchase_history'
+      const apiParams = {
+        item_id: itemCode
+      }
+      
+      console.log('📦 API URL:', apiUrl)
+      console.log('📦 API Params:', apiParams)
+      console.log('📦 Making API request...')
+      
+      const response = await window.electronAPI?.proxy?.request({
+        method: 'GET',
+        url: apiUrl,
+        params: apiParams
+      })
+      
+      console.log('📦 ===== PURCHASE HISTORY API RESPONSE =====')
+      console.log('📦 Full Response:', response)
+      console.log('📦 Response Success:', response?.success)
+      console.log('📦 Response Data:', response?.data)
+      console.log('📦 Response Status:', response?.status)
+      console.log('📦 Response Headers:', response?.headers)
+      
+      if (response?.success && response?.data?.data) {
+        setPurchaseHistory(response.data.data)
+        console.log('✅ Purchase history loaded successfully:', response.data.data)
+        console.log('✅ Number of purchase history items:', response.data.data.length)
+      } else {
+        console.log('❌ No purchase history data found')
+        console.log('❌ Response success:', response?.success)
+        console.log('❌ Response data:', response?.data)
+        setPurchaseHistory([])
+      }
+    } catch (error) {
+      console.error('❌ ===== PURCHASE HISTORY API ERROR =====')
+      console.error('❌ Error details:', error)
+      console.error('❌ Error message:', error?.message)
+      console.error('❌ Error stack:', error?.stack)
+      setPurchaseHistory([])
+    } finally {
+      setPurchaseHistoryLoading(false)
+      console.log('📦 Purchase history loading completed')
+    }
+  }
+
+  // Load history data when product or customer changes
+  useEffect(() => {
+    console.log('🔄 ===== HISTORY LOADING TRIGGERED =====')
+    console.log('🔄 Selected Item ID:', selectedItemId)
+    console.log('🔄 Selected Customer:', selectedCustomer)
+    console.log('🔄 Customer ID:', selectedCustomer?.customer_id || selectedCustomer?.name)
+    console.log('🔄 Current Product Subtab:', productSubTab)
+    
+    if (selectedItemId) {
+      console.log('🔄 Product/Customer changed, loading history data...')
+      
+      // Load both histories when product or customer changes
+      console.log('🔄 Calling fetchCustomerHistory with:', selectedItemId)
+      console.log('🔄 Calling fetchPurchaseHistory with:', selectedItemId)
+      fetchCustomerHistory(selectedItemId)
+      fetchPurchaseHistory(selectedItemId)
+    } else {
+      console.log('🔄 No product selected, clearing history data...')
+      // Clear history when no product is selected
+      setCustomerHistory([])
+      setPurchaseHistory([])
+    }
+  }, [selectedItemId, selectedCustomer])
+
+  // Load history data when subtab changes
+  useEffect(() => {
+    console.log('🔄 ===== SUBTAB CHANGED =====')
+    console.log('🔄 Current Product Subtab:', productSubTab)
+    console.log('🔄 Selected Item ID:', selectedItemId)
+    console.log('🔄 Selected Customer:', selectedCustomer)
+    
+    if (selectedItemId) {
+      if (productSubTab === 'customer-history') {
+        console.log('🔄 Customer History tab active, fetching customer history...')
+        fetchCustomerHistory(selectedItemId)
+      } else if (productSubTab === 'purchase-history') {
+        console.log('🔄 Purchase History tab active, fetching purchase history...')
+        fetchPurchaseHistory(selectedItemId)
+      }
+    }
+  }, [productSubTab])
+
+
   // Live warehouse stock fetched from backend (for current UOM)
   const [stockLoading, setStockLoading] = useState(false)
   const [stockError, setStockError] = useState<string | null>(null)
@@ -474,6 +671,22 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
   // Product list API data for on-hand units
   const [productListData, setProductListData] = useState<any>(null)
   const [productListLoading, setProductListLoading] = useState(false)
+  
+  // Product history states
+  const [customerHistory, setCustomerHistory] = useState<any[]>([])
+  const [purchaseHistory, setPurchaseHistory] = useState<any[]>([])
+  const [customerHistoryLoading, setCustomerHistoryLoading] = useState(false)
+  const [purchaseHistoryLoading, setPurchaseHistoryLoading] = useState(false)
+  const [customerHistorySearch, setCustomerHistorySearch] = useState('')
+  const [purchaseHistorySearch, setPurchaseHistorySearch] = useState('')
+  
+  // Customer tab search states
+  const [recentOrdersSearch, setRecentOrdersSearch] = useState('')
+  const [mostOrderedSearch, setMostOrderedSearch] = useState('')
+  
+  // Orders tab search states
+  const [ordersSearch, setOrdersSearch] = useState('')
+  const [returnsSearch, setReturnsSearch] = useState('')
 
   // Recent orders for selected customer
   const [recentOrders, setRecentOrders] = useState<any[]>([])
@@ -501,6 +714,97 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
   const [profileLoading, setProfileLoading] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
   const [showProfileDropdown, setShowProfileDropdown] = useState(false)
+
+  // Filter customer history based on search
+  const filteredCustomerHistory = useMemo(() => {
+    if (!customerHistorySearch.trim()) return customerHistory
+    
+    const searchTerm = customerHistorySearch.toLowerCase()
+    return customerHistory.filter((item: any) => 
+      item.sales_order_no?.toLowerCase().includes(searchTerm) ||
+      item.invoice_no?.toLowerCase().includes(searchTerm) ||
+      item.quantity?.toString().includes(searchTerm) ||
+      item.unit_price?.toString().includes(searchTerm) ||
+      item.total_amount?.toString().includes(searchTerm) ||
+      item.creation_datetime?.toLowerCase().includes(searchTerm)
+    )
+  }, [customerHistory, customerHistorySearch])
+
+  // Filter purchase history based on search
+  const filteredPurchaseHistory = useMemo(() => {
+    if (!purchaseHistorySearch.trim()) return purchaseHistory
+    
+    const searchTerm = purchaseHistorySearch.toLowerCase()
+    return purchaseHistory.filter((item: any) => 
+      item.invoice_no?.toLowerCase().includes(searchTerm) ||
+      item.purchase_order_no?.toLowerCase().includes(searchTerm) ||
+      item.qty?.toString().includes(searchTerm) ||
+      item.unit_price?.toString().includes(searchTerm) ||
+      item.total_amount?.toString().includes(searchTerm) ||
+      item.creation_datetime?.toLowerCase().includes(searchTerm)
+    )
+  }, [purchaseHistory, purchaseHistorySearch])
+
+  // Filter recent orders based on search
+  const filteredRecentOrders = useMemo(() => {
+    if (!recentOrdersSearch.trim()) return recentOrders
+    
+    const searchTerm = recentOrdersSearch.toLowerCase()
+    return recentOrders.filter((order: any) => 
+      order.invoice_no?.toLowerCase().includes(searchTerm) ||
+      order.sales_order_no?.toLowerCase().includes(searchTerm) ||
+      order.total_qty?.toString().includes(searchTerm) ||
+      order.total_amount?.toString().includes(searchTerm) ||
+      order.status?.toLowerCase().includes(searchTerm) ||
+      order.creation_datetime?.toLowerCase().includes(searchTerm)
+    )
+  }, [recentOrders, recentOrdersSearch])
+
+  // Filter most ordered based on search
+  const filteredMostOrdered = useMemo(() => {
+    if (!mostOrderedSearch.trim()) return mostOrdered
+    
+    const searchTerm = mostOrderedSearch.toLowerCase()
+    return mostOrdered.filter((item: any) => 
+      item.item_name?.toLowerCase().includes(searchTerm) ||
+      item.item_code?.toLowerCase().includes(searchTerm) ||
+      item.total_qty?.toString().includes(searchTerm) ||
+      item.avg_price?.toString().includes(searchTerm) ||
+      item.total_price?.toString().includes(searchTerm)
+    )
+  }, [mostOrdered, mostOrderedSearch])
+
+  // Filter orders based on search
+  const filteredOrders = useMemo(() => {
+    const orders = allOrders.filter(order => order.status !== 'Return')
+    if (!ordersSearch.trim()) return orders
+    
+    const searchTerm = ordersSearch.toLowerCase()
+    return orders.filter((order: any) => 
+      order.invoice_no?.toLowerCase().includes(searchTerm) ||
+      order.sales_order_no?.toLowerCase().includes(searchTerm) ||
+      order.total_qty?.toString().includes(searchTerm) ||
+      order.total_amount?.toString().includes(searchTerm) ||
+      order.status?.toLowerCase().includes(searchTerm) ||
+      order.creation_datetime?.toLowerCase().includes(searchTerm)
+    )
+  }, [allOrders, ordersSearch])
+
+  // Filter returns based on search
+  const filteredReturns = useMemo(() => {
+    const returns = allOrders.filter(order => order.status === 'Return')
+    if (!returnsSearch.trim()) return returns
+    
+    const searchTerm = returnsSearch.toLowerCase()
+    return returns.filter((order: any) => 
+      order.invoice_no?.toLowerCase().includes(searchTerm) ||
+      order.sales_order_no?.toLowerCase().includes(searchTerm) ||
+      order.total_qty?.toString().includes(searchTerm) ||
+      order.total_amount?.toString().includes(searchTerm) ||
+      order.status?.toLowerCase().includes(searchTerm) ||
+      order.creation_datetime?.toLowerCase().includes(searchTerm)
+    )
+  }, [allOrders, returnsSearch])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -921,7 +1225,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
   }
 
   return (
-    <div className="w-[480px] bg-white/60 backdrop-blur border-l border-white/20 flex flex-col">
+    <div className="w-[480px] bg-white/60 backdrop-blur border-l border-white/20 flex flex-col overflow-y-auto scrollbar-hide">
       <div className="flex justify-end border-b border-gray-200/60 bg-white/80 pl-2 pr-2">
         <button
           className={`px-4 py-3 font-semibold text-sm border-b-3 ${
@@ -1068,7 +1372,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
       </div>
 
       {activeTab === 'product' && (
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto scrollbar-hide">
           {!selectedItem ? (
             <div className="flex-1 flex items-center justify-center p-8">
               <div className="text-center">
@@ -1152,13 +1456,193 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                   )}
                 </div>
               </div>
+
+              {/* Product History Section */}
+              <div className="bg-white/90 mt-2">
+                <div className="flex border-b border-gray-200/60">
+                  <button
+                    className={`flex-1 px-4 py-3 font-semibold text-sm border-b-2 ${
+                      productSubTab === 'customer-history' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'text-gray-500 hover:text-black hover:bg-white/40'
+                    }`}
+                    onClick={() => {
+                      console.log('🔄 Switching to Customer History tab')
+                      setProductSubTab('customer-history')
+                      // Trigger customer history API call when switching to this tab
+                      if (selectedItemId) {
+                        console.log('🔄 Triggering customer history fetch from tab click')
+                        fetchCustomerHistory(selectedItemId)
+                      }
+                    }}
+                  >
+                    Customer History
+                  </button>
+                  <button
+                    className={`flex-1 px-4 py-3 font-medium text-sm border-b-2 ${
+                      productSubTab === 'purchase-history' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'text-gray-500 hover:text-black hover:bg-white/40'
+                    }`}
+                    onClick={() => {
+                      console.log('🔄 Switching to Purchase History tab')
+                      setProductSubTab('purchase-history')
+                      // Trigger purchase history API call when switching to this tab
+                      if (selectedItemId) {
+                        console.log('🔄 Triggering purchase history fetch from tab click')
+                        fetchPurchaseHistory(selectedItemId)
+                      }
+                    }}
+                  >
+                    Purchase History
+                  </button>
+                </div>
+
+                {/* Customer History Tab */}
+                {productSubTab === 'customer-history' && (
+                  <div className="p-4">
+                    <div className="text-xs text-gray-500 mb-2">
+                      {selectedCustomer ? `Customer history for ${selectedCustomer.name}` : 'Select a customer to view customer history'}
+                    </div>
+                    
+                    {/* Search Bar */}
+                    <div className="relative mb-4">
+                      <input
+                        type="text"
+                        placeholder="Search customer history..."
+                        value={customerHistorySearch}
+                        onChange={(e) => setCustomerHistorySearch(e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                      </div>
+                    </div>
+
+                    {/* Customer History Content */}
+                    <div className="max-h-64 overflow-y-auto scrollbar-hide">
+                      {!selectedCustomer ? (
+                        <div className="text-center py-4">
+                          <div className="text-sm text-gray-500">Select a customer to view history</div>
+                        </div>
+                      ) : customerHistoryLoading ? (
+                        <div className="text-center py-4">
+                          <div className="text-sm text-gray-500">Loading customer history...</div>
+                        </div>
+                      ) : filteredCustomerHistory.length > 0 ? (
+                        <div className="space-y-2">
+                          {filteredCustomerHistory.map((item, index) => (
+                            <div key={index} className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-100">
+                              <div className="grid grid-cols-2 gap-2 text-xs">
+                                <div>
+                                  <span className="font-semibold text-gray-600">Invoice:</span>
+                                  <div className="font-bold text-blue-700">{item.invoice_no}</div>
+                                </div>
+                                <div>
+                                  <span className="font-semibold text-gray-600">Qty:</span>
+                                  <div className="font-bold text-green-600">{item.quantity}</div>
+                                </div>
+                                <div>
+                                  <span className="font-semibold text-gray-600">Unit Price:</span>
+                                  <div className="font-bold text-orange-600">${item.unit_price?.toFixed(2)}</div>
+                                </div>
+                                <div>
+                                  <span className="font-semibold text-gray-600">Total:</span>
+                                  <div className="font-bold text-purple-600">${item.total_amount?.toFixed(2)}</div>
+                                </div>
+                                <div className="col-span-2">
+                                  <span className="font-semibold text-gray-600">Date:</span>
+                                  <div className="text-gray-700">
+                                    {new Date(item.creation_datetime).toLocaleString()}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-4">
+                          <div className="text-sm text-gray-500">No customer history found</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Purchase History Tab */}
+                {productSubTab === 'purchase-history' && (
+                  <div className="p-4">
+                    <div className="text-xs text-gray-500 mb-2">
+                      Purchase history for selected product
+                    </div>
+                    
+                    {/* Search Bar */}
+                    <div className="relative mb-4">
+                      <input
+                        type="text"
+                        placeholder="Search purchase history..."
+                        value={purchaseHistorySearch}
+                        onChange={(e) => setPurchaseHistorySearch(e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                      </div>
+                    </div>
+
+                    {/* Purchase History Content */}
+                    <div className="max-h-64 overflow-y-auto scrollbar-hide">
+                      {purchaseHistoryLoading ? (
+                        <div className="text-center py-4">
+                          <div className="text-sm text-gray-500">Loading purchase history...</div>
+                        </div>
+                      ) : filteredPurchaseHistory.length > 0 ? (
+                        <div className="space-y-2">
+                          {filteredPurchaseHistory.map((item, index) => (
+                            <div key={index} className="p-3 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-100">
+                              <div className="grid grid-cols-2 gap-2 text-xs">
+                                <div>
+                                  <span className="font-semibold text-gray-600">Invoice:</span>
+                                  <div className="font-bold text-green-700">{item.invoice_no}</div>
+                                </div>
+                                <div>
+                                  <span className="font-semibold text-gray-600">Qty:</span>
+                                  <div className="font-bold text-green-600">{item.qty}</div>
+                                </div>
+                                <div>
+                                  <span className="font-semibold text-gray-600">Unit Price:</span>
+                                  <div className="font-bold text-orange-600">${item.unit_price?.toFixed(2)}</div>
+                                </div>
+                                <div>
+                                  <span className="font-semibold text-gray-600">Total:</span>
+                                  <div className="font-bold text-purple-600">${item.total_amount?.toFixed(2)}</div>
+                                </div>
+                                <div className="col-span-2">
+                                  <span className="font-semibold text-gray-600">Date:</span>
+                                  <div className="text-gray-700">
+                                    {new Date(item.creation_datetime).toLocaleString()}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-4">
+                          <div className="text-sm text-gray-500">No purchase history found</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>
       )}
 
       {activeTab === 'customer' && (
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto scrollbar-hide">
           <div className="p-4 border-b border-gray-200/60 bg-white/90">
             {customerDetailsLoading && (
               <div className="text-center py-4">
@@ -1265,6 +1749,23 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                 <div className="text-xs text-gray-500 mb-2">
                   {selectedCustomer ? `Recent orders for ${selectedCustomer.name}` : 'Select a customer to view recent orders'}
                 </div>
+                
+                {/* Search Bar */}
+                <div className="relative mb-4">
+                  <input
+                    type="text"
+                    placeholder="Search recent orders..."
+                    value={recentOrdersSearch}
+                    onChange={(e) => setRecentOrdersSearch(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                </div>
+                
                 <div className="space-y-2">
                   {ordersLoading && (
                     <div className="text-xs text-gray-500 text-center py-4">Loading recent orders...</div>
@@ -1272,7 +1773,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                   {ordersError && (
                     <div className="text-xs text-red-600 text-center py-4">{ordersError}</div>
                   )}
-                  {!ordersLoading && !ordersError && recentOrders.length > 0 && recentOrders.slice(0, 3).map((order, index) => (
+                  {!ordersLoading && !ordersError && filteredRecentOrders.length > 0 && filteredRecentOrders.slice(0, 3).map((order, index) => (
                     <div key={index} className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200">
                       <div className="flex justify-between items-center mb-2">
                         <div className="font-semibold text-primary text-sm">{order.invoice_no || order.sales_order_no}</div>
@@ -1306,12 +1807,12 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                     </div>
                     </div>
                   ))}
-                  {!ordersLoading && !ordersError && recentOrders.length === 0 && selectedCustomer && (
+                  {!ordersLoading && !ordersError && filteredRecentOrders.length === 0 && selectedCustomer && (
                     <div className="text-xs text-gray-500 text-center py-4">No recent orders found</div>
                   )}
-                  {!ordersLoading && !ordersError && recentOrders.length > 3 && (
+                  {!ordersLoading && !ordersError && filteredRecentOrders.length > 3 && (
                     <div className="text-xs text-gray-400 text-center py-2">
-                      Showing 3 of {recentOrders.length} orders
+                      Showing 3 of {filteredRecentOrders.length} orders
                   </div>
                   )}
                 </div>
@@ -1320,7 +1821,24 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
               <div className="p-4">
                 <div className="text-xs text-gray-500 mb-2">
                   {selectedCustomer ? `Most ordered by ${selectedCustomer.name}` : 'Select a customer to view most ordered products'}
-                      </div>
+                </div>
+                
+                {/* Search Bar */}
+                <div className="relative mb-4">
+                  <input
+                    type="text"
+                    placeholder="Search most ordered..."
+                    value={mostOrderedSearch}
+                    onChange={(e) => setMostOrderedSearch(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                </div>
+                
                 <div className="space-y-2">
                   {mostLoading && (
                     <div className="text-xs text-gray-500 text-center py-4">Loading most ordered...</div>
@@ -1328,7 +1846,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                   {mostError && (
                     <div className="text-xs text-red-600 text-center py-4">{mostError}</div>
                   )}
-                  {!mostLoading && !mostError && mostOrdered.slice(0,3).map((item, idx) => (
+                  {!mostLoading && !mostError && filteredMostOrdered.slice(0,3).map((item, idx) => (
                     <div key={idx} className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-200 text-xs">
                       <div className="flex justify-between items-center">
                         <div className="font-semibold text-purple-700">{item.item_name} ({item.item_code})</div>
@@ -1340,7 +1858,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                     </div>
                   </div>
                   ))}
-                  {!mostLoading && !mostError && mostOrdered.length === 0 && selectedCustomer && (
+                  {!mostLoading && !mostError && filteredMostOrdered.length === 0 && selectedCustomer && (
                     <div className="text-xs text-gray-500 text-center py-4">No data</div>
                   )}
                 </div>
@@ -1351,13 +1869,13 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
       )}
 
       {activeTab === 'prints' && (
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto scrollbar-hide">
           <PrintsTabContent />
         </div>
       )}
 
       {activeTab === 'orders' && (
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto scrollbar-hide">
           <div className="bg-white/90 mt-2">
             <div className="flex border-b border-gray-200/60">
               <button
@@ -1381,8 +1899,25 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
             {subTab === 'orders' ? (
               <div className="p-4">
                 <div className="text-xs text-gray-500 mb-2">
-                  All Orders ({allOrders.filter(order => order.status !== 'Return').length})
-                        </div>
+                  All Orders ({filteredOrders.length})
+                </div>
+                
+                {/* Search Bar */}
+                <div className="relative mb-4">
+                  <input
+                    type="text"
+                    placeholder="Search orders..."
+                    value={ordersSearch}
+                    onChange={(e) => setOrdersSearch(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                </div>
+                
                 <div className="space-y-2">
                   {ordersTabLoading && (
                     <div className="text-xs text-gray-500 text-center py-4">Loading orders...</div>
@@ -1390,8 +1925,8 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                   {ordersTabError && (
                     <div className="text-xs text-red-600 text-center py-4">{ordersTabError}</div>
                   )}
-                  {!ordersTabLoading && !ordersTabError && allOrders.filter(order => order.status !== 'Return').length > 0 && 
-                    allOrders.filter(order => order.status !== 'Return').map((order, index) => (
+                  {!ordersTabLoading && !ordersTabError && filteredOrders.length > 0 && 
+                    filteredOrders.map((order, index) => (
                       <div key={index} className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200">
                         <div className="flex justify-between items-center mb-2">
                           <div className="font-semibold text-primary text-sm">{order.invoice_no || order.sales_order_no}</div>
@@ -1426,7 +1961,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                   </div>
                     ))
                   }
-                  {!ordersTabLoading && !ordersTabError && allOrders.filter(order => order.status !== 'Return').length === 0 && (
+                  {!ordersTabLoading && !ordersTabError && filteredOrders.length === 0 && (
                     <div className="text-xs text-gray-500 text-center py-4">No orders found</div>
                   )}
                 </div>
@@ -1434,8 +1969,25 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
             ) : (
               <div className="p-4">
                 <div className="text-xs text-gray-500 mb-2">
-                  Returns ({allOrders.filter(order => order.status === 'Return').length})
-                        </div>
+                  Returns ({filteredReturns.length})
+                </div>
+                
+                {/* Search Bar */}
+                <div className="relative mb-4">
+                  <input
+                    type="text"
+                    placeholder="Search returns..."
+                    value={returnsSearch}
+                    onChange={(e) => setReturnsSearch(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                </div>
+                
                 <div className="space-y-2">
                   {ordersTabLoading && (
                     <div className="text-xs text-gray-500 text-center py-4">Loading returns...</div>
@@ -1443,8 +1995,8 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                   {ordersTabError && (
                     <div className="text-xs text-red-600 text-center py-4">{ordersTabError}</div>
                   )}
-                  {!ordersTabLoading && !ordersTabError && allOrders.filter(order => order.status === 'Return').length > 0 && 
-                    allOrders.filter(order => order.status === 'Return').map((order, index) => (
+                  {!ordersTabLoading && !ordersTabError && filteredReturns.length > 0 && 
+                    filteredReturns.map((order, index) => (
                       <div key={index} className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg text-xs border border-purple-200">
                         <div className="flex justify-between items-center mb-2">
                           <div className="font-semibold text-purple-700 text-sm">{order.invoice_no || order.sales_order_no}</div>
@@ -1474,7 +2026,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                   </div>
                     ))
                   }
-                  {!ordersTabLoading && !ordersTabError && allOrders.filter(order => order.status === 'Return').length === 0 && (
+                  {!ordersTabLoading && !ordersTabError && filteredReturns.length === 0 && (
                     <div className="text-xs text-gray-500 text-center py-4">No returns found</div>
                   )}
                 </div>
