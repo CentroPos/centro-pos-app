@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   Select,
   SelectContent,
@@ -27,10 +27,51 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange, onCustom
 
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [selectedPriceList, setSelectedPriceList] = useState<string>('Standard Selling');
+  const [priceLists, setPriceLists] = useState<string[]>([]);
+  const [loadingPriceLists, setLoadingPriceLists] = useState(false);
   const { activeTabId, getCurrentTabCustomer, updateTabCustomer, setTabEdited } = usePOSTabStore()
   const { profile } = usePOSProfileStore()
 
   const selectedCustomer = getCurrentTabCustomer()
+
+  // Fetch price lists from API
+  useEffect(() => {
+    const fetchPriceLists = async () => {
+      setLoadingPriceLists(true)
+      try {
+        console.log('📋 Fetching price lists from API...')
+        const response = await window.electronAPI?.proxy?.request({
+          method: 'GET',
+          url: '/api/resource/Price List'
+        })
+        
+        console.log('📋 Price lists API response:', response)
+        
+        if (response?.data?.data && Array.isArray(response.data.data)) {
+          const priceListNames = response.data.data.map((item: any) => item.name).filter(Boolean)
+          console.log('📋 Extracted price list names:', priceListNames)
+          setPriceLists(priceListNames)
+          
+          // If no price lists found, use default
+          if (priceListNames.length === 0) {
+            console.log('📋 No price lists found, using default')
+            setPriceLists(['Standard Selling'])
+          }
+        } else {
+          console.log('📋 Invalid response format, using default price lists')
+          setPriceLists(['Standard Selling'])
+        }
+      } catch (error) {
+        console.error('❌ Error fetching price lists:', error)
+        // Fallback to default price lists
+        setPriceLists(['Standard Selling'])
+      } finally {
+        setLoadingPriceLists(false)
+      }
+    }
+
+    fetchPriceLists()
+  }, [])
 
   // Initialize price list from profile
   React.useEffect(() => {
@@ -103,15 +144,23 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange, onCustom
           <Select 
             value={selectedPriceList} 
             onValueChange={handlePriceListChange}
+            disabled={loadingPriceLists}
           >
             <SelectTrigger className="w-full p-4 bg-white/80 border border-white/40 rounded-xl shadow-lg focus:ring-2 focus:ring-accent focus:border-transparent transition-all">
-              <SelectValue placeholder="Select Price List" />
+              <SelectValue placeholder={loadingPriceLists ? "Loading price lists..." : "Select Price List"} />
             </SelectTrigger>
             <SelectContent className="bg-white border-gray-200 shadow-lg">
-              <SelectItem value="Standard Selling">Standard Selling</SelectItem>
-              <SelectItem value="Wholesale Price List">Wholesale Price List</SelectItem>
-              <SelectItem value="Retail Price List">Retail Price List</SelectItem>
-              <SelectItem value="VIP Price List">VIP Price List</SelectItem>
+              {loadingPriceLists ? (
+                <SelectItem value="loading" disabled>Loading price lists...</SelectItem>
+              ) : priceLists.length > 0 ? (
+                priceLists.map((priceList) => (
+                  <SelectItem key={priceList} value={priceList}>
+                    {priceList}
+                  </SelectItem>
+                ))
+              ) : (
+                <SelectItem value="Standard Selling">Standard Selling</SelectItem>
+              )}
             </SelectContent>
           </Select>
         </div>
