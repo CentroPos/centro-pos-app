@@ -898,7 +898,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                         isSelected
                           ? 'bg-gradient-to-r from-blue-50 to-blue-100 border-l-4 border-l-blue-500 shadow-md'
                           : 'hover:bg-gray-50'
-                      }`}
+                        }`}
                     >
                       <TableCell className={`${hasError ? 'text-red-600 font-semibold' : isSelected ? 'font-semibold text-blue-900' : ''} w-[140px]`}>
                         {item.item_code}

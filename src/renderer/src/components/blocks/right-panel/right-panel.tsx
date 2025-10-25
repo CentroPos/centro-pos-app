@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useRef } from 'react'
 import { useAuthStore } from '@renderer/store/useAuthStore'
 import { useNavigate } from '@tanstack/react-router'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
+import PaymentTab from '../payment/payment-tab'
 
 // A right-side panel for the POS screen, adapted from pos.html
 // Contains tabs for Product, Customer, Prints, Payments, Orders
@@ -16,7 +17,7 @@ const PrintsTabContent: React.FC = () => {
   const [error, setError] = useState<string | null>(null)
   const [pdfPreviews, setPdfPreviews] = useState<Record<string, string>>({})
   const prevOrderIdRef = useRef<string | null>(null)
-  
+
   // Persistent cache for print items and PDF previews
   const printItemsCache = useRef<Record<string, any[]>>({})
   const pdfPreviewsCache = useRef<Record<string, string>>({})
@@ -25,13 +26,13 @@ const PrintsTabContent: React.FC = () => {
   const loadPDFPreview = async (item: any) => {
     const pdfUrl = `${window.location.origin}${item.url}`
     const itemKey = `${item.report_title}-${item.url}`
-    
+
     // Check both current state and persistent cache
     if (pdfPreviews[itemKey] || pdfPreviewsCache.current[itemKey]) {
       console.log('📄 PDF preview already cached for:', item.report_title)
       // Restore from cache if not in current state
       if (!pdfPreviews[itemKey] && pdfPreviewsCache.current[itemKey]) {
-        setPdfPreviews(prev => ({
+        setPdfPreviews((prev) => ({
           ...prev,
           [itemKey]: pdfPreviewsCache.current[itemKey]
         }))
@@ -41,12 +42,12 @@ const PrintsTabContent: React.FC = () => {
 
     try {
       console.log('📄 Loading PDF preview for:', item.report_title)
-      
+
       const response = await fetch(pdfUrl, {
         method: 'GET',
         credentials: 'include',
         headers: {
-          'Accept': 'application/pdf,application/json',
+          Accept: 'application/pdf,application/json'
         }
       })
 
@@ -55,22 +56,23 @@ const PrintsTabContent: React.FC = () => {
       }
 
       const contentType = response.headers.get('content-type')
-      
+
       if (contentType?.includes('application/pdf')) {
         const arrayBuffer = await response.arrayBuffer()
         const uint8Array = new Uint8Array(arrayBuffer)
-        
+
         // Check if it's actually a PDF
-        const isPDF = uint8Array.length >= 4 && 
-                     uint8Array[0] === 0x25 && // %
-                     uint8Array[1] === 0x50 && // P
-                     uint8Array[2] === 0x44 && // D
-                     uint8Array[3] === 0x46    // F
-        
+        const isPDF =
+          uint8Array.length >= 4 &&
+          uint8Array[0] === 0x25 && // %
+          uint8Array[1] === 0x50 && // P
+          uint8Array[2] === 0x44 && // D
+          uint8Array[3] === 0x46 // F
+
         if (isPDF) {
           const base64 = btoa(String.fromCharCode(...uint8Array))
           const dataUrl = `data:application/pdf;base64,${base64}`
-          setPdfPreviews(prev => ({ ...prev, [itemKey]: dataUrl }))
+          setPdfPreviews((prev) => ({ ...prev, [itemKey]: dataUrl }))
           // Also save to persistent cache
           pdfPreviewsCache.current[itemKey] = dataUrl
           console.log('📄 PDF preview loaded and cached for:', item.report_title)
@@ -91,7 +93,7 @@ const PrintsTabContent: React.FC = () => {
       const currentOrderId = currentTab?.orderId
       console.log('🖨️ useEffect triggered - currentOrderId:', currentOrderId)
       console.log('🖨️ useEffect triggered - prevOrderId:', prevOrderIdRef.current)
-      
+
       // Check if we have cached data for this order
       if (currentOrderId && printItemsCache.current[currentOrderId]) {
         console.log('🖨️ Using cached print items for order:', currentOrderId)
@@ -100,16 +102,16 @@ const PrintsTabContent: React.FC = () => {
         setPdfPreviews(pdfPreviewsCache.current)
         return
       }
-      
+
       // Only fetch if order ID actually changed
       if (currentOrderId === prevOrderIdRef.current) {
         console.log('🖨️ Order ID unchanged, skipping fetch')
         return
       }
-      
+
       // Update the ref
       prevOrderIdRef.current = currentOrderId || null
-      
+
       if (!currentOrderId) {
         console.log('🖨️ No orderId, setting empty array')
         setPrintItems([])
@@ -121,9 +123,12 @@ const PrintsTabContent: React.FC = () => {
       setError(null)
 
       try {
-        console.log('🖨️ Making API request to:', '/api/method/centro_pos_apis.api.print.print_items_list')
+        console.log(
+          '🖨️ Making API request to:',
+          '/api/method/centro_pos_apis.api.print.print_items_list'
+        )
         console.log('🖨️ Request data:', { order_id: currentTab.orderId })
-        
+
         const response = await window.electronAPI?.proxy?.request({
           method: 'POST',
           url: '/api/method/centro_pos_apis.api.print.print_items_list',
@@ -148,12 +153,12 @@ const PrintsTabContent: React.FC = () => {
           console.log('🖨️ Processed print items data:', data)
           console.log('🖨️ Data length:', data.length)
           setPrintItems(data)
-          
+
           // Cache the print items
           if (currentOrderId) {
             printItemsCache.current[currentOrderId] = data
           }
-          
+
           // Auto-load PDF previews for all items (faster loading)
           if (data.length > 0) {
             data.forEach((item: any, index: number) => {
@@ -242,102 +247,124 @@ const PrintsTabContent: React.FC = () => {
       </div>
 
       <div className="space-y-4 flex-1 overflow-y-auto scrollbar-hide">
-        {Array.isArray(printItems) && printItems.map((item, index) => {
-          const itemKey = `${item.report_title}-${item.url}`
-          const pdfPreview = pdfPreviews[itemKey]
-          
-          return (
-            <div key={index} className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="font-semibold text-gray-800">{item.report_title}</h4>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      const itemKey = `${item.report_title}-${item.url}`
-                      const pdfDataUrl = pdfPreviews[itemKey]
-                      
-                      if (!pdfDataUrl) {
-                        console.log('⏳ PDF preview not loaded yet, checking cache...')
-                        // Check persistent cache first
-                        const cachedPdfUrl = pdfPreviewsCache.current[itemKey]
-                        if (cachedPdfUrl) {
-                          console.log('📄 Found PDF in persistent cache, restoring...')
-                          setPdfPreviews(prev => ({ ...prev, [itemKey]: cachedPdfUrl }))
-                        } else {
-                          console.log('⏳ Loading PDF preview now...')
-                          // Try to load the PDF preview immediately
-                          await loadPDFPreview(item)
-                          // Wait a moment for it to load
-                          await new Promise(resolve => setTimeout(resolve, 1000))
+        {Array.isArray(printItems) &&
+          printItems.map((item, index) => {
+            const itemKey = `${item.report_title}-${item.url}`
+            const pdfPreview = pdfPreviews[itemKey]
+
+            return (
+              <div key={index} className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-semibold text-gray-800">{item.report_title}</h4>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const itemKey = `${item.report_title}-${item.url}`
+                        const pdfDataUrl = pdfPreviews[itemKey]
+
+                        if (!pdfDataUrl) {
+                          console.log('⏳ PDF preview not loaded yet, checking cache...')
+                          // Check persistent cache first
+                          const cachedPdfUrl = pdfPreviewsCache.current[itemKey]
+                          if (cachedPdfUrl) {
+                            console.log('📄 Found PDF in persistent cache, restoring...')
+                            setPdfPreviews((prev) => ({ ...prev, [itemKey]: cachedPdfUrl }))
+                          } else {
+                            console.log('⏳ Loading PDF preview now...')
+                            // Try to load the PDF preview immediately
+                            await loadPDFPreview(item)
+                            // Wait a moment for it to load
+                            await new Promise((resolve) => setTimeout(resolve, 1000))
+                          }
                         }
+
+                        // Use the print function with silent error handling
+                        const result = await window.electronAPI?.print.printPDF(
+                          pdfDataUrl || pdfPreviews[`${item.report_title}-${item.url}`]
+                        )
+                        console.log('🖨️ Print result:', result)
+
+                        if (result?.success) {
+                          console.log('✅ Print dialog opened successfully')
+                        } else {
+                          console.log('ℹ️ Print dialog may not have opened, but this is normal')
+                        }
+                      } catch (error: any) {
+                        console.log('ℹ️ Print operation completed (errors are handled silently)')
                       }
-                      
-                      // Use the print function with silent error handling
-                      const result = await window.electronAPI?.print.printPDF(pdfDataUrl || pdfPreviews[`${item.report_title}-${item.url}`])
-                      console.log('🖨️ Print result:', result)
-                      
-                      if (result?.success) {
-                        console.log('✅ Print dialog opened successfully')
-                      } else {
-                        console.log('ℹ️ Print dialog may not have opened, but this is normal')
+                    }}
+                    onKeyDown={(e) => {
+                      // Prevent Enter key from triggering print
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        e.stopPropagation()
                       }
-                    } catch (error: any) {
-                      console.log('ℹ️ Print operation completed (errors are handled silently)')
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    // Prevent Enter key from triggering print
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      e.stopPropagation()
-                    }
-                  }}
-                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center gap-2"
-                  title="Print with Printer Selection"
-                  disabled={!pdfPreviews[`${item.report_title}-${item.url}`]}
-                >
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v3a2 2 0 002 2h1v2a2 2 0 002 2h6a2 2 0 002-2v-2h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clipRule="evenodd" />
-                  </svg>
-                  Print
-                </button>
-              </div>
-              
-              {/* PDF Preview */}
-              <div className="bg-gray-50 rounded border p-3">
-                <div className="h-48 bg-white rounded border overflow-hidden">
-                  {pdfPreview ? (
-                    <iframe
-                      src={pdfPreview}
-                      className="w-full h-full border-0"
-                      title={item.report_title}
-                      onLoad={() => console.log('📄 PDF preview loaded:', item.report_title)}
-                    />
-                  ) : (
-                    <div className="flex items-center justify-center h-full">
-                      <div className="text-center">
-                        <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                          <svg className="w-6 h-6 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
+                    }}
+                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center gap-2"
+                    title="Print with Printer Selection"
+                    disabled={!pdfPreviews[`${item.report_title}-${item.url}`]}
+                  >
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path
+                        fillRule="evenodd"
+                        d="M5 4v3H4a2 2 0 00-2 2v3a2 2 0 002 2h1v2a2 2 0 002 2h6a2 2 0 002-2v-2h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    Print
+                  </button>
+                </div>
+
+                {/* PDF Preview */}
+                <div className="bg-gray-50 rounded border p-3">
+                  <div className="h-48 bg-white rounded border overflow-hidden">
+                    {pdfPreview ? (
+                      <iframe
+                        src={pdfPreview}
+                        className="w-full h-full border-0"
+                        title={item.report_title}
+                        onLoad={() => console.log('📄 PDF preview loaded:', item.report_title)}
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center h-full">
+                        <div className="text-center">
+                          <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                            <svg
+                              className="w-6 h-6 text-gray-400 animate-spin"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                            >
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                              ></circle>
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                              ></path>
+                            </svg>
+                          </div>
+                          <p className="text-sm text-gray-500">Loading preview...</p>
+                          <button
+                            onClick={() => loadPDFPreview(item)}
+                            className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline"
+                          >
+                            Click to load preview
+                          </button>
                         </div>
-                        <p className="text-sm text-gray-500">Loading preview...</p>
-                        <button
-                          onClick={() => loadPDFPreview(item)}
-                          className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline"
-                        >
-                          Click to load preview
-                        </button>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          )
-        })}
+            )
+          })}
 
         {(!Array.isArray(printItems) || printItems.length === 0) && (
           <div className="text-center py-8">
@@ -361,19 +388,48 @@ type RightPanelProps = {
   activeTab?: 'product' | 'customer' | 'prints' | 'payments' | 'orders'
 }
 
-const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selectedCustomer, onTabChange, activeTab: externalActiveTab }) => {
-  const [internalActiveTab, setInternalActiveTab] = useState<'product' | 'customer' | 'prints' | 'payments' | 'orders'>('product')
-  
+const RightPanel: React.FC<RightPanelProps> = ({
+  selectedItemId,
+  items,
+  selectedCustomer,
+  onTabChange,
+  activeTab: externalActiveTab
+}) => {
+  const [internalActiveTab, setInternalActiveTab] = useState<
+    'product' | 'customer' | 'prints' | 'payments' | 'orders'
+  >('product')
+
   // Use external activeTab if provided, otherwise use internal state
   const activeTab = externalActiveTab || internalActiveTab
   const [subTab, setSubTab] = useState<'orders' | 'returns'>('orders')
   const [customerSubTab, setCustomerSubTab] = useState<'recent' | 'most'>('recent')
-  const [ordersSubTab, setOrdersSubTab] = useState<'orders' | 'returns'>('orders')
-  const [productSubTab, setProductSubTab] = useState<'customer-history' | 'purchase-history'>('customer-history')
-  
+  const [productSubTab, setProductSubTab] = useState<'customer-history' | 'purchase-history'>(
+    'customer-history'
+  )
+  const [currencySymbol, setCurrencySymbol] = useState('$')
+
   // Get logout function from useAuthStore
   const { logout } = useAuthStore()
-  const navigate = useNavigate()
+
+  // Load POS profile data
+  const loadPOSProfile = async () => {
+    try {
+      const response = await window.electronAPI?.proxy.request({
+        url: '/api/method/centro_pos_apis.api.profile.get_pos_profile'
+      })
+
+      if (response?.data?.data?.custom_currency_symbol) {
+        setCurrencySymbol(response.data.data.custom_currency_symbol)
+      }
+    } catch (error) {
+      console.error('Error loading POS profile in RightPanel:', error)
+    }
+  }
+
+  // Load POS profile on component mount
+  useEffect(() => {
+    loadPOSProfile()
+  }, [])
 
   // Handle tab change and notify parent
   const handleTabChange = (tab: 'product' | 'customer' | 'prints' | 'payments' | 'orders') => {
@@ -382,13 +438,15 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
   }
 
   // Get the currently selected item
-  const selectedItem = selectedItemId ? items.find(item => item.item_code === selectedItemId) : null
+  const selectedItem = selectedItemId
+    ? items.find((item) => item.item_code === selectedItemId)
+    : null
   const currentUom = (selectedItem && (selectedItem.uom || 'Nos')) || 'Nos'
 
   // Fetch product list data to get on-hand units for selected UOM
   const fetchProductListData = async (itemCode: string) => {
     if (!itemCode) return
-    
+
     console.log('🔍 Fetching product list data for item:', itemCode)
     setProductListLoading(true)
     try {
@@ -403,9 +461,9 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
           limit_page_length: 10
         }
       })
-      
+
       console.log('📡 Product list API response (with search):', response)
-      
+
       // If no data found, try without search_text to get all items
       if (!response?.success || !response?.data?.data || response.data.data.length === 0) {
         console.log('🔄 No data with search, trying without search_text...')
@@ -420,7 +478,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
         })
         console.log('📡 Product list API response (without search):', response)
       }
-      
+
       // If still no data, try POST method
       if (!response?.success || !response?.data?.data || response.data.data.length === 0) {
         console.log('🔄 No data with GET, trying POST method...')
@@ -436,19 +494,22 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
         })
         console.log('📡 Product list API response (POST):', response)
       }
-      
+
       if (response?.success && response?.data?.data) {
         console.log('📦 Raw API data:', response.data.data)
         const productData = response.data.data.find((item: any) => item.item_id === itemCode)
         console.log('🎯 Found product data:', productData)
-        
+
         if (productData) {
           setProductListData(productData)
           console.log('✅ Product list data set:', productData)
           console.log('📊 UOM details:', productData.uom_details)
         } else {
           console.log('❌ No product data found for item:', itemCode)
-          console.log('🔍 Available items:', response.data.data.map((item: any) => item.item_id))
+          console.log(
+            '🔍 Available items:',
+            response.data.data.map((item: any) => item.item_id)
+          )
         }
       } else {
         console.log('❌ API response not successful or no data:', response)
@@ -470,13 +531,16 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
   // Fetch customer history for selected product
   const fetchCustomerHistory = async (itemCode: string) => {
     if (!itemCode || !selectedCustomer) {
-      console.log('🚫 Customer history fetch skipped - missing itemCode or selectedCustomer:', { itemCode, selectedCustomer })
+      console.log('🚫 Customer history fetch skipped - missing itemCode or selectedCustomer:', {
+        itemCode,
+        selectedCustomer
+      })
       return
     }
-    
+
     // Get the correct customer_id by fetching customer list and finding the matching customer
     let customerId = selectedCustomer.customer_id || selectedCustomer.name
-    
+
     try {
       console.log('📊 ===== FETCHING CUSTOMER LIST FOR CUSTOMER_ID MAPPING =====')
       const customerListResponse = await window.electronAPI?.proxy?.request({
@@ -488,15 +552,17 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
           limit_page_length: 1000
         }
       })
-      
+
       if (customerListResponse?.success && customerListResponse?.data?.data) {
         const customers = customerListResponse.data.data
         console.log('📊 Customer list from API:', customers)
-        
+
         // Find the customer where customer_name matches selectedCustomer.name
-        const matchingCustomer = customers.find((c: any) => c.customer_name === selectedCustomer.name)
+        const matchingCustomer = customers.find(
+          (c: any) => c.customer_name === selectedCustomer.name
+        )
         console.log('📊 Matching customer found:', matchingCustomer)
-        
+
         if (matchingCustomer) {
           customerId = matchingCustomer.name // This should be the CUS-ID
           console.log('📊 Corrected customer_id from API:', customerId)
@@ -507,7 +573,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
     } catch (error) {
       console.error('❌ Error fetching customer list for mapping:', error)
     }
-    
+
     console.log('📊 ===== CUSTOMER HISTORY API CALL =====')
     console.log('📊 Item Code:', itemCode)
     console.log('📊 Customer ID (final):', customerId)
@@ -516,7 +582,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
     console.log('📊 Selected Customer customer_id:', selectedCustomer.customer_id)
     console.log('📊 Selected Customer name:', selectedCustomer.name)
     console.log('📊 Selected Customer id:', selectedCustomer.id)
-    
+
     setCustomerHistoryLoading(true)
     try {
       const apiUrl = '/api/method/centro_pos_apis.api.product.get_product_customer_history'
@@ -524,24 +590,24 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
         item_id: itemCode,
         customer_id: customerId
       }
-      
+
       console.log('📊 API URL:', apiUrl)
       console.log('📊 API Params:', apiParams)
       console.log('📊 Making API request...')
-      
+
       const response = await window.electronAPI?.proxy?.request({
         method: 'GET',
         url: apiUrl,
         params: apiParams
       })
-      
+
       console.log('📊 ===== CUSTOMER HISTORY API RESPONSE =====')
       console.log('📊 Full Response:', response)
       console.log('📊 Response Success:', response?.success)
       console.log('📊 Response Data:', response?.data)
       console.log('📊 Response Status:', response?.status)
       console.log('📊 Response Headers:', response?.headers)
-      
+
       if (response?.success && response?.data?.data) {
         setCustomerHistory(response.data.data)
         console.log('✅ Customer history loaded successfully:', response.data.data)
@@ -570,34 +636,34 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
       console.log('🚫 Purchase history fetch skipped - missing itemCode:', itemCode)
       return
     }
-    
+
     console.log('📦 ===== PURCHASE HISTORY API CALL =====')
     console.log('📦 Item Code:', itemCode)
-    
+
     setPurchaseHistoryLoading(true)
     try {
       const apiUrl = '/api/method/centro_pos_apis.api.product.get_product_purchase_history'
       const apiParams = {
         item_id: itemCode
       }
-      
+
       console.log('📦 API URL:', apiUrl)
       console.log('📦 API Params:', apiParams)
       console.log('📦 Making API request...')
-      
+
       const response = await window.electronAPI?.proxy?.request({
         method: 'GET',
         url: apiUrl,
         params: apiParams
       })
-      
+
       console.log('📦 ===== PURCHASE HISTORY API RESPONSE =====')
       console.log('📦 Full Response:', response)
       console.log('📦 Response Success:', response?.success)
       console.log('📦 Response Data:', response?.data)
       console.log('📦 Response Status:', response?.status)
       console.log('📦 Response Headers:', response?.headers)
-      
+
       if (response?.success && response?.data?.data) {
         setPurchaseHistory(response.data.data)
         console.log('✅ Purchase history loaded successfully:', response.data.data)
@@ -627,10 +693,10 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
     console.log('🔄 Selected Customer:', selectedCustomer)
     console.log('🔄 Customer ID:', selectedCustomer?.customer_id || selectedCustomer?.name)
     console.log('🔄 Current Product Subtab:', productSubTab)
-    
+
     if (selectedItemId) {
       console.log('🔄 Product/Customer changed, loading history data...')
-      
+
       // Load both histories when product or customer changes
       console.log('🔄 Calling fetchCustomerHistory with:', selectedItemId)
       console.log('🔄 Calling fetchPurchaseHistory with:', selectedItemId)
@@ -650,7 +716,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
     console.log('🔄 Current Product Subtab:', productSubTab)
     console.log('🔄 Selected Item ID:', selectedItemId)
     console.log('🔄 Selected Customer:', selectedCustomer)
-    
+
     if (selectedItemId) {
       if (productSubTab === 'customer-history') {
         console.log('🔄 Customer History tab active, fetching customer history...')
@@ -662,7 +728,6 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
     }
   }, [productSubTab])
 
-
   // Live warehouse stock fetched from backend (for current UOM)
   const [stockLoading, setStockLoading] = useState(false)
   const [stockError, setStockError] = useState<string | null>(null)
@@ -671,7 +736,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
   // Product list API data for on-hand units
   const [productListData, setProductListData] = useState<any>(null)
   const [productListLoading, setProductListLoading] = useState(false)
-  
+
   // Product history states
   const [customerHistory, setCustomerHistory] = useState<any[]>([])
   const [purchaseHistory, setPurchaseHistory] = useState<any[]>([])
@@ -679,11 +744,11 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
   const [purchaseHistoryLoading, setPurchaseHistoryLoading] = useState(false)
   const [customerHistorySearch, setCustomerHistorySearch] = useState('')
   const [purchaseHistorySearch, setPurchaseHistorySearch] = useState('')
-  
+
   // Customer tab search states
   const [recentOrdersSearch, setRecentOrdersSearch] = useState('')
   const [mostOrderedSearch, setMostOrderedSearch] = useState('')
-  
+
   // Orders tab search states
   const [ordersSearch, setOrdersSearch] = useState('')
   const [returnsSearch, setReturnsSearch] = useState('')
@@ -718,91 +783,97 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
   // Filter customer history based on search
   const filteredCustomerHistory = useMemo(() => {
     if (!customerHistorySearch.trim()) return customerHistory
-    
+
     const searchTerm = customerHistorySearch.toLowerCase()
-    return customerHistory.filter((item: any) => 
-      item.sales_order_no?.toLowerCase().includes(searchTerm) ||
-      item.invoice_no?.toLowerCase().includes(searchTerm) ||
-      item.quantity?.toString().includes(searchTerm) ||
-      item.unit_price?.toString().includes(searchTerm) ||
-      item.total_amount?.toString().includes(searchTerm) ||
-      item.creation_datetime?.toLowerCase().includes(searchTerm)
+    return customerHistory.filter(
+      (item: any) =>
+        item.sales_order_no?.toLowerCase().includes(searchTerm) ||
+        item.invoice_no?.toLowerCase().includes(searchTerm) ||
+        item.quantity?.toString().includes(searchTerm) ||
+        item.unit_price?.toString().includes(searchTerm) ||
+        item.total_amount?.toString().includes(searchTerm) ||
+        item.creation_datetime?.toLowerCase().includes(searchTerm)
     )
   }, [customerHistory, customerHistorySearch])
 
   // Filter purchase history based on search
   const filteredPurchaseHistory = useMemo(() => {
     if (!purchaseHistorySearch.trim()) return purchaseHistory
-    
+
     const searchTerm = purchaseHistorySearch.toLowerCase()
-    return purchaseHistory.filter((item: any) => 
-      item.invoice_no?.toLowerCase().includes(searchTerm) ||
-      item.purchase_order_no?.toLowerCase().includes(searchTerm) ||
-      item.qty?.toString().includes(searchTerm) ||
-      item.unit_price?.toString().includes(searchTerm) ||
-      item.total_amount?.toString().includes(searchTerm) ||
-      item.creation_datetime?.toLowerCase().includes(searchTerm)
+    return purchaseHistory.filter(
+      (item: any) =>
+        item.invoice_no?.toLowerCase().includes(searchTerm) ||
+        item.purchase_order_no?.toLowerCase().includes(searchTerm) ||
+        item.qty?.toString().includes(searchTerm) ||
+        item.unit_price?.toString().includes(searchTerm) ||
+        item.total_amount?.toString().includes(searchTerm) ||
+        item.creation_datetime?.toLowerCase().includes(searchTerm)
     )
   }, [purchaseHistory, purchaseHistorySearch])
 
   // Filter recent orders based on search
   const filteredRecentOrders = useMemo(() => {
     if (!recentOrdersSearch.trim()) return recentOrders
-    
+
     const searchTerm = recentOrdersSearch.toLowerCase()
-    return recentOrders.filter((order: any) => 
-      order.invoice_no?.toLowerCase().includes(searchTerm) ||
-      order.sales_order_no?.toLowerCase().includes(searchTerm) ||
-      order.total_qty?.toString().includes(searchTerm) ||
-      order.total_amount?.toString().includes(searchTerm) ||
-      order.status?.toLowerCase().includes(searchTerm) ||
-      order.creation_datetime?.toLowerCase().includes(searchTerm)
+    return recentOrders.filter(
+      (order: any) =>
+        order.invoice_no?.toLowerCase().includes(searchTerm) ||
+        order.sales_order_no?.toLowerCase().includes(searchTerm) ||
+        order.total_qty?.toString().includes(searchTerm) ||
+        order.total_amount?.toString().includes(searchTerm) ||
+        order.status?.toLowerCase().includes(searchTerm) ||
+        order.creation_datetime?.toLowerCase().includes(searchTerm)
     )
   }, [recentOrders, recentOrdersSearch])
 
   // Filter most ordered based on search
   const filteredMostOrdered = useMemo(() => {
     if (!mostOrderedSearch.trim()) return mostOrdered
-    
+
     const searchTerm = mostOrderedSearch.toLowerCase()
-    return mostOrdered.filter((item: any) => 
-      item.item_name?.toLowerCase().includes(searchTerm) ||
-      item.item_code?.toLowerCase().includes(searchTerm) ||
-      item.total_qty?.toString().includes(searchTerm) ||
-      item.avg_price?.toString().includes(searchTerm) ||
-      item.total_price?.toString().includes(searchTerm)
+    return mostOrdered.filter(
+      (item: any) =>
+        item.item_name?.toLowerCase().includes(searchTerm) ||
+        item.item_code?.toLowerCase().includes(searchTerm) ||
+        item.total_qty?.toString().includes(searchTerm) ||
+        item.avg_price?.toString().includes(searchTerm) ||
+        item.total_price?.toString().includes(searchTerm)
     )
   }, [mostOrdered, mostOrderedSearch])
 
   // Filter orders based on search
   const filteredOrders = useMemo(() => {
-    const orders = allOrders.filter(order => order.status !== 'Return')
+    const orders = allOrders.filter((order) => order.status !== 'Return')
     if (!ordersSearch.trim()) return orders
-    
+
     const searchTerm = ordersSearch.toLowerCase()
-    return orders.filter((order: any) => 
-      order.invoice_no?.toLowerCase().includes(searchTerm) ||
-      order.sales_order_no?.toLowerCase().includes(searchTerm) ||
-      order.total_qty?.toString().includes(searchTerm) ||
-      order.total_amount?.toString().includes(searchTerm) ||
-      order.status?.toLowerCase().includes(searchTerm) ||
-      order.creation_datetime?.toLowerCase().includes(searchTerm)
+    return orders.filter(
+      (order: any) =>
+        order.invoice_no?.toLowerCase().includes(searchTerm) ||
+        order.sales_order_no?.toLowerCase().includes(searchTerm) ||
+        order.total_qty?.toString().includes(searchTerm) ||
+        order.total_amount?.toString().includes(searchTerm) ||
+        order.status?.toLowerCase().includes(searchTerm) ||
+        order.creation_datetime?.toLowerCase().includes(searchTerm)
     )
   }, [allOrders, ordersSearch])
 
   // Filter returns based on search
   const filteredReturns = useMemo(() => {
-    const returns = allOrders.filter(order => order.status === 'Return')
+    const returns = allOrders.filter((order) => order.status === 'Return')
     if (!returnsSearch.trim()) return returns
-    
+
     const searchTerm = returnsSearch.toLowerCase()
-    return returns.filter((order: any) => 
-      order.invoice_no?.toLowerCase().includes(searchTerm) ||
-      order.sales_order_no?.toLowerCase().includes(searchTerm) ||
-      order.total_qty?.toString().includes(searchTerm) ||
-      order.total_amount?.toString().includes(searchTerm) ||
-      order.status?.toLowerCase().includes(searchTerm) ||
-      order.creation_datetime?.toLowerCase().includes(searchTerm)
+    return returns.filter(
+      (order: any) =>
+        order.invoice_no?.toLowerCase().includes(searchTerm) ||
+        order.sales_order_no?.toLowerCase().includes(searchTerm) ||
+        order.total_qty?.toString().includes(searchTerm) ||
+        order.total_amount?.toString().includes(searchTerm) ||
+        order.status?.toLowerCase().includes(searchTerm) ||
+        order.creation_datetime?.toLowerCase().includes(searchTerm)
     )
   }, [allOrders, returnsSearch])
 
@@ -847,13 +918,16 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
         const list = Array.isArray(res?.data?.data) ? res.data.data : []
         const mapped = list.map((w: any) => {
           const q = Array.isArray(w.quantities) ? w.quantities : []
-          const match = q.find((qq: any) => String(qq.uom).toLowerCase() === String(currentUom).toLowerCase())
+          const match = q.find(
+            (qq: any) => String(qq.uom).toLowerCase() === String(currentUom).toLowerCase()
+          )
           return { name: w.warehouse, qty: Number(match?.qty || 0) }
         })
         console.log('🗂️ Mapped warehouses:', mapped)
-        if (!cancelled) setWarehouseStock(mapped)
-        
-        // Add test command to window for debugging
+        if (!cancelled)
+          setWarehouseStock(mapped)
+
+          // Add test command to window for debugging
         ;(window as any).testStockAPI = async (itemCode: string) => {
           try {
             const res = await window.electronAPI?.proxy?.request({
@@ -900,7 +974,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
         setOrdersError(null)
         console.log('🔍 Loading recent orders for customer:', selectedCustomer)
         console.log('🔍 Customer name from dropdown:', selectedCustomer.name)
-        
+
         // Step 1: Call customer list API to get the correct customer_id
         console.log('🔍 Step 1: Fetching customer list to find correct customer_id...')
         const customerListRes = await window.electronAPI?.proxy?.request({
@@ -911,28 +985,36 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
             limit_page_length: 50
           }
         })
-        
+
         console.log('🔍 Customer list API response:', customerListRes)
-        
+
         // Step 2: Find the customer where customer_name matches selectedCustomer.name
         const customers = customerListRes?.data?.data || []
         console.log('🔍 Available customers:', customers)
-        
-        const matchingCustomer = customers.find((c: any) => c.customer_name === selectedCustomer.name)
+
+        const matchingCustomer = customers.find(
+          (c: any) => c.customer_name === selectedCustomer.name
+        )
         console.log('🔍 Matching customer found:', matchingCustomer)
-        
+
         if (!matchingCustomer) {
           console.log('❌ No matching customer found in customer list')
           setOrdersError('Customer not found in system')
           return
         }
-        
+
         // Step 3: Use the 'name' field as customer_id
         const customerId = matchingCustomer.name
         console.log('🔍 Selected Customer ID for recent orders API:', customerId)
-        console.log('🔍 API URL: /api/method/centro_pos_apis.api.customer.get_customer_recent_orders')
-        console.log('🔍 API Params:', { customer_id: customerId, limit_start: 0, limit_page_length: 10 })
-        
+        console.log(
+          '🔍 API URL: /api/method/centro_pos_apis.api.customer.get_customer_recent_orders'
+        )
+        console.log('🔍 API Params:', {
+          customer_id: customerId,
+          limit_start: 0,
+          limit_page_length: 10
+        })
+
         // Step 4: Call recent orders API with correct customer_id
         const res = await window.electronAPI?.proxy?.request({
           url: '/api/method/centro_pos_apis.api.customer.get_customer_recent_orders',
@@ -947,7 +1029,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
         console.log('📦 Response status:', res?.status)
         console.log('📦 Response data:', res?.data)
         console.log('📦 Response data.data:', res?.data?.data)
-        
+
         if (res?.success && res?.data?.data) {
           const orders = Array.isArray(res.data.data) ? res.data.data : []
           console.log('📋 Recent orders array:', orders)
@@ -973,7 +1055,9 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
       }
     }
     loadRecentOrders()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [selectedCustomer?.id])
 
   // Fetch most ordered when customer is selected
@@ -1012,7 +1096,9 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
       }
     }
     loadMostOrdered()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [selectedCustomer?.name])
 
   // Fetch customer details and insights when customer is selected
@@ -1027,7 +1113,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
       try {
         setCustomerDetailsLoading(true)
         setCustomerDetailsError(null)
-        
+
         // Step 1: Get customer ID from customer list
         const listRes = await window.electronAPI?.proxy?.request({
           url: '/api/method/centro_pos_apis.api.customer.customer_list',
@@ -1036,25 +1122,25 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
         const list = listRes?.data?.data || []
         const match = list.find((c: any) => c.customer_name === selectedCustomer.name)
         const customerId = match?.name
-        
+
         if (!customerId) {
           setCustomerDetails(null)
           setCustomerInsights(null)
           return
         }
-        
+
         // Step 2: Fetch customer details
         const detailsRes = await window.electronAPI?.proxy?.request({
           url: `/api/resource/Customer/${customerId}`,
           params: {}
         })
-        
+
         // Step 3: Fetch customer insights
         const insightsRes = await window.electronAPI?.proxy?.request({
           url: '/api/method/centro_pos_apis.api.customer.customer_amount_insights',
           params: { customer_id: customerId }
         })
-        
+
         if (!cancelled) {
           setCustomerDetails(detailsRes?.data?.data || null)
           setCustomerInsights(insightsRes?.data?.data || null)
@@ -1070,7 +1156,9 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
       }
     }
     loadCustomerDetails()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [selectedCustomer?.name])
 
   // Fetch all orders when Orders tab is active
@@ -1083,17 +1171,17 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
       try {
         setOrdersTabLoading(true)
         setOrdersTabError(null)
-        
+
         // Use the same API as recent orders but get all orders for all customers
         // We'll fetch orders for each customer and combine them
         const customerListRes = await window.electronAPI?.proxy?.request({
           url: '/api/method/centro_pos_apis.api.customer.customer_list',
           params: { search_term: '', limit_start: 1, limit_page_length: 50 }
         })
-        
+
         const customers = customerListRes?.data?.data || []
         let allOrdersData: any[] = []
-        
+
         // Fetch orders for each customer
         for (const customer of customers) {
           try {
@@ -1105,7 +1193,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                 limit_page_length: 50 // Get more orders per customer
               }
             })
-            
+
             if (res?.success && res?.data?.data) {
               const orders = Array.isArray(res.data.data) ? res.data.data : []
               allOrdersData = [...allOrdersData, ...orders]
@@ -1115,7 +1203,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
             // Continue with other customers even if one fails
           }
         }
-        
+
         if (!cancelled) {
           setAllOrders(allOrdersData)
         }
@@ -1131,7 +1219,9 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
       }
     }
     loadAllOrders()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [activeTab])
 
   // Fetch profile data on component mount
@@ -1141,12 +1231,12 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
       try {
         setProfileLoading(true)
         setProfileError(null)
-        
+
         const res = await window.electronAPI?.proxy?.request({
           url: '/api/method/centro_pos_apis.api.profile.get_pos_profile',
           params: {}
         })
-        
+
         if (res?.success && res?.data?.data) {
           if (!cancelled) {
             setProfileData(res.data.data)
@@ -1164,7 +1254,9 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
       }
     }
     loadProfile()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   // Default product data when no item is selected
@@ -1173,9 +1265,9 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
     item_name: 'Samsung Galaxy S24',
     category: 'Smartphones',
     location: 'Rack A-15, Shelf 3',
-    standard_rate: 799.00,
+    standard_rate: 799.0,
     on_hand: 3,
-    cost: 650.00,
+    cost: 650.0,
     margin: 18.6,
     warehouses: [
       { name: 'Warehouse - 2', qty: 10 },
@@ -1187,14 +1279,14 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
   // Calculate on-hand units from product list API based on selected UOM
   const getOnHandUnits = () => {
     if (!productListData || !currentUom) return 0
-    
+
     const uomDetails = Array.isArray(productListData.uom_details) ? productListData.uom_details : []
-    const selectedUomDetail = uomDetails.find((detail: any) => 
-      String(detail.uom).toLowerCase() === String(currentUom).toLowerCase()
+    const selectedUomDetail = uomDetails.find(
+      (detail: any) => String(detail.uom).toLowerCase() === String(currentUom).toLowerCase()
     )
-    
+
     const onHandUnits = selectedUomDetail ? Number(selectedUomDetail.qty || 0) : 0
-    
+
     console.log('📊 On-hand calculation:', {
       itemCode: selectedItem?.item_code,
       currentUom,
@@ -1202,27 +1294,27 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
       selectedUomDetail,
       onHandUnits
     })
-    
+
     return onHandUnits
   }
 
   // Use selected item data or default
-  const productData = selectedItem ? {
-    item_code: selectedItem.item_code || 'N/A',
-    item_name: selectedItem.item_name || selectedItem.label || 'Unknown Product',
-    category: selectedItem.category || 'General',
-    location: selectedItem.location || 'Location not specified',
-    standard_rate: parseFloat(selectedItem.standard_rate || '0') || 0,
-    on_hand: getOnHandUnits(), // Use API data instead of selectedItem.on_hand
-    cost: selectedItem.cost || 0,
-    margin: selectedItem.margin || 0,
-    warehouses: warehouseStock.length > 0
-      ? warehouseStock
-      : selectedItem.warehouses || []
-  } : {
-    ...defaultProduct,
-    warehouses: [] // Empty warehouses when no item selected
-  }
+  const productData = selectedItem
+    ? {
+        item_code: selectedItem.item_code || 'N/A',
+        item_name: selectedItem.item_name || selectedItem.label || 'Unknown Product',
+        category: selectedItem.category || 'General',
+        location: selectedItem.location || 'Location not specified',
+        standard_rate: parseFloat(selectedItem.standard_rate || '0') || 0,
+        on_hand: getOnHandUnits(), // Use API data instead of selectedItem.on_hand
+        cost: selectedItem.cost || 0,
+        margin: selectedItem.margin || 0,
+        warehouses: warehouseStock.length > 0 ? warehouseStock : selectedItem.warehouses || []
+      }
+    : {
+        ...defaultProduct,
+        warehouses: [] // Empty warehouses when no item selected
+      }
 
   return (
     <div className="w-[480px] bg-white/60 backdrop-blur border-l border-white/20 flex flex-col overflow-y-auto scrollbar-hide">
@@ -1277,8 +1369,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
         >
           Orders
         </button>
-        
-        
+
         {/* Profile Circle */}
         <div className="relative ml-2 mr-2 flex items-center">
           <button
@@ -1293,10 +1384,10 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
               'U'
             )}
           </button>
-          
+
           {/* Profile Dropdown */}
           {showProfileDropdown && (
-            <div 
+            <div
               className="absolute right-0 top-10 bg-white rounded-lg shadow-lg border border-gray-200 py-2 min-w-48 z-50"
               onClick={(e) => e.stopPropagation()}
             >
@@ -1304,9 +1395,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                 <div className="text-sm font-semibold text-gray-800">
                   {profileData?.name || 'User Profile'}
                 </div>
-                <div className="text-xs text-gray-500">
-                  {profileData?.company || 'Company'}
-                </div>
+                <div className="text-xs text-gray-500">{profileData?.company || 'Company'}</div>
               </div>
               <button
                 className="w-full px-4 py-2 text-left text-sm font-semibold text-black hover:bg-gray-100 transition-colors"
@@ -1319,36 +1408,35 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                   e.preventDefault()
                   e.stopPropagation()
                   console.log('=== DROPDOWN LOGOUT BUTTON CLICKED ===')
-                  
+
                   // Don't close dropdown immediately - let logout handle it
-                  
+
                   const performLogout = async () => {
                     try {
                       // Clear the auth store
                       console.log('1. Calling logout from store...')
                       logout()
                       console.log('2. Store logout completed')
-                      
+
                       // Also clear the proxy session
                       console.log('3. Calling proxy logout...')
                       await window.electronAPI?.proxy?.logout()
                       console.log('4. Proxy logout completed')
-                      
+
                       // Clear only authentication-related localStorage (preserve POS tabs)
                       console.log('5. Clearing authentication data...')
                       localStorage.removeItem('userData')
                       localStorage.removeItem('auth-store')
                       console.log('6. Authentication data cleared, POS tabs preserved')
-                      
+
                       // Close dropdown
                       setShowProfileDropdown(false)
                       console.log('7. Dropdown closed')
-                      
+
                       // FORCE reload to login page
                       console.log('8. Reloading page to login...')
                       window.location.href = '/'
                       console.log('9. Page reload initiated')
-                      
                     } catch (error) {
                       console.error('=== DROPDOWN LOGOUT FAILED ===', error)
                       // Force reload even if logout fails
@@ -1359,7 +1447,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                       window.location.href = '/'
                     }
                   }
-                  
+
                   // Execute logout
                   performLogout()
                 }}
@@ -1377,12 +1465,27 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
             <div className="flex-1 flex items-center justify-center p-8">
               <div className="text-center">
                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                  <svg
+                    className="w-8 h-8 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
+                    />
                   </svg>
                 </div>
-                <h3 className="text-lg font-semibold text-gray-600 mb-2">Select an item to view details</h3>
-                <p className="text-sm text-gray-500">Choose a product from the items table to see pricing, stock, and other information.</p>
+                <h3 className="text-lg font-semibold text-gray-600 mb-2">
+                  Select an item to view details
+                </h3>
+                <p className="text-sm text-gray-500">
+                  Choose a product from the items table to see pricing, stock, and other
+                  information.
+                </p>
               </div>
             </div>
           ) : (
@@ -1410,7 +1513,9 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                 <div className="grid grid-cols-2 gap-3">
                   <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl">
                     <div className="text-xs text-gray-600">Unit Price</div>
-                    <div className="font-bold text-blue-600">${productData.standard_rate.toFixed(2)}</div>
+                    <div className="font-bold text-blue-600">
+                      {currencySymbol} {productData.standard_rate.toFixed(2)}
+                    </div>
                   </div>
                   <div className="p-3 bg-gradient-to-r from-red-50 to-pink-50 rounded-xl">
                     <div className="text-xs text-gray-600">On Hand</div>
@@ -1422,11 +1527,15 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                   </div>
                   <div className="p-3 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl">
                     <div className="text-xs text-gray-600">Cost</div>
-                    <div className="font-bold text-orange-600">${productData.cost.toFixed(2)}</div>
+                    <div className="font-bold text-orange-600">
+                      {currencySymbol} {productData.cost.toFixed(2)}
+                    </div>
                   </div>
                   <div className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl">
                     <div className="text-xs text-gray-600">Margin</div>
-                    <div className="font-bold text-purple-600">{productData.margin.toFixed(1)}%</div>
+                    <div className="font-bold text-purple-600">
+                      {productData.margin.toFixed(1)}%
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1435,24 +1544,26 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
               <div className="p-4 border-b border-gray-200/60 bg-white/90">
                 <h4 className="font-bold text-gray-800 mb-3">Stock Details</h4>
                 <div className="space-y-2">
-                  {stockLoading && (
-                    <div className="text-xs text-gray-500">Loading stock...</div>
-                  )}
-                  {stockError && (
-                    <div className="text-xs text-red-600">{stockError}</div>
-                  )}
-                  {!stockLoading && !stockError && productData.warehouses.length > 0 && productData.warehouses.map((warehouse, index) => (
-                    <div key={index} className="p-2 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs">
-                      <div className="flex justify-between items-center">
-                        <div className="font-semibold text-primary">{warehouse.name}</div>
-                        <span className="font-semibold text-green-600">Qty: {warehouse.qty || warehouse.available || 0}</span>
+                  {stockLoading && <div className="text-xs text-gray-500">Loading stock...</div>}
+                  {stockError && <div className="text-xs text-red-600">{stockError}</div>}
+                  {!stockLoading &&
+                    !stockError &&
+                    productData.warehouses.length > 0 &&
+                    productData.warehouses.map((warehouse, index) => (
+                      <div
+                        key={index}
+                        className="p-2 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs"
+                      >
+                        <div className="flex justify-between items-center">
+                          <div className="font-semibold text-primary">{warehouse.name}</div>
+                          <span className="font-semibold text-green-600">
+                            Qty: {warehouse.qty || warehouse.available || 0}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
                   {!stockLoading && !stockError && productData.warehouses.length === 0 && (
-                    <div className="text-xs text-gray-500 text-center py-4">
-                      No stock available
-                    </div>
+                    <div className="text-xs text-gray-500 text-center py-4">No stock available</div>
                   )}
                 </div>
               </div>
@@ -1462,7 +1573,9 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                 <div className="flex border-b border-gray-200/60">
                   <button
                     className={`flex-1 px-4 py-3 font-semibold text-sm border-b-2 ${
-                      productSubTab === 'customer-history' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'text-gray-500 hover:text-black hover:bg-white/40'
+                      productSubTab === 'customer-history'
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                        : 'text-gray-500 hover:text-black hover:bg-white/40'
                     }`}
                     onClick={() => {
                       console.log('🔄 Switching to Customer History tab')
@@ -1478,7 +1591,9 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                   </button>
                   <button
                     className={`flex-1 px-4 py-3 font-medium text-sm border-b-2 ${
-                      productSubTab === 'purchase-history' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'text-gray-500 hover:text-black hover:bg-white/40'
+                      productSubTab === 'purchase-history'
+                        ? 'border-purple-500 bg-purple-50 text-purple-700'
+                        : 'text-gray-500 hover:text-black hover:bg-white/40'
                     }`}
                     onClick={() => {
                       console.log('🔄 Switching to Purchase History tab')
@@ -1498,9 +1613,11 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                 {productSubTab === 'customer-history' && (
                   <div className="p-4">
                     <div className="text-xs text-gray-500 mb-2">
-                      {selectedCustomer ? `Customer history for ${selectedCustomer.name}` : 'Select a customer to view customer history'}
+                      {selectedCustomer
+                        ? `Customer history for ${selectedCustomer.name}`
+                        : 'Select a customer to view customer history'}
                     </div>
-                    
+
                     {/* Search Bar */}
                     <div className="relative mb-4">
                       <input
@@ -1511,8 +1628,18 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                         className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       />
                       <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        <svg
+                          className="w-4 h-4 text-gray-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                          />
                         </svg>
                       </div>
                     </div>
@@ -1521,7 +1648,9 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                     <div className="max-h-64 overflow-y-auto scrollbar-hide">
                       {!selectedCustomer ? (
                         <div className="text-center py-4">
-                          <div className="text-sm text-gray-500">Select a customer to view history</div>
+                          <div className="text-sm text-gray-500">
+                            Select a customer to view history
+                          </div>
                         </div>
                       ) : customerHistoryLoading ? (
                         <div className="text-center py-4">
@@ -1530,7 +1659,10 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                       ) : filteredCustomerHistory.length > 0 ? (
                         <div className="space-y-2">
                           {filteredCustomerHistory.map((item, index) => (
-                            <div key={index} className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-100">
+                            <div
+                              key={index}
+                              className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-100"
+                            >
                               <div className="grid grid-cols-2 gap-2 text-xs">
                                 <div>
                                   <span className="font-semibold text-gray-600">Invoice:</span>
@@ -1542,11 +1674,15 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                                 </div>
                                 <div>
                                   <span className="font-semibold text-gray-600">Unit Price:</span>
-                                  <div className="font-bold text-orange-600">${item.unit_price?.toFixed(2)}</div>
+                                  <div className="font-bold text-orange-600">
+                                    {currencySymbol} {item.unit_price?.toFixed(2)}
+                                  </div>
                                 </div>
                                 <div>
                                   <span className="font-semibold text-gray-600">Total:</span>
-                                  <div className="font-bold text-purple-600">${item.total_amount?.toFixed(2)}</div>
+                                  <div className="font-bold text-purple-600">
+                                    {currencySymbol} {item.total_amount?.toFixed(2)}
+                                  </div>
                                 </div>
                                 <div className="col-span-2">
                                   <span className="font-semibold text-gray-600">Date:</span>
@@ -1573,7 +1709,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                     <div className="text-xs text-gray-500 mb-2">
                       Purchase history for selected product
                     </div>
-                    
+
                     {/* Search Bar */}
                     <div className="relative mb-4">
                       <input
@@ -1584,8 +1720,18 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                         className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       />
                       <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        <svg
+                          className="w-4 h-4 text-gray-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                          />
                         </svg>
                       </div>
                     </div>
@@ -1599,7 +1745,10 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                       ) : filteredPurchaseHistory.length > 0 ? (
                         <div className="space-y-2">
                           {filteredPurchaseHistory.map((item, index) => (
-                            <div key={index} className="p-3 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-100">
+                            <div
+                              key={index}
+                              className="p-3 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-100"
+                            >
                               <div className="grid grid-cols-2 gap-2 text-xs">
                                 <div>
                                   <span className="font-semibold text-gray-600">Invoice:</span>
@@ -1611,11 +1760,15 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                                 </div>
                                 <div>
                                   <span className="font-semibold text-gray-600">Unit Price:</span>
-                                  <div className="font-bold text-orange-600">${item.unit_price?.toFixed(2)}</div>
+                                  <div className="font-bold text-orange-600">
+                                    {currencySymbol} {item.unit_price?.toFixed(2)}
+                                  </div>
                                 </div>
                                 <div>
                                   <span className="font-semibold text-gray-600">Total:</span>
-                                  <div className="font-bold text-purple-600">${item.total_amount?.toFixed(2)}</div>
+                                  <div className="font-bold text-purple-600">
+                                    {currencySymbol} {item.total_amount?.toFixed(2)}
+                                  </div>
                                 </div>
                                 <div className="col-span-2">
                                   <span className="font-semibold text-gray-600">Date:</span>
@@ -1661,15 +1814,20 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                     <i className="fas fa-user text-white text-lg" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-lg">{customerDetails.customer_name || 'Walking Customer'}</h3>
+                    <h3 className="font-bold text-lg">
+                      {customerDetails.customer_name || 'Walking Customer'}
+                    </h3>
                     <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">
                       VAT: {customerDetails.tax_id || 'Not Applicable'}
                     </p>
                     <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">
-                      ADDRESS: {customerDetails.primary_address ? 
-                        customerDetails.primary_address.replace(/<br\s*\/?>/gi, ', ').replace(/<[^>]+>/g, '').trim() : 
-                        'Address not available'
-                      }
+                      ADDRESS:{' '}
+                      {customerDetails.primary_address
+                        ? customerDetails.primary_address
+                            .replace(/<br\s*\/?>/gi, ', ')
+                            .replace(/<[^>]+>/g, '')
+                            .trim()
+                        : 'Address not available'}
                     </p>
                   </div>
                 </div>
@@ -1678,39 +1836,47 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                   <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl">
                     <div className="text-xs text-gray-600">Total Invoiced</div>
                     <div className="font-bold text-blue-600">
-                      ${customerInsights?.total_invoice_amount?.toLocaleString() || '0.00'}
+                      {currencySymbol}{' '}
+                      {customerInsights?.total_invoice_amount?.toLocaleString() || '0.00'}
                     </div>
                   </div>
                   <div className="p-3 bg-gradient-to-r from-red-50 to-pink-50 rounded-xl">
                     <div className="text-xs text-gray-600">Amount Due</div>
                     <div className="font-bold text-red-600">
-                      ${customerInsights?.amount_due?.toLocaleString() || '0.00'}
+                      {currencySymbol} {customerInsights?.amount_due?.toLocaleString() || '0.00'}
                     </div>
                   </div>
                   <div className="p-3 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl">
                     <div className="text-xs text-gray-600">
-                      Last Payment {customerInsights?.last_payment_datetime ? 
-                        `| ${new Date(customerInsights.last_payment_datetime).toLocaleDateString('en-US', {
-                          day: '2-digit',
-                          month: 'short',
-                          year: 'numeric'
-                        })}` : ''
-                      }
+                      Last Payment{' '}
+                      {customerInsights?.last_payment_datetime
+                        ? `| ${new Date(customerInsights.last_payment_datetime).toLocaleDateString(
+                            'en-US',
+                            {
+                              day: '2-digit',
+                              month: 'short',
+                              year: 'numeric'
+                            }
+                          )}`
+                        : ''}
                     </div>
                     <div className="font-bold text-green-600">
-                      ${customerInsights?.last_payment_amount?.toLocaleString() || '0.00'}
+                      {currencySymbol}{' '}
+                      {customerInsights?.last_payment_amount?.toLocaleString() || '0.00'}
                     </div>
                   </div>
                   <div className="p-3 bg-gradient-to-r from-blue-50 to-yellow-50 rounded-xl">
                     <div className="text-xs text-gray-600">Credit Limit</div>
                     <div className="font-bold text-orange-600">
-                      ${customerInsights?.total_credit_limit?.toLocaleString() || '0.00'}
+                      {currencySymbol}{' '}
+                      {customerInsights?.total_credit_limit?.toLocaleString() || '0.00'}
                     </div>
                   </div>
                   <div className="p-3 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl">
                     <div className="text-xs text-gray-600">Available Credit Limit</div>
                     <div className="font-bold text-orange-600">
-                      ${customerInsights?.available_credit_limit?.toLocaleString() || '0.00'}
+                      {currencySymbol}{' '}
+                      {customerInsights?.available_credit_limit?.toLocaleString() || '0.00'}
                     </div>
                   </div>
                 </div>
@@ -1728,7 +1894,9 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
             <div className="flex border-b border-gray-200/60">
               <button
                 className={`flex-1 px-4 py-3 font-semibold text-sm border-b-2 ${
-                  customerSubTab === 'recent' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'text-gray-500 hover:text-black hover:bg-white/40'
+                  customerSubTab === 'recent'
+                    ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                    : 'text-gray-500 hover:text-black hover:bg-white/40'
                 }`}
                 onClick={() => setCustomerSubTab('recent')}
               >
@@ -1736,7 +1904,9 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
               </button>
               <button
                 className={`flex-1 px-4 py-3 font-medium text-sm border-b-2 ${
-                  customerSubTab === 'most' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'text-gray-500 hover:text-black hover:bg-white/40'
+                  customerSubTab === 'most'
+                    ? 'border-purple-500 bg-purple-50 text-purple-700'
+                    : 'text-gray-500 hover:text-black hover:bg-white/40'
                 }`}
                 onClick={() => setCustomerSubTab('most')}
               >
@@ -1747,9 +1917,11 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
             {customerSubTab === 'recent' ? (
               <div className="p-4">
                 <div className="text-xs text-gray-500 mb-2">
-                  {selectedCustomer ? `Recent orders for ${selectedCustomer.name}` : 'Select a customer to view recent orders'}
+                  {selectedCustomer
+                    ? `Recent orders for ${selectedCustomer.name}`
+                    : 'Select a customer to view recent orders'}
                 </div>
-                
+
                 {/* Search Bar */}
                 <div className="relative mb-4">
                   <input
@@ -1760,69 +1932,103 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                     className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                   <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    <svg
+                      className="w-4 h-4 text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
                     </svg>
                   </div>
                 </div>
-                
+
                 <div className="space-y-2">
                   {ordersLoading && (
-                    <div className="text-xs text-gray-500 text-center py-4">Loading recent orders...</div>
+                    <div className="text-xs text-gray-500 text-center py-4">
+                      Loading recent orders...
+                    </div>
                   )}
                   {ordersError && (
                     <div className="text-xs text-red-600 text-center py-4">{ordersError}</div>
                   )}
-                  {!ordersLoading && !ordersError && filteredRecentOrders.length > 0 && filteredRecentOrders.slice(0, 3).map((order, index) => (
-                    <div key={index} className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200">
-                      <div className="flex justify-between items-center mb-2">
-                        <div className="font-semibold text-primary text-sm">{order.invoice_no || order.sales_order_no}</div>
-                        <div className="text-gray-600 text-xs">
-                          {new Date(order.creation_datetime).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric'
-                          })}
-                    </div>
-                    </div>
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-gray-600 font-medium">Qty: {order.total_qty}</span>
-                        <span className="font-bold text-green-600 text-sm">${order.total_amount?.toLocaleString()}</span>
-                  </div>
-                    <div className="flex justify-between items-center">
-                        <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                          order.status === 'Overdue' ? 'bg-red-100 text-red-700' : 
-                          order.status === 'Paid' ? 'bg-green-100 text-green-700' :
-                          order.status === 'Draft' ? 'bg-yellow-100 text-yellow-700' :
-                          'bg-gray-100 text-gray-700'
-                        }`}>
-                          {order.status}
-                        </span>
-                        <span className="text-gray-500 text-xs">
-                          {new Date(order.creation_datetime).toLocaleTimeString('en-US', {
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </span>
-                    </div>
-                    </div>
-                  ))}
-                  {!ordersLoading && !ordersError && filteredRecentOrders.length === 0 && selectedCustomer && (
-                    <div className="text-xs text-gray-500 text-center py-4">No recent orders found</div>
-                  )}
+                  {!ordersLoading &&
+                    !ordersError &&
+                    filteredRecentOrders.length > 0 &&
+                    filteredRecentOrders.slice(0, 3).map((order, index) => (
+                      <div
+                        key={index}
+                        className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200"
+                      >
+                        <div className="flex justify-between items-center mb-2">
+                          <div className="font-semibold text-primary text-sm">
+                            {order.invoice_no || order.sales_order_no}
+                          </div>
+                          <div className="text-gray-600 text-xs">
+                            {new Date(order.creation_datetime).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric'
+                            })}
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-gray-600 font-medium">Qty: {order.total_qty}</span>
+                          <span className="font-bold text-green-600 text-sm">
+                            {currencySymbol} {order.total_amount?.toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span
+                            className={`text-xs px-2 py-1 rounded-full font-medium ${
+                              order.status === 'Overdue'
+                                ? 'bg-red-100 text-red-700'
+                                : order.status === 'Paid'
+                                  ? 'bg-green-100 text-green-700'
+                                  : order.status === 'Draft'
+                                    ? 'bg-yellow-100 text-yellow-700'
+                                    : 'bg-gray-100 text-gray-700'
+                            }`}
+                          >
+                            {order.status}
+                          </span>
+                          <span className="text-gray-500 text-xs">
+                            {new Date(order.creation_datetime).toLocaleTimeString('en-US', {
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  {!ordersLoading &&
+                    !ordersError &&
+                    filteredRecentOrders.length === 0 &&
+                    selectedCustomer && (
+                      <div className="text-xs text-gray-500 text-center py-4">
+                        No recent orders found
+                      </div>
+                    )}
                   {!ordersLoading && !ordersError && filteredRecentOrders.length > 3 && (
                     <div className="text-xs text-gray-400 text-center py-2">
                       Showing 3 of {filteredRecentOrders.length} orders
-                  </div>
+                    </div>
                   )}
                 </div>
               </div>
             ) : (
               <div className="p-4">
                 <div className="text-xs text-gray-500 mb-2">
-                  {selectedCustomer ? `Most ordered by ${selectedCustomer.name}` : 'Select a customer to view most ordered products'}
+                  {selectedCustomer
+                    ? `Most ordered by ${selectedCustomer.name}`
+                    : 'Select a customer to view most ordered products'}
                 </div>
-                
+
                 {/* Search Bar */}
                 <div className="relative mb-4">
                   <input
@@ -1833,34 +2039,58 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                     className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                   <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    <svg
+                      className="w-4 h-4 text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
                     </svg>
                   </div>
                 </div>
-                
+
                 <div className="space-y-2">
                   {mostLoading && (
-                    <div className="text-xs text-gray-500 text-center py-4">Loading most ordered...</div>
+                    <div className="text-xs text-gray-500 text-center py-4">
+                      Loading most ordered...
+                    </div>
                   )}
                   {mostError && (
                     <div className="text-xs text-red-600 text-center py-4">{mostError}</div>
                   )}
-                  {!mostLoading && !mostError && filteredMostOrdered.slice(0,3).map((item, idx) => (
-                    <div key={idx} className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-200 text-xs">
-                      <div className="flex justify-between items-center">
-                        <div className="font-semibold text-purple-700">{item.item_name} ({item.item_code})</div>
-                        <div className="text-gray-600">Qty: {item.total_qty}</div>
+                  {!mostLoading &&
+                    !mostError &&
+                    filteredMostOrdered.slice(0, 3).map((item, idx) => (
+                      <div
+                        key={idx}
+                        className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-200 text-xs"
+                      >
+                        <div className="flex justify-between items-center">
+                          <div className="font-semibold text-purple-700">
+                            {item.item_name} ({item.item_code})
+                          </div>
+                          <div className="text-gray-600">Qty: {item.total_qty}</div>
+                        </div>
+                        <div className="flex justify-between mt-1">
+                          <span className="text-gray-600">Avg Price: {item.avg_price}</span>
+                          <span className="font-semibold text-purple-700">
+                            Total: {item.total_price}
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex justify-between mt-1">
-                        <span className="text-gray-600">Avg Price: {item.avg_price}</span>
-                        <span className="font-semibold text-purple-700">Total: {item.total_price}</span>
-                    </div>
-                  </div>
-                  ))}
-                  {!mostLoading && !mostError && filteredMostOrdered.length === 0 && selectedCustomer && (
-                    <div className="text-xs text-gray-500 text-center py-4">No data</div>
-                  )}
+                    ))}
+                  {!mostLoading &&
+                    !mostError &&
+                    filteredMostOrdered.length === 0 &&
+                    selectedCustomer && (
+                      <div className="text-xs text-gray-500 text-center py-4">No data</div>
+                    )}
                 </div>
               </div>
             )}
@@ -1880,7 +2110,9 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
             <div className="flex border-b border-gray-200/60">
               <button
                 className={`flex-1 px-4 py-3 font-semibold text-sm border-b-2 ${
-                  subTab === 'orders' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'text-gray-500 hover:text-black hover:bg-white/40'
+                  subTab === 'orders'
+                    ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                    : 'text-gray-500 hover:text-black hover:bg-white/40'
                 }`}
                 onClick={() => setSubTab('orders')}
               >
@@ -1888,7 +2120,9 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
               </button>
               <button
                 className={`flex-1 px-4 py-3 font-medium text-sm border-b-2 ${
-                  subTab === 'returns' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'text-gray-500 hover:text-black hover:bg-white/40'
+                  subTab === 'returns'
+                    ? 'border-purple-500 bg-purple-50 text-purple-700'
+                    : 'text-gray-500 hover:text-black hover:bg-white/40'
                 }`}
                 onClick={() => setSubTab('returns')}
               >
@@ -1901,7 +2135,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                 <div className="text-xs text-gray-500 mb-2">
                   All Orders ({filteredOrders.length})
                 </div>
-                
+
                 {/* Search Bar */}
                 <div className="relative mb-4">
                   <input
@@ -1912,12 +2146,22 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                     className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                   <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    <svg
+                      className="w-4 h-4 text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
                     </svg>
                   </div>
                 </div>
-                
+
                 <div className="space-y-2">
                   {ordersTabLoading && (
                     <div className="text-xs text-gray-500 text-center py-4">Loading orders...</div>
@@ -1925,30 +2169,44 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                   {ordersTabError && (
                     <div className="text-xs text-red-600 text-center py-4">{ordersTabError}</div>
                   )}
-                  {!ordersTabLoading && !ordersTabError && filteredOrders.length > 0 && 
+                  {!ordersTabLoading &&
+                    !ordersTabError &&
+                    filteredOrders.length > 0 &&
                     filteredOrders.map((order, index) => (
-                      <div key={index} className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200">
+                      <div
+                        key={index}
+                        className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200"
+                      >
                         <div className="flex justify-between items-center mb-2">
-                          <div className="font-semibold text-primary text-sm">{order.invoice_no || order.sales_order_no}</div>
+                          <div className="font-semibold text-primary text-sm">
+                            {order.invoice_no || order.sales_order_no}
+                          </div>
                           <div className="text-gray-600 text-xs">
                             {new Date(order.creation_datetime).toLocaleDateString('en-US', {
                               month: 'short',
                               day: 'numeric',
                               year: 'numeric'
                             })}
+                          </div>
                         </div>
-                      </div>
                         <div className="flex justify-between items-center mb-2">
                           <span className="text-gray-600 font-medium">Qty: {order.total_qty}</span>
-                          <span className="font-bold text-green-600 text-sm">${order.total_amount?.toLocaleString()}</span>
+                          <span className="font-bold text-green-600 text-sm">
+                            {currencySymbol} {order.total_amount?.toLocaleString()}
+                          </span>
                         </div>
                         <div className="flex justify-between items-center">
-                          <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                            order.status === 'Overdue' ? 'bg-red-100 text-red-700' : 
-                            order.status === 'Paid' ? 'bg-green-100 text-green-700' :
-                            order.status === 'Draft' ? 'bg-yellow-100 text-yellow-700' :
-                            'bg-gray-100 text-gray-700'
-                          }`}>
+                          <span
+                            className={`text-xs px-2 py-1 rounded-full font-medium ${
+                              order.status === 'Overdue'
+                                ? 'bg-red-100 text-red-700'
+                                : order.status === 'Paid'
+                                  ? 'bg-green-100 text-green-700'
+                                  : order.status === 'Draft'
+                                    ? 'bg-yellow-100 text-yellow-700'
+                                    : 'bg-gray-100 text-gray-700'
+                            }`}
+                          >
                             {order.status}
                           </span>
                           <span className="text-gray-500 text-xs">
@@ -1957,10 +2215,9 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                               minute: '2-digit'
                             })}
                           </span>
-                    </div>
-                  </div>
-                    ))
-                  }
+                        </div>
+                      </div>
+                    ))}
                   {!ordersTabLoading && !ordersTabError && filteredOrders.length === 0 && (
                     <div className="text-xs text-gray-500 text-center py-4">No orders found</div>
                   )}
@@ -1968,10 +2225,8 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
               </div>
             ) : (
               <div className="p-4">
-                <div className="text-xs text-gray-500 mb-2">
-                  Returns ({filteredReturns.length})
-                </div>
-                
+                <div className="text-xs text-gray-500 mb-2">Returns ({filteredReturns.length})</div>
+
                 {/* Search Bar */}
                 <div className="relative mb-4">
                   <input
@@ -1982,12 +2237,22 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                     className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                   <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    <svg
+                      className="w-4 h-4 text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
                     </svg>
                   </div>
                 </div>
-                
+
                 <div className="space-y-2">
                   {ordersTabLoading && (
                     <div className="text-xs text-gray-500 text-center py-4">Loading returns...</div>
@@ -1995,22 +2260,31 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                   {ordersTabError && (
                     <div className="text-xs text-red-600 text-center py-4">{ordersTabError}</div>
                   )}
-                  {!ordersTabLoading && !ordersTabError && filteredReturns.length > 0 && 
+                  {!ordersTabLoading &&
+                    !ordersTabError &&
+                    filteredReturns.length > 0 &&
                     filteredReturns.map((order, index) => (
-                      <div key={index} className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg text-xs border border-purple-200">
+                      <div
+                        key={index}
+                        className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg text-xs border border-purple-200"
+                      >
                         <div className="flex justify-between items-center mb-2">
-                          <div className="font-semibold text-purple-700 text-sm">{order.invoice_no || order.sales_order_no}</div>
+                          <div className="font-semibold text-purple-700 text-sm">
+                            {order.invoice_no || order.sales_order_no}
+                          </div>
                           <div className="text-gray-600 text-xs">
                             {new Date(order.creation_datetime).toLocaleDateString('en-US', {
                               month: 'short',
                               day: 'numeric',
                               year: 'numeric'
                             })}
+                          </div>
                         </div>
-                      </div>
                         <div className="flex justify-between items-center mb-2">
                           <span className="text-gray-600">Qty: {order.total_qty}</span>
-                          <span className="font-bold text-purple-600 text-sm">${order.total_amount?.toLocaleString()}</span>
+                          <span className="font-bold text-purple-600 text-sm">
+                            {currencySymbol} {order.total_amount?.toLocaleString()}
+                          </span>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-xs px-2 py-1 rounded-full font-medium bg-purple-100 text-purple-700">
@@ -2022,10 +2296,9 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
                               minute: '2-digit'
                             })}
                           </span>
-                    </div>
-                  </div>
-                    ))
-                  }
+                        </div>
+                      </div>
+                    ))}
                   {!ordersTabLoading && !ordersTabError && filteredReturns.length === 0 && (
                     <div className="text-xs text-gray-500 text-center py-4">No returns found</div>
                   )}
@@ -2037,11 +2310,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ selectedItemId, items, selected
       )}
 
       {/* Placeholder only for tabs not yet implemented */}
-      {activeTab === 'payments' && (
-        <div className="flex-1 flex items-center justify-center text-sm text-gray-500">
-          <span>Payments panel coming soon</span>
-        </div>
-      )}
+      {activeTab === 'payments' && <PaymentTab />}
     </div>
   )
 }
@@ -2125,15 +2394,15 @@ export default RightPanel
 
 // const RightPanel: React.FC = () => {
 //   // Get active tab from cart store
-//   const { 
-//     activeRightPanelTab, 
-//     setActiveRightPanelTab, 
-//     selectedProduct, 
-//     selectedCustomer, 
-//     orderActionTrigger, 
-//     setOrderActionTrigger 
+//   const {
+//     activeRightPanelTab,
+//     setActiveRightPanelTab,
+//     selectedProduct,
+//     selectedCustomer,
+//     orderActionTrigger,
+//     setOrderActionTrigger
 //   }: CartStore = useCartStore();
-  
+
 //   const [upsellTab, setUpsellTab] = useState<string>('upsell');
 //   const [isInitialized, setIsInitialized] = useState<boolean>(false);
 
@@ -2205,7 +2474,7 @@ export default RightPanel
 //         >
 //           Customer
 //         </button>
-//         <button 
+//         <button
 //           className={`px-4 py-3 font-medium text-sm border-b-3 ${activeRightPanelTab === 'print' ? 'border-accent bg-white/90 text-accent font-semibold' : 'border-transparent text-gray-500 hover:text-black hover:bg-white/40 transition-all'}`}
 //           onClick={() => setActiveRightPanelTab('print')}
 //         >

@@ -107,7 +107,7 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange, onCustom
             <SelectTrigger className="w-full p-4 bg-white/80 border border-white/40 rounded-xl shadow-lg focus:ring-2 focus:ring-accent focus:border-transparent transition-all">
               <SelectValue placeholder="Select Price List" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="bg-white border-gray-200 shadow-lg">
               <SelectItem value="Standard Selling">Standard Selling</SelectItem>
               <SelectItem value="Wholesale Price List">Wholesale Price List</SelectItem>
               <SelectItem value="Retail Price List">Retail Price List</SelectItem>
