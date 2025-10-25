@@ -11,7 +11,7 @@ import { ChevronDown } from "lucide-react"
 import { Input } from '@renderer/components/ui/input'
 import { Button } from '@renderer/components/ui/button'
 
-import CustomerSearchModal from '../customer/customer-search'
+import CustomerSearchModal from '../customer/customer-modal'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 
@@ -19,13 +19,15 @@ import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 
 type OrderDetailsProps = {
   onPriceListChange?: (priceList: string) => void
+  onCustomerModalChange?: (isOpen: boolean) => void
+  onCustomerSelect?: (customer: any) => void
 }
 
-const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange }) => {
+const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange, onCustomerModalChange, onCustomerSelect }) => {
 
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [selectedPriceList, setSelectedPriceList] = useState<string>('Standard Selling');
-  const { activeTabId, getCurrentTabCustomer, updateTabCustomer } = usePOSTabStore()
+  const { activeTabId, getCurrentTabCustomer, updateTabCustomer, setTabEdited } = usePOSTabStore()
   const { profile } = usePOSProfileStore()
 
   const selectedCustomer = getCurrentTabCustomer()
@@ -42,6 +44,11 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange }) => {
     onPriceListChange?.(selectedPriceList)
   }, [selectedPriceList, onPriceListChange])
 
+  // Notify parent when customer modal state changes
+  React.useEffect(() => {
+    onCustomerModalChange?.(showCustomerModal)
+  }, [showCustomerModal, onCustomerModalChange])
+
   // Debug logging
   React.useEffect(() => {
     console.log('🔍 OrderDetails Debug:', {
@@ -54,8 +61,24 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange }) => {
   const handleCustomerSelect = (customer: any) => {
     if (activeTabId) {
       updateTabCustomer(activeTabId, customer)
+      setTabEdited(activeTabId, true) // Mark tab as edited when customer changes
     }
     setShowCustomerModal(false)
+    // Notify parent component about customer selection
+    onCustomerSelect?.(customer)
+  }
+
+  const handlePriceListChange = (priceList: string) => {
+    setSelectedPriceList(priceList)
+    if (activeTabId) {
+      setTabEdited(activeTabId, true) // Mark tab as edited when price list changes
+    }
+  }
+
+  const handleDateChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (activeTabId) {
+      setTabEdited(activeTabId, true) // Mark tab as edited when date changes
+    }
   }
 
 
@@ -79,7 +102,7 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange }) => {
           <label className="block text-sm font-semibold text-gray-700">Price List</label>
           <Select 
             value={selectedPriceList} 
-            onValueChange={setSelectedPriceList}
+            onValueChange={handlePriceListChange}
           >
             <SelectTrigger className="w-full p-4 bg-white/80 border border-white/40 rounded-xl shadow-lg focus:ring-2 focus:ring-accent focus:border-transparent transition-all">
               <SelectValue placeholder="Select Price List" />
@@ -98,6 +121,7 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange }) => {
           <Input
             type="date"
             defaultValue="2025-01-21"
+            onChange={handleDateChange}
             className="w-full p-4 bg-white/80 border border-white/40 rounded-xl shadow-lg focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
           />
         </div>

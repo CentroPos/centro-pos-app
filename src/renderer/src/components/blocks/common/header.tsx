@@ -9,6 +9,14 @@ const Header: React.FC = () => {
     createNewTab()
   }
 
+  // Helper function to abbreviate order ID to last 5 digits
+  const abbreviateOrderId = (orderId: string) => {
+    if (!orderId) return orderId
+    // Extract last 5 digits from order ID
+    const last5Digits = orderId.slice(-5)
+    return `#${last5Digits}`
+  }
+
   return (
     <div className="p-3 glass-effect border-b border-white/20">
       <div className="flex items-center justify-between">
@@ -33,7 +41,7 @@ const Header: React.FC = () => {
                 onClick={() => setActiveTab(tab.id)}
               >
                 <span>
-                  {tab.displayName || (tab.orderId ? `#${tab.orderId}` : tab.type === 'new' ? 'New' : 'Order')}
+                  {tab.displayName || (tab.orderId ? abbreviateOrderId(tab.orderId) : tab.type === 'new' ? 'New' : 'Order')}
                 </span>
                 <button
                   className="ml-2 text-gray-400 hover:text-red-500"

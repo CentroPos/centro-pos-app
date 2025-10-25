@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Plus, Search, User } from 'lucide-react'
 import { createPortal } from 'react-dom'
+import { toast } from 'sonner'
 
 import { useCreateCustomer, useCustomers } from '@renderer/hooks/useCustomer'
 import { customersAPI } from '@renderer/api/customer'
@@ -63,61 +64,81 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<any>(null)
   
-  useEffect(() => {
-    const loadCustomers = async () => {
-      setIsLoading(true)
-      setError(null)
-      try {
-        console.log('🧪 Loading customers via direct proxy request...')
-        const res = await window.electronAPI.proxy.request({
-          url: '/api/method/centro_pos_apis.api.customer.customer_list',
-          params: {
-            search_term: '',
-            limit_start: 1,
-            limit_page_length: 10
-          }
+  // Extract loadCustomers function to be reusable
+  const loadCustomers = async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      console.log('🧪 Loading customers via direct proxy request...')
+      const res = await window.electronAPI.proxy.request({
+        url: '/api/method/centro_pos_apis.api.customer.customer_list',
+        params: {
+          search_term: '',
+          limit_start: 0,
+          limit_page_length: 1000
+        }
+      })
+      console.log('🧪 Proxy response:', res)
+      
+      // Extract customers from response.data.data array
+      const customers = Array.isArray(res?.data?.data) ? res.data.data : []
+      console.log('🧪 Extracted customers:', customers)
+      
+      // Transform to the format expected by the UI
+      const transformedCustomers = customers.map((customer: any) => {
+        console.log('🔍 Raw customer from API:', customer)
+        console.log('🔍 Customer API fields:', {
+          name: customer.name,
+          customer_name: customer.customer_name,
+          email_id: customer.email_id,
+          tax_id: customer.tax_id
         })
-        console.log('🧪 Proxy response:', res)
-        
-        // Extract customers from response.data.data array
-        const customers = Array.isArray(res?.data?.data) ? res.data.data : []
-        console.log('🧪 Extracted customers:', customers)
-        
-        // Transform to the format expected by the UI
-        const transformedCustomers = customers.map((customer: any) => {
-          console.log('🔍 Raw customer from API:', customer)
-          const transformed = {
-            id: customer.name, // This is the actual customer_id (CUS-00001)
-            name: customer.customer_name || customer.name, // Display name
-            email: customer.email_id || '',
-            phone: customer.phone || null,
-            address: customer.address_line1 || null,
-            city: customer.city || null,
-            state: customer.state || null,
-            country: 'Saudi Arabia',
-            pincode: customer.pincode || null,
-            customerType: 'Individual',
-            gst: customer.tax_id || null, // Keep tax_id for reference
-            customer_id: customer.name, // Store the actual customer_id separately
-            isActive: true,
-            createdAt: '',
-            updatedAt: ''
-          }
-          console.log('🔍 Transformed customer:', transformed)
-          return transformed
-        })
-        
-        console.log('🧪 Transformed customers:', transformedCustomers)
-        setApiCustomers(transformedCustomers)
-      } catch (err) {
-        console.error('🧪 Error loading customers:', err)
-        setError(err instanceof Error ? err.message : 'Failed to load customers')
-      } finally {
-        setIsLoading(false)
-      }
+        const transformed = {
+          id: customer.name, // This is the actual customer_id (CUS-00001)
+          name: customer.customer_name || customer.name, // Display name
+          email: customer.email_id || '',
+          phone: customer.phone || null,
+          address: customer.address_line1 || null,
+          city: customer.city || null,
+          state: customer.state || null,
+          country: 'Saudi Arabia',
+          pincode: customer.pincode || null,
+          customerType: 'Individual',
+          gst: customer.tax_id || null, // Keep tax_id for reference
+          customer_id: customer.name, // Store the actual customer_id separately
+          isActive: true,
+          createdAt: '',
+          updatedAt: ''
+        }
+        console.log('🔍 Transformed customer:', transformed)
+        return transformed
+      })
+      
+      console.log('🧪 Transformed customers:', transformedCustomers)
+      setApiCustomers(transformedCustomers)
+    } catch (err) {
+      console.error('🧪 Error loading customers:', err)
+      setError(err instanceof Error ? err.message : 'Failed to load customers')
+    } finally {
+      setIsLoading(false)
     }
-    loadCustomers()
-  }, [])
+  }
+
+  // Load customers on component mount and when modal opens
+  useEffect(() => {
+    if (open) {
+      console.log('🔄 Modal opened, loading customers...')
+      loadCustomers()
+    }
+  }, [open])
+
+  // Refresh customers when switching back to search view
+  useEffect(() => {
+    if (view === 'search') {
+      console.log('🔄 Switching to search view, refreshing customer list...')
+      loadCustomers()
+    }
+  }, [view])
   
   console.log('👥 Customer data:', { 
     apiCustomers, 
@@ -133,8 +154,8 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
         url: '/api/method/centro_pos_apis.api.customer.customer_list',
         params: {
           search_term: '',
-          limit_start: 1,
-          limit_page_length: 10
+          limit_start: 0,
+          limit_page_length: 1000
         }
       })
       console.log('🧪 Customer API result:', res)
@@ -188,10 +209,17 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
       const selectedCustomer = filtered[selectedIndex]
       // Store customer with correct customer_id for order creation
       const customerForOrder = {
-        name: selectedCustomer.name, // Display name
+        name: selectedCustomer.name, // Display name (customer_name field)
         gst: selectedCustomer.gst, // Tax ID for reference
-        customer_id: selectedCustomer.customer_id || selectedCustomer.id // Actual customer_id (CUS-00001)
+        customer_id: selectedCustomer.id // Actual customer_id (CUS-00001) - use the name field which contains CUS-XXXXX
       }
+      console.log('🔍 Customer selection debug:', {
+        selectedCustomer,
+        customer_name: selectedCustomer.name,
+        name: selectedCustomer.name,
+        final_customer_id: customerForOrder.customer_id,
+        final_display_name: customerForOrder.name
+      })
       console.log('👤 Customer selected for order:', customerForOrder)
       onSelect(customerForOrder)
       resetAndClose()
@@ -206,27 +234,37 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
 
     try {
       if (!newCustomer.customer_name.trim()) {
-        alert('Customer name is required')
+        toast.error('Customer name is required', {
+          duration: 5000,
+        })
         return
       }
 
       if (!newCustomer.email.trim()) {
-        alert('Email is required')
+        toast.error('Email is required', {
+          duration: 5000,
+        })
         return
       }
 
       // Validate required fields based on customer type
       if (newCustomer.customer_type === 'Company') {
         if (!newCustomer.tax_id.trim()) {
-          alert('Tax ID is required for Company customers')
+          toast.error('Tax ID is required for Company customers', {
+            duration: 5000,
+          })
           return
         }
         if (!newCustomer.customer_id_type_for_zatca.trim()) {
-          alert('Customer ID Type for ZATCA is required for Company customers')
+          toast.error('Customer ID Type for ZATCA is required for Company customers', {
+            duration: 5000,
+          })
           return
         }
         if (!newCustomer.customer_id_number_for_zatca.trim()) {
-          alert('Customer ID Number for ZATCA is required for Company customers')
+          toast.error('Customer ID Number for ZATCA is required for Company customers', {
+            duration: 5000,
+          })
           return
         }
       }
@@ -246,7 +284,9 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
       // Check if the response indicates success (status 200)
       if (response?.status === 200) {
         // Show success message
-        alert('Customer created successfully!')
+        toast.success('Customer created successfully!', {
+          duration: 2000,
+        })
         
         // Reset create form
         setNewCustomer({
@@ -266,12 +306,17 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
 
         // Auto-select newly created
         const newCustomerForSelection = {
-          name: newCustomer.customer_name,
+          name: newCustomer.customer_name, // Display name
           gst: newCustomer.tax_id || 'Not Available',
-          customer_id: response.data.name // The actual customer_id returned from API
+          customer_id: response.data.name // The actual customer_id returned from API (CUS-XXXXX format)
         }
 
         console.log('👤 New customer created for order:', newCustomerForSelection)
+        
+        // Refresh customer list to show the newly created customer
+        console.log('🔄 Refreshing customer list after creation...')
+        await loadCustomers()
+        
         onSelect(newCustomerForSelection)
         resetAndClose()
       } else {
@@ -302,7 +347,9 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
       }
     } catch (err: any) {
       console.error('Error creating customer:', err)
-      alert(`Failed to create customer: ${err?.message || 'Please try again.'}`)
+      toast.error(`Failed to create customer: ${err?.message || 'Please try again.'}`, {
+        duration: 5000,
+      })
     } finally {
       // Always reset loading state
       setIsCreatingCustomer(false)
@@ -321,7 +368,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
 
   return createPortal(
     <Dialog open={open} onOpenChange={(isOpen) => (isOpen ? undefined : resetAndClose())}>
-      <DialogContent className="max-w-2xl max-h-[90vh] bg-white m-4">
+      <DialogContent className="max-w-5xl max-h-[90vh] bg-white m-4">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <User className="h-5 w-5" />
@@ -355,18 +402,32 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     resetAndClose()
                   }
                 }}
-                className="pl-10 pr-24"
+                className="pl-10 pr-32"
                 autoFocus
               />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setView('create')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 h-7"
-              >
-                <Plus className="h-3 w-3 mr-1" />
-                New
-              </Button>
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    console.log('🔄 Manual refresh triggered')
+                    loadCustomers()
+                  }}
+                  className="h-7 px-2"
+                  title="Refresh customer list"
+                >
+                  ↻
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setView('create')}
+                  className="h-7"
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  New
+                </Button>
+              </div>
             </div>
 
             {/* Results */}
@@ -450,19 +511,18 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
         ) : (
           <>
             {/* Create Header */}
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-0">
               <Button variant="outline" size="sm" onClick={() => setView('search')}>
                 <ArrowLeft className="h-4 w-4 mr-1" />
                 Back
               </Button>
             </div>
-            <Separator className="mb-4" />
 
-            {/* Create Form - Updated to match API structure */}
-            <ScrollArea className="h-[500px] pr-4">
-              <div className="space-y-4 p-4">
-                {/* Customer Name */}
-                <div className="space-y-2">
+            {/* Create Form - Compact layout to fit in one window */}
+            <div className="space-y-3 p-2">
+              {/* Row 1: Customer Name and Type */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
                   <label className="text-sm font-medium">Customer Name *</label>
                   <Input
                     value={newCustomer.customer_name}
@@ -473,7 +533,6 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                       }))
                     }
                     onKeyDown={(e) => {
-                      // Allow spacebar and other normal input
                       if (e.key === ' ') {
                         e.stopPropagation()
                       }
@@ -482,9 +541,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     disabled={isCreatingCustomer}
                   />
                 </div>
-
-                {/* Customer Type */}
-                <div className="space-y-2">
+                <div className="space-y-1">
                   <label className="text-sm font-medium">Customer Type *</label>
                   <Select
                     value={newCustomer.customer_type}
@@ -505,41 +562,43 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
 
-                {/* Email and Mobile */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Email *</label>
-                    <Input
-                      type="email"
-                      value={newCustomer.email}
-                      onChange={(e) =>
-                        setNewCustomer((p) => ({
-                          ...p,
-                          email: e.target.value
-                        }))
-                      }
-                      placeholder="email@example.com"
-                      disabled={isCreatingCustomer}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Mobile *</label>
-                    <Input
-                      value={newCustomer.mobile}
-                      onChange={(e) =>
-                        setNewCustomer((p) => ({
-                          ...p,
-                          mobile: e.target.value
-                        }))
-                      }
-                      placeholder="+966509876543"
-                    />
-                  </div>
+              {/* Row 2: Email and Mobile */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Email *</label>
+                  <Input
+                    type="email"
+                    value={newCustomer.email}
+                    onChange={(e) =>
+                      setNewCustomer((p) => ({
+                        ...p,
+                        email: e.target.value
+                      }))
+                    }
+                    placeholder="email@example.com"
+                    disabled={isCreatingCustomer}
+                  />
                 </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Mobile *</label>
+                  <Input
+                    value={newCustomer.mobile}
+                    onChange={(e) =>
+                      setNewCustomer((p) => ({
+                        ...p,
+                        mobile: e.target.value
+                      }))
+                    }
+                    placeholder="+966509876543"
+                  />
+                </div>
+              </div>
 
-                {/* Tax ID - Required for Company, Optional for Individual */}
-                <div className="space-y-2">
+              {/* Row 3: Tax ID and ZATCA fields (conditional) */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
                   <label className="text-sm font-medium">
                     Tax ID {newCustomer.customer_type === 'Company' ? '*' : '(Optional)'}
                   </label>
@@ -554,56 +613,56 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     placeholder="310123456700003"
                   />
                 </div>
-
-                {/* ZATCA Fields - Only for Company */}
                 {newCustomer.customer_type === 'Company' && (
-                  <>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Customer ID Type for ZATCA *</label>
-                      <Select
-                        value={newCustomer.customer_id_type_for_zatca}
-                        onValueChange={(value) =>
-                          setNewCustomer((p) => ({
-                            ...p,
-                            customer_id_type_for_zatca: value
-                          }))
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select ID type" />
-                        </SelectTrigger>
-                        <SelectContent className="z-[9999] bg-white border border-gray-200 shadow-xl">
-                          <SelectItem value="CRN">CRN</SelectItem>
-                          <SelectItem value="TIN">TIN</SelectItem>
-                          <SelectItem value="VAT">VAT</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Customer ID Number for ZATCA *</label>
-                      <Input
-                        value={newCustomer.customer_id_number_for_zatca}
-                        onChange={(e) =>
-                          setNewCustomer((p) => ({
-                            ...p,
-                            customer_id_number_for_zatca: e.target.value
-                          }))
-                        }
-                        onKeyDown={(e) => {
-                          // Allow spacebar and other normal input
-                          if (e.key === ' ') {
-                            e.stopPropagation()
-                          }
-                        }}
-                        placeholder="1010123456"
-                      />
-                    </div>
-                  </>
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Customer ID Type for ZATCA *</label>
+                    <Select
+                      value={newCustomer.customer_id_type_for_zatca}
+                      onValueChange={(value) =>
+                        setNewCustomer((p) => ({
+                          ...p,
+                          customer_id_type_for_zatca: value
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select ID type" />
+                      </SelectTrigger>
+                      <SelectContent className="z-[9999] bg-white border border-gray-200 shadow-xl">
+                        <SelectItem value="CRN">CRN</SelectItem>
+                        <SelectItem value="TIN">TIN</SelectItem>
+                        <SelectItem value="VAT">VAT</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 )}
+              </div>
 
-                {/* Address Line 1 */}
-                <div className="space-y-2">
+              {/* Row 4: ZATCA ID Number (only for Company) */}
+              {newCustomer.customer_type === 'Company' && (
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Customer ID Number for ZATCA *</label>
+                  <Input
+                    value={newCustomer.customer_id_number_for_zatca}
+                    onChange={(e) =>
+                      setNewCustomer((p) => ({
+                        ...p,
+                        customer_id_number_for_zatca: e.target.value
+                      }))
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === ' ') {
+                        e.stopPropagation()
+                      }
+                    }}
+                    placeholder="1010123456"
+                  />
+                </div>
+              )}
+
+              {/* Row 5: Address Line 1 and 2 */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
                   <label className="text-sm font-medium">Address Line 1 *</label>
                   <Input
                     value={newCustomer.address_line1}
@@ -614,7 +673,6 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                       }))
                     }
                     onKeyDown={(e) => {
-                      // Allow spacebar and other normal input
                       if (e.key === ' ') {
                         e.stopPropagation()
                       }
@@ -622,9 +680,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     placeholder="789 King Abdullah Road"
                   />
                 </div>
-
-                {/* Address Line 2 */}
-                <div className="space-y-2">
+                <div className="space-y-1">
                   <label className="text-sm font-medium">Address Line 2</label>
                   <Input
                     value={newCustomer.address_line2}
@@ -635,7 +691,6 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                       }))
                     }
                     onKeyDown={(e) => {
-                      // Allow spacebar and other normal input
                       if (e.key === ' ') {
                         e.stopPropagation()
                       }
@@ -643,65 +698,63 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     placeholder="Building 8221"
                   />
                 </div>
+              </div>
 
-                {/* City, State, Pincode */}
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">City *</label>
-                    <Input
-                      value={newCustomer.city}
-                      onChange={(e) =>
-                        setNewCustomer((p) => ({
-                          ...p,
-                          city: e.target.value
-                        }))
+              {/* Row 6: City, State, Pincode */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">City *</label>
+                  <Input
+                    value={newCustomer.city}
+                    onChange={(e) =>
+                      setNewCustomer((p) => ({
+                        ...p,
+                        city: e.target.value
+                      }))
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === ' ') {
+                        e.stopPropagation()
                       }
-                      onKeyDown={(e) => {
-                        // Allow spacebar and other normal input
-                        if (e.key === ' ') {
-                          e.stopPropagation()
-                        }
-                      }}
-                      placeholder="Riyadh"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Province *</label>
-                    <Input
-                      value={newCustomer.state}
-                      onChange={(e) =>
-                        setNewCustomer((p) => ({
-                          ...p,
-                          state: e.target.value
-                        }))
+                    }}
+                    placeholder="Riyadh"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Province *</label>
+                  <Input
+                    value={newCustomer.state}
+                    onChange={(e) =>
+                      setNewCustomer((p) => ({
+                        ...p,
+                        state: e.target.value
+                      }))
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === ' ') {
+                        e.stopPropagation()
                       }
-                      onKeyDown={(e) => {
-                        // Allow spacebar and other normal input
-                        if (e.key === ' ') {
-                          e.stopPropagation()
-                        }
-                      }}
-                      placeholder="Riyadh Province"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Pincode *</label>
-                    <Input
-                      value={newCustomer.pincode}
-                      onChange={(e) =>
-                        setNewCustomer((p) => ({
-                          ...p,
-                          pincode: e.target.value
-                        }))
-                      }
-                      placeholder="11564"
-                    />
-                  </div>
+                    }}
+                    placeholder="Riyadh Province"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Pincode *</label>
+                  <Input
+                    value={newCustomer.pincode}
+                    onChange={(e) =>
+                      setNewCustomer((p) => ({
+                        ...p,
+                        pincode: e.target.value
+                      }))
+                    }
+                    placeholder="11564"
+                  />
                 </div>
               </div>
-            </ScrollArea>
+            </div>
 
-            <DialogFooter className="gap-2">
+            <DialogFooter className="gap-2 mt-4">
               <Button 
                 variant="outline" 
                 onClick={() => setView('search')}
