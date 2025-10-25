@@ -29,11 +29,12 @@ type Props = {
   isCustomerModalOpen?: boolean
   isErrorBoxFocused?: boolean
   onEditingStateChange?: (isEditing: boolean) => void
+  errorItems?: string[]
 }
 
 type EditField = 'quantity' | 'standard_rate' | 'uom' | 'discount_percentage' | 'item_name'
 
-const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem, shouldStartEditing = false, onEditingStarted, onAddItemClick, onSaveCompleted, isProductModalOpen = false, isCustomerModalOpen = false, isErrorBoxFocused = false, onEditingStateChange }) => {
+const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem, shouldStartEditing = false, onEditingStarted, onAddItemClick, onSaveCompleted, isProductModalOpen = false, isCustomerModalOpen = false, isErrorBoxFocused = false, onEditingStateChange, errorItems = [] }) => {
   const { getCurrentTabItems, activeTabId, updateItemInTab, getCurrentTab, setTabEdited } = usePOSTabStore();
   const items = getCurrentTabItems();
   const currentTab = getCurrentTab();
@@ -46,6 +47,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       updateItemInTab(activeTabId, itemCode, updates)
       setTabEdited(activeTabId, true)
     }
+  }
+
+  // Helper function to check if an item has an error
+  const hasItemError = (itemCode: string) => {
+    return errorItems.includes(itemCode)
   }
   
   const [activeField, setActiveField] = useState<EditField>('quantity');
@@ -874,6 +880,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                   const isEditingDiscount =
                     isSelected && isEditing && activeField === 'discount_percentage'
                   const isEditingItemName = isSelected && isEditing && activeField === 'item_name'
+                  const hasError = hasItemError(item.item_code)
 
                   return (
                     <TableRow
@@ -887,17 +894,18 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                           scrollToSelectedItem(item.item_code)
                         }
                       }}
-                      className={`transition-all ${isSelected
+                      className={`transition-all ${
+                        isSelected
                           ? 'bg-gradient-to-r from-blue-50 to-blue-100 border-l-4 border-l-blue-500 shadow-md'
                           : 'hover:bg-gray-50'
-                        }`}
+                      }`}
                     >
-                      <TableCell className={`${isSelected ? 'font-semibold text-blue-900' : ''} w-[140px]`}>
+                      <TableCell className={`${hasError ? 'text-red-600 font-semibold' : isSelected ? 'font-semibold text-blue-900' : ''} w-[140px]`}>
                         {item.item_code}
                       </TableCell>
                       {/* Label Cell */}
                       <TableCell
-                        className={`${isSelected ? 'font-medium' : ''} w-[200px]`}
+                        className={`${hasError ? 'text-red-600 font-medium' : isSelected ? 'font-medium' : ''} w-[200px]`}
                         data-item-code={item.item_code}
                         data-field="item_name"
                         onClick={(e) => {
@@ -963,7 +971,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
                       {/* Quantity Cell */}
                       <TableCell
-                        className={`${isSelected ? 'font-medium' : ''} w-[70px] text-center`}
+                        className={`${hasError ? 'text-red-600 font-medium' : isSelected ? 'font-medium' : ''} w-[70px] text-center`}
                         data-item-code={item.item_code}
                         data-field="quantity"
                         onClick={(e) => {
@@ -989,6 +997,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             key={`qty-${item.item_code}-${isEditingQuantity}-${forceFocus}`}
                             ref={inputRef}
                             type="number"
+                            data-item-code={item.item_code}
+                            data-field="quantity"
                             value={editValue}
                             onChange={(e) => {
                               const newValue = e.target.value
@@ -1056,7 +1066,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
                       {/* UOM Cell - Not clickable, only editable via spacebar */}
                       <TableCell
-                        className={`${isSelected ? 'font-medium' : ''} w-[80px] text-center`}
+                        className={`${hasError ? 'text-red-600 font-medium' : isSelected ? 'font-medium' : ''} w-[80px] text-center`}
                       >
                         {isEditingUom ? (
                           <input
@@ -1089,7 +1099,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
                       {/* Discount Cell */}
                       <TableCell
-                        className={`${isSelected ? 'font-medium' : ''} w-[80px] text-center`}
+                        className={`${hasError ? 'text-red-600 font-medium' : isSelected ? 'font-medium' : ''} w-[80px] text-center`}
                         onClick={(e) => {
                           e.stopPropagation()
                           if (!isReadOnly) {
@@ -1137,7 +1147,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
                       {/* Unit Price (editable) */}
                       <TableCell
-                        className={`${isSelected ? 'font-medium' : ''} w-[100px] text-center`}
+                        className={`${hasError ? 'text-red-600 font-medium' : isSelected ? 'font-medium' : ''} w-[100px] text-center`}
                         onClick={(e) => {
                           e.stopPropagation()
                           if (!isReadOnly) {
@@ -1191,7 +1201,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                           <>{Number(item.standard_rate || 0).toFixed(2)}</>
                         )}
                       </TableCell>
-                      <TableCell className={`font-semibold ${isSelected ? 'text-blue-900' : ''} w-[100px] text-left pl-8`}>
+                      <TableCell className={`font-semibold ${hasError ? 'text-red-600' : isSelected ? 'text-blue-900' : ''} w-[100px] text-left pl-8`}>
                         {(
                           Number(item.standard_rate || 0) *
                           Number(item.quantity || 0) *

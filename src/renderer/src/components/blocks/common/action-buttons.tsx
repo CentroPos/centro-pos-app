@@ -26,8 +26,9 @@ type Props = {
   onSaveCompleted?: () => void
   isItemTableEditing?: boolean
   onInsufficientStockErrors?: (
-    errors: Array<{ message: string; title: string; indicator: string }>
+    errors: Array<{ message: string; title: string; indicator: string; itemCode: string }>
   ) => void
+  onFocusItem?: (itemCode: string) => void
 }
 
 // Helper function to format HTML content for display
@@ -54,8 +55,8 @@ const formatErrorMessage = (message: string): { mainMessage: string; details: st
 // Helper function to parse server messages and extract insufficient stock errors
 const parseInsufficientStockErrors = (
   serverMessages: any
-): Array<{ message: string; title: string; indicator: string }> => {
-  const errors: Array<{ message: string; title: string; indicator: string }> = []
+): Array<{ message: string; title: string; indicator: string; itemCode: string }> => {
+  const errors: Array<{ message: string; title: string; indicator: string; itemCode: string }> = []
 
   try {
     let messages = serverMessages
@@ -109,27 +110,44 @@ const parseInsufficientStockErrors = (
               // Remove "Insufficient Stock:" prefix if present
               const messageWithoutPrefix = cleanError.replace(/^Insufficient Stock:\s*/i, '')
 
+              // Extract item code from the error message
+              const itemCodeMatch = messageWithoutPrefix.match(/^([A-Z0-9-]+)/)
+              const itemCode = itemCodeMatch ? itemCodeMatch[1] : ''
+
               errors.push({
                 message: `Item: ${messageWithoutPrefix}`,
                 title: messageObj.title || 'Stock Unavailable',
-                indicator: messageObj.indicator || 'red'
+                indicator: messageObj.indicator || 'red',
+                itemCode: itemCode
               })
             })
           } else if (itemErrors.length === 1) {
             // Single item error - remove "Insufficient Stock:" prefix if present
             const messageWithoutPrefix = itemErrors[0].replace(/^Insufficient Stock:\s*/i, '')
+
+            // Extract item code from the error message
+            const itemCodeMatch = messageWithoutPrefix.match(/^([A-Z0-9-]+)/)
+            const itemCode = itemCodeMatch ? itemCodeMatch[1] : ''
+
             errors.push({
               message: `Item: ${messageWithoutPrefix}`,
               title: messageObj.title || 'Stock Error',
-              indicator: messageObj.indicator || 'red'
+              indicator: messageObj.indicator || 'red',
+              itemCode: itemCode
             })
           } else {
             // Fallback: treat the whole message as one error
             const messageWithoutPrefix = cleanMessage.replace(/^Insufficient Stock:\s*/i, '')
+
+            // Try to extract item code from the fallback message
+            const itemCodeMatch = messageWithoutPrefix.match(/Item:\s*([A-Z0-9-]+)/)
+            const itemCode = itemCodeMatch ? itemCodeMatch[1] : ''
+
             errors.push({
               message: messageWithoutPrefix,
               title: messageObj.title || 'Stock Error',
-              indicator: messageObj.indicator || 'red'
+              indicator: messageObj.indicator || 'red',
+              itemCode: itemCode
             })
           }
         }
