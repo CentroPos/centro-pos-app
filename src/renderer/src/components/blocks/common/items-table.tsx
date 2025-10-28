@@ -1,4 +1,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs'
+import { Input } from '@renderer/components/ui/input'
+import { Search as SearchIcon } from 'lucide-react'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@renderer/components/ui/dialog'
 import { Button } from '@renderer/components/ui/button'
 import {
   Table,
@@ -37,8 +40,24 @@ type EditField = 'quantity' | 'standard_rate' | 'uom' | 'discount_percentage' | 
 const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem, shouldStartEditing = false, onEditingStarted, onAddItemClick, onSaveCompleted, isProductModalOpen = false, isCustomerModalOpen = false, isErrorBoxFocused = false, onEditingStateChange, errorItems = [] }) => {
   const { getCurrentTabItems, activeTabId, updateItemInTab, getCurrentTab, setTabEdited } = usePOSTabStore();
   const items = getCurrentTabItems();
+  const hasBottomErrors = Array.isArray(errorItems) && errorItems.length > 0;
+  const [tableSearch, setTableSearch] = useState('')
+  const filteredItems = items.filter((it) => {
+    const term = tableSearch.trim().toLowerCase()
+    if (!term) return true
+    return (
+      String(it.item_code || '').toLowerCase().includes(term) ||
+      String(it.item_name || '').toLowerCase().includes(term)
+    )
+  })
+  const totalProducts = items.length;
+  const totalQuantity = items.reduce((sum, it) => sum + (Number(it.quantity || 0) || 0), 0);
   const currentTab = getCurrentTab();
   const isReadOnly = false; // Temporarily disabled for debugging
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteCandidate, setDeleteCandidate] = useState<string | null>(null)
+  const confirmBtnRef = useRef<HTMLButtonElement>(null)
+  const cancelBtnRef = useRef<HTMLButtonElement>(null)
   // const isReadOnly = currentTab?.status === 'confirmed' || currentTab?.status === 'paid';
 
   // Helper function to update item and mark tab as edited
@@ -47,6 +66,70 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       updateItemInTab(activeTabId, itemCode, updates)
       setTabEdited(activeTabId, true)
     }
+  }
+
+  // Editable field order and keyboard navigation between fields
+  type EditField = 'item_name' | 'quantity' | 'uom' | 'discount_percentage' | 'standard_rate'
+  const fieldOrder: EditField[] = ['item_name', 'quantity', 'uom', 'discount_percentage', 'standard_rate']
+  // Virtual field for actions column (not editable input)
+  const extendedFieldOrder: Array<EditField | 'actions'> = [...fieldOrder, 'actions']
+
+  const moveToField = (itemCode: string, field: EditField) => {
+    selectItem(itemCode)
+    setActiveField(field)
+    setIsEditing(true)
+    const rowItem = items.find((i) => i.item_code === itemCode)
+    if (!rowItem) return
+    switch (field) {
+      case 'item_name':
+        setEditValue(String(rowItem.item_name ?? ''))
+        break
+      case 'quantity':
+        setEditValue(String(rowItem.quantity ?? ''))
+        break
+      case 'uom':
+        setEditValue(String(rowItem.uom ?? 'Nos'))
+        break
+      case 'discount_percentage':
+        setEditValue(String(rowItem.discount_percentage ?? '0'))
+        break
+      case 'standard_rate':
+        setEditValue(String(rowItem.standard_rate ?? ''))
+        break
+    }
+  }
+
+  const handleArrowNavigation = (e: React.KeyboardEvent, currentField: EditField, itemCode: string) => {
+    if (showDeleteConfirm) return
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+    e.preventDefault()
+    e.stopPropagation()
+    const idx = extendedFieldOrder.indexOf(currentField as any)
+    if (idx === -1) return
+    const nextIdx = e.key === 'ArrowRight' ? Math.min(idx + 1, extendedFieldOrder.length - 1) : Math.max(idx - 1, 0)
+    const nextField = extendedFieldOrder[nextIdx]
+    if (nextField === 'actions') {
+      // Focus the delete button
+      const btn = document.querySelector(`[data-item-code="${itemCode}"] button[data-action="delete"]`) as HTMLButtonElement | null
+      if (btn) btn.focus()
+      setIsEditing(false)
+      return
+    }
+    moveToField(itemCode, nextField as EditField)
+  }
+
+  // Up/Down navigation to same field on previous/next row
+  const handleVerticalNavigation = (e: React.KeyboardEvent, currentField: EditField, itemCode: string) => {
+    if (showDeleteConfirm) return
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
+    e.preventDefault()
+    e.stopPropagation()
+    const currentIndex = items.findIndex((i) => i.item_code === itemCode)
+    if (currentIndex === -1) return
+    const nextIndex = e.key === 'ArrowDown' ? Math.min(currentIndex + 1, items.length - 1) : Math.max(currentIndex - 1, 0)
+    const nextItem = items[nextIndex]
+    if (!nextItem) return
+    moveToField(nextItem.item_code, currentField)
   }
 
   // Helper function to check if an item has an error
@@ -837,23 +920,49 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   return (
     <div className="p-4 bg-white">
       <Tabs defaultValue="items" className="w-full">
-        <TabsList>
-          <TabsTrigger value="items">Items</TabsTrigger>
-          <TabsTrigger value="other">Other Details</TabsTrigger>
-        </TabsList>
+        <div className="flex items-center justify-between">
+          <TabsList>
+            <TabsTrigger value="items">Items</TabsTrigger>
+            <TabsTrigger value="other">Other Details</TabsTrigger>
+          </TabsList>
+          <div className="relative w-1/4 min-w-[220px]">
+            <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search items..."
+              value={tableSearch}
+              onChange={(e) => setTableSearch(e.target.value)}
+              className="pl-8 h-8 text-sm"
+            />
+          </div>
+        </div>
         <TabsContent value="items" className="mt-4">
           <div className="border rounded-lg">
             {/* Fixed header (outside scroll) */}
               <Table className="table-fixed w-full">
               <TableHeader>
                   <TableRow>
-                  <TableHead className="w-[140px]">Product Code</TableHead>
-                  <TableHead className="w-[200px]">Label</TableHead>
-                  <TableHead className="w-[70px] text-center">Qty</TableHead>
+                  <TableHead className="w-[50px] text-center">S.No</TableHead>
+                  <TableHead className="w-[110px]">
+                    <div className="flex items-center gap-2">
+                      <span>Product</span>
+                      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-200 text-[10px] font-semibold">
+                        {totalProducts}
+                      </span>
+                    </div>
+                  </TableHead>
+                  <TableHead className="w-[300px]">Label</TableHead>
+                  <TableHead className="w-[70px] text-center">
+                    <div className="flex items-center justify-center gap-2">
+                      <span>Qty</span>
+                      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-200 text-[10px] font-semibold">
+                        {totalQuantity}
+                      </span>
+                    </div>
+                  </TableHead>
                   <TableHead className="w-[80px] text-center px-1">UOM</TableHead>
                   <TableHead className="w-[80px] text-center">Discount</TableHead>
                   <TableHead className="w-[100px] text-center">Unit Price</TableHead>
-                  <TableHead className="w-[100px] text-left pl-5">Total</TableHead>
+                  <TableHead className="w-[100px] text-left pl-8">Total</TableHead>
                   <TableHead className="w-[60px] text-center pl-1">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -861,7 +970,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
             {/* Scrollable body only */}
             <div 
-              className="max-h-[22vh] overflow-y-auto cursor-pointer"
+              className={`${hasBottomErrors ? 'max-h-[22vh]' : 'max-h-[55vh]'} overflow-y-auto cursor-pointer`}
               onClick={(e) => {
                 // Only trigger if clicking on empty space (not on table cells)
                 if (e.target === e.currentTarget || (e.target as HTMLElement).tagName === 'DIV') {
@@ -872,7 +981,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
             >
               <Table className="table-fixed w-full">
                 <TableBody>
-                {items.map((item) => {
+                {filteredItems.map((item, index) => {
                   const isSelected = item.item_code === selectedItemId
                   const isEditingQuantity = isSelected && isEditing && activeField === 'quantity'
                   const isEditingRate = isSelected && isEditing && activeField === 'standard_rate'
@@ -900,12 +1009,13 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                           : 'hover:bg-gray-50'
                         }`}
                     >
-                      <TableCell className={`${hasError ? 'text-red-600 font-semibold' : isSelected ? 'font-semibold text-blue-900' : ''} w-[140px]`}>
+                      <TableCell className="w-[50px] text-center">{index + 1}</TableCell>
+                      <TableCell className={`${hasError ? 'text-red-600 font-semibold' : isSelected ? 'font-semibold text-blue-900' : ''} w-[110px]`}>
                         {item.item_code}
                       </TableCell>
                       {/* Label Cell */}
                       <TableCell
-                        className={`${hasError ? 'text-red-600 font-medium' : isSelected ? 'font-medium' : ''} w-[200px]`}
+                        className={`${hasError ? 'text-red-600 font-medium' : isSelected ? 'font-medium' : ''} w-[300px]`}
                         data-item-code={item.item_code}
                         data-field="item_name"
                         onClick={(e) => {
@@ -941,6 +1051,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                               }
                             }}
                             onKeyDown={(e) => {
+                              handleArrowNavigation(e, 'item_name', item.item_code)
+                              handleVerticalNavigation(e, 'item_name', item.item_code)
                               if (e.key === 'Enter') {
                                 e.preventDefault()
                                 e.stopPropagation()
@@ -1028,6 +1140,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                               }
                             }}
                             onKeyDown={async (e) => {
+                              handleArrowNavigation(e, 'quantity', item.item_code)
+                              handleVerticalNavigation(e, 'quantity', item.item_code)
                               if (e.key === 'Enter') {
                                 e.preventDefault()
                                 e.stopPropagation()
@@ -1044,8 +1158,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                   }
                                 }
                                 // Navigate to unit price and keep editing
-                                setActiveField('standard_rate')
-                                setEditValue(String(item.standard_rate || 0))
+                                moveToField(item.item_code, 'standard_rate')
                               } else if (e.key === 'Escape') {
                                 e.preventDefault()
                                 e.stopPropagation()
@@ -1074,23 +1187,35 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             ref={inputRef}
                             type="text"
                             value={editValue}
-                            onChange={(e) => {
-                              const val = e.target.value
-                              console.log('📝 UOM input onChange:', val)
-                              setEditValue(val)
-                              // Real-time update for UOM
-                              if (selectedItemId && activeTabId) {
-                                updateItemAndMarkEdited(selectedItemId, { uom: val })
-                              }
-                            }}
+                            onChange={() => { /* disabled manual edit */ }}
                             onKeyDown={(e) => {
-                              if (e.key === 'Escape') {
+                              // Allow horizontal navigation to other fields
+                              handleArrowNavigation(e, 'uom', item.item_code)
+                              handleVerticalNavigation(e, 'uom', item.item_code)
+                              if (e.key === ' ') {
+                                e.preventDefault()
+                                // Cycle to next UOM
+                                const rates = item.uomRates || {}
+                                const uoms = Object.keys(rates)
+                                const currentUom = String(item.uom || 'Nos')
+                                const currentIndex = Math.max(0, uoms.indexOf(currentUom))
+                                const nextIndex = (currentIndex + 1) % (uoms.length || 1)
+                                const nextUom = uoms.length ? uoms[nextIndex] : currentUom
+                                setEditValue(nextUom)
+                                if (activeTabId && selectedItemId) {
+                                  updateItemAndMarkEdited(selectedItemId, {
+                                    uom: nextUom,
+                                    standard_rate: rates[nextUom] ?? item.standard_rate
+                                  })
+                                }
+                              } else if (e.key === 'Escape') {
                                 e.preventDefault()
                                 setIsEditing(false)
                               }
                             }}
                             onBlur={handleSaveEdit}
                             className="w-[70px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center truncate"
+                            readOnly
                           />
                         ) : (
                           <div className="px-2 py-1">{item.uom || 'Nos'}</div>
@@ -1124,6 +1249,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
                             onKeyDown={(e) => {
+                              handleArrowNavigation(e, 'discount_percentage', item.item_code)
+                              handleVerticalNavigation(e, 'discount_percentage', item.item_code)
                               if (e.key === 'Enter') {
                                 e.preventDefault()
                                 e.stopPropagation()
@@ -1182,11 +1309,20 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                               }
                             }}
                             onKeyDown={(e) => {
+                              handleArrowNavigation(e, 'standard_rate', item.item_code)
+                              handleVerticalNavigation(e, 'standard_rate', item.item_code)
                               if (e.key === 'Enter') {
                                 e.preventDefault()
                                 handleSaveEdit()
                                 // End editing - no further navigation
                                 setIsEditing(false)
+                                
+                                // If this is the last item, open product modal
+                                const currentIndex = filteredItems.findIndex(i => i.item_code === item.item_code)
+                                if (currentIndex === filteredItems.length - 1) {
+                                  console.log('⌨️ Enter pressed on last item unit price - opening product modal')
+                                  onAddItemClick?.()
+                                }
                               } else if (e.key === 'Escape') {
                                 e.preventDefault()
                                 setIsEditing(false)
@@ -1212,10 +1348,27 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                         <Button
                           size="sm"
                           variant="ghost"
+                          data-action="delete"
                           className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1"
                           onClick={(e) => {
                             e.stopPropagation()
-                            if (!isReadOnly) onRemoveItem(item.item_code)
+                            if (isReadOnly) return
+                            setDeleteCandidate(item.item_code)
+                            setShowDeleteConfirm(true)
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              if (!isReadOnly) {
+                                setDeleteCandidate(item.item_code)
+                                setShowDeleteConfirm(true)
+                              }
+                            } else if (e.key === 'ArrowLeft') {
+                              e.preventDefault()
+                              moveToField(item.item_code, 'standard_rate')
+                            } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                              handleVerticalNavigation(e as any, 'standard_rate', item.item_code)
+                            }
                           }}
                           disabled={isReadOnly}
                         >
@@ -1277,6 +1430,42 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         </TabsContent>
       </Tabs>
       
+      {/* Delete confirmation dialog */}
+      <Dialog open={showDeleteConfirm} onOpenChange={(v) => setShowDeleteConfirm(v)}>
+        <DialogContent className="max-w-sm" onKeyDown={(e) => {
+          if (e.key === 'ArrowLeft') {
+            e.preventDefault()
+            // Move focus to the left (Confirm)
+            confirmBtnRef.current?.focus()
+          } else if (e.key === 'ArrowRight') {
+            e.preventDefault()
+            // Move focus to the right (Cancel)
+            cancelBtnRef.current?.focus()
+          } else if (e.key === 'Enter') {
+            // Activate the focused button
+            (document.activeElement as HTMLButtonElement)?.click()
+          }
+        }}>
+          <DialogHeader>
+            <DialogTitle>Delete item?</DialogTitle>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              ref={confirmBtnRef}
+              onClick={() => {
+                if (deleteCandidate) onRemoveItem(deleteCandidate)
+                setShowDeleteConfirm(false)
+                setDeleteCandidate(null)
+              }}
+              autoFocus
+            >
+              Confirm
+            </Button>
+            <Button ref={cancelBtnRef} variant="outline" onClick={() => setShowDeleteConfirm(false)}>Cancel</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Multi Warehouse Allocation Popup */}
       {warehousePopupData && (
         <MultiWarehousePopup

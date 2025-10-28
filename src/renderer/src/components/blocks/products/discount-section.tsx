@@ -183,8 +183,8 @@ const DiscountSection: React.FC<Props> = ({
   )
 
   return (
-    <div className="p-4">
-      <div className="flex gap-4 mb-4">
+    <div className="p-2">
+      <div className="flex gap-3 mb-2">
         <Button variant="outline" className="flex items-center gap-2">
           <span className="text-blue-500">%</span>
           Discount
@@ -202,15 +202,15 @@ const DiscountSection: React.FC<Props> = ({
         </Button>
       </div>
 
-      <div className="grid grid-cols-5 gap-4 items-end">
+      <div className="grid grid-cols-5 gap-3 items-end text-sm">
         <div className="text-center">
-          <div className="text-sm text-gray-600">Untaxed</div>
-          <div className="text-lg font-semibold">
+          <div className="text-xs text-gray-600">Untaxed</div>
+          <div className="text-base font-semibold">
             {currencySymbol} {untaxed.toLocaleString(undefined, { minimumFractionDigits: 2 })}
           </div>
         </div>
         <div className="text-center">
-          <div className="text-sm text-gray-600">Discount</div>
+          <div className="text-xs text-gray-600">Discount</div>
           {isEditingGlobalDiscount ? (
             <Input
               ref={globalDiscountRef}
@@ -219,7 +219,7 @@ const DiscountSection: React.FC<Props> = ({
               onChange={handleGlobalDiscountChange}
               onBlur={handleGlobalDiscountBlur}
               onKeyDown={handleGlobalDiscountKeyDown}
-              className="text-center text-lg font-semibold w-20"
+              className="text-center text-base font-semibold w-16 h-8"
               placeholder="0"
               min="0"
               max="100"
@@ -227,33 +227,33 @@ const DiscountSection: React.FC<Props> = ({
             />
           ) : (
             <div
-              className="text-lg font-semibold text-red-500 cursor-pointer hover:bg-gray-100 p-1 rounded"
+              className="text-base font-semibold text-red-500 cursor-pointer hover:bg-gray-100 px-1 rounded"
               onClick={handleGlobalDiscountClick}
               title="Click to edit global discount percentage"
             >
               -{currencySymbol} {globalDiscount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
               {globalDiscountPercent > 0 && (
-                <div className="text-xs text-gray-500">({globalDiscountPercent}%)</div>
+                <div className="text-[10px] text-gray-500">({globalDiscountPercent}%)</div>
               )}
             </div>
           )}
         </div>
         <div className="text-center">
-          <div className="text-sm text-gray-600">VAT ({vatPercentage}%)</div>
-          <div className="text-lg font-semibold">
+          <div className="text-xs text-gray-600">VAT ({vatPercentage}%)</div>
+          <div className="text-base font-semibold">
             {currencySymbol} {vat.toLocaleString(undefined, { minimumFractionDigits: 2 })}
           </div>
         </div>
         <div className="text-center">
-          <div className="text-sm text-gray-600">Rounding</div>
-          <div className="text-lg font-semibold">
+          <div className="text-xs text-gray-600">Rounding</div>
+          <div className="text-base font-semibold">
             {currencySymbol} {rounding.toLocaleString(undefined, { minimumFractionDigits: 2 })}
           </div>
         </div>
         <div className="text-center">
-          <div className="text-sm text-white bg-gray-800 p-2 rounded">
-            <div className="text-sm">Total</div>
-            <div className="text-xl font-bold">
+          <div className="text-xs text-white bg-gray-800 p-2 rounded">
+            <div className="text-xs">Total</div>
+            <div className="text-lg font-bold">
               {currencySymbol} {total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </div>
           </div>

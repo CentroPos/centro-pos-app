@@ -11,6 +11,9 @@ interface POSProfile {
   name: string
   selling_price_list: string
   applicable_for_users: POSProfileUser[]
+  currency?: string
+  currency_symbol?: string
+  custom_currency_symbol?: string
 }
 
 interface POSProfileStore {

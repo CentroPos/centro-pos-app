@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
 import { Label } from '@renderer/components/ui/label'
@@ -54,6 +55,10 @@ const PaymentTab: React.FC = () => {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [customers, setCustomers] = useState<Customer[]>([])
   const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([])
+  const [customerPage, setCustomerPage] = useState(1)
+  const [customerHasMore, setCustomerHasMore] = useState(true)
+  const [isFetchingMoreCustomers, setIsFetchingMoreCustomers] = useState(false)
+  const latestCustomerReq = React.useRef(0)
   const [dueInvoices, setDueInvoices] = useState<DueInvoice[]>([])
   const [modeOfPayment, setModeOfPayment] = useState<string>('Cash')
   const [paymentDate, setPaymentDate] = useState<string>(() =>
@@ -74,6 +79,7 @@ const PaymentTab: React.FC = () => {
   ])
   const [currencySymbol, setCurrencySymbol] = useState('$')
   const [vatPercentage, setVatPercentage] = useState(10)
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
 
   // Helper function to abbreviate invoice numbers (last 5 digits)
   const abbreviateInvoiceNumber = (invoiceNo: string): string => {
@@ -129,10 +135,9 @@ const PaymentTab: React.FC = () => {
     }
   }
 
-  // Load customers and payment vouchers on component mount
+  // Load payment vouchers on component mount
   useEffect(() => {
     loadPOSProfile()
-    loadCustomers()
     loadPaymentVouchers()
   }, [])
 
@@ -152,20 +157,16 @@ const PaymentTab: React.FC = () => {
     }
   }, [voucherSearchTerm, paymentVouchers])
 
-  // Filter customers based on search term
+  // Debounced server-side customer search
   useEffect(() => {
-    if (searchTerm.trim() === '') {
-      setFilteredCustomers(customers)
-    } else {
-      const filtered = customers.filter(
-        (customer) =>
-          customer.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          customer.name.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-      setFilteredCustomers(filtered)
-    }
-    setSelectedCustomerIndex(0) // Reset selection when search changes
-  }, [searchTerm, customers])
+    if (!isCustomerModalOpen) return
+    const handle = setTimeout(() => {
+      setCustomerPage(1)
+      setCustomerHasMore(true)
+      loadCustomers(searchTerm, 1)
+    }, 300)
+    return () => clearTimeout(handle)
+  }, [searchTerm, isCustomerModalOpen])
 
   // Reset search and selection when modal opens
   useEffect(() => {
@@ -214,32 +215,33 @@ const PaymentTab: React.FC = () => {
     }
   }, [selectedCustomerIndex, isCustomerModalOpen, filteredCustomers.length])
 
-  // Load customers from API
-  const loadCustomers = async () => {
+  // Load customers from API with cumulative pagination
+  const loadCustomers = async (term: string, page: number) => {
     try {
-      console.log('🧪 Loading customers via direct proxy request...')
+      const reqId = ++latestCustomerReq.current
+      const limit_start = 1
+      const limit_page_length = page * 10
+      if (page > 1) setIsFetchingMoreCustomers(true)
+      console.log('👥 Fetch customers', { term, limit_start, limit_page_length })
       const response = await window.electronAPI.proxy.request({
         url: '/api/method/centro_pos_apis.api.customer.customer_list',
-        params: {
-          search_term: '',
-          limit_start: 0,
-          limit_page_length: 1000
-        }
+        params: { search_term: term, limit_start, limit_page_length }
       })
-      console.log('🧪 Proxy response:', response)
-
-      if (response?.data?.data) {
-        const customers = response.data.data.map((customer: any) => ({
-          id: customer.name,
-          customer_name: customer.customer_name,
-          name: customer.name
-        }))
-        setCustomers(customers)
-        console.log('✅ Loaded customers:', customers)
-      }
+      if (reqId !== latestCustomerReq.current) return
+      const rows = Array.isArray(response?.data?.data) ? response.data.data : []
+      const mapped = rows.map((customer: any) => ({ id: customer.name, customer_name: customer.customer_name, name: customer.name }))
+      setCustomers(mapped)
+      setFilteredCustomers(mapped)
+      setCustomerHasMore(mapped.length === limit_page_length)
+      setCustomerPage(page)
     } catch (error) {
       console.error('Error loading customers:', error)
       toast.error('Failed to load customers')
+      setCustomers([])
+      setFilteredCustomers([])
+      setCustomerHasMore(false)
+    } finally {
+      setIsFetchingMoreCustomers(false)
     }
   }
 
@@ -532,181 +534,125 @@ const PaymentTab: React.FC = () => {
 
   return (
     <div className="flex-1 p-4 space-y-4 relative">
-      {/* Party Type and Party Name */}
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <Label htmlFor="party-type" className="text-sm font-medium text-gray-700">
-            Party Type
-          </Label>
-          <Select value={partyType} onValueChange={setPartyType}>
-            <SelectTrigger className="h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-              <SelectValue placeholder="Select party type" />
-            </SelectTrigger>
-            <SelectContent className="bg-white border-gray-200 shadow-lg">
-              <SelectItem value="Customer">Customer</SelectItem>
-              <SelectItem value="Supplier">Supplier</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+      {/* Top open button removed; use button near vouchers */}
 
-        <div>
-          <Label htmlFor="party-name" className="text-sm font-medium text-gray-700">
-            Party Name
-          </Label>
-          <Input
-            value={selectedCustomer?.customer_name || ''}
-            placeholder="Select customer"
-            readOnly
-            onClick={() => setIsCustomerModalOpen(true)}
-            className="h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500 cursor-pointer hover:bg-gray-50"
-          />
-        </div>
-      </div>
+      {/* Payment modal centered */}
+      {isPaymentModalOpen && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center" onClick={(e) => { if (e.target === e.currentTarget) setIsPaymentModalOpen(false) }}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div className="relative bg-white w-[720px] max-w-[90vw] max-h-[90vh] overflow-y-auto rounded-lg shadow-2xl p-4">
+            {/* Party Type and Party Name */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label htmlFor="party-type" className="text-sm font-medium text-gray-700">Party Type</Label>
+                <Select value={partyType} onValueChange={setPartyType}>
+                  <SelectTrigger className="h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                    <SelectValue placeholder="Select party type" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border-gray-200 shadow-lg z-[140]">
+                    <SelectItem value="Customer">Customer</SelectItem>
+                    <SelectItem value="Supplier">Supplier</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="party-name" className="text-sm font-medium text-gray-700">Party Name</Label>
+                <Input value={selectedCustomer?.customer_name || ''} placeholder="Select customer" readOnly onClick={() => setIsCustomerModalOpen(true)} className="h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500 cursor-pointer hover:bg-gray-50" />
+              </div>
+            </div>
 
-      {/* Payment Type and Mode of Payment */}
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor="payment-type" className="text-sm font-medium text-gray-700">
-            Payment Type
-          </Label>
-          <Select value={paymentType} onValueChange={setPaymentType}>
-            <SelectTrigger className="h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-              <SelectValue placeholder="Select payment type" />
-            </SelectTrigger>
-            <SelectContent className="bg-white border-gray-200 shadow-lg">
-              <SelectItem value="Receive">Receive</SelectItem>
-              <SelectItem value="Pay">Pay</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+            {/* Payment Type and Mode of Payment */}
+            <div className="grid grid-cols-2 gap-4 mt-3">
+              <div>
+                <Label htmlFor="payment-type" className="text-sm font-medium text-gray-700">Payment Type</Label>
+                <Select value={paymentType} onValueChange={setPaymentType}>
+                  <SelectTrigger className="h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                    <SelectValue placeholder="Select payment type" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border-gray-200 shadow-lg z-[140]">
+                    <SelectItem value="Receive">Receive</SelectItem>
+                    <SelectItem value="Pay">Pay</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="mode-of-payment" className="text-sm font-medium text-gray-700">Mode of Payment</Label>
+                <Select value={modeOfPayment} onValueChange={setModeOfPayment}>
+                  <SelectTrigger className="h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                    <SelectValue placeholder="Select payment mode" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border-gray-200 shadow-lg z-[140]">
+                    {paymentModes.map((mode) => (<SelectItem key={mode} value={mode}>{mode}</SelectItem>))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
 
-        <div>
-          <Label htmlFor="mode-of-payment" className="text-sm font-medium text-gray-700">
-            Mode of Payment
-          </Label>
-          <Select value={modeOfPayment} onValueChange={setModeOfPayment}>
-            <SelectTrigger className="h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-              <SelectValue placeholder="Select payment mode" />
-            </SelectTrigger>
-            <SelectContent className="bg-white border-gray-200 shadow-lg">
-              {paymentModes.map((mode) => (
-                <SelectItem key={mode} value={mode}>
-                  {mode}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+            {/* Date and Amount */}
+            <div className="grid grid-cols-2 gap-4 mt-3">
+              <div>
+                <Label htmlFor="payment-date" className="text-sm font-medium text-gray-700">Date</Label>
+                <Input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500" />
+              </div>
+              <div>
+                <Label htmlFor="total-amount" className="text-sm font-medium text-gray-700">Amount</Label>
+                <Input value={totalAllocatedAmount.toFixed(2)} readOnly className="h-10 bg-gray-100 border-gray-300 text-gray-700 font-semibold" />
+              </div>
+            </div>
 
-      {/* Date and Amount */}
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor="payment-date" className="text-sm font-medium text-gray-700">
-            Date
-          </Label>
-          <Input
-            type="date"
-            value={paymentDate}
-            onChange={(e) => setPaymentDate(e.target.value)}
-            className="h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-          />
-        </div>
+            {/* Due invoices table and actions as before */}
+            {dueInvoices.length > 0 && (
+              <Card className="border border-gray-200 shadow-sm mt-4">
+                <CardHeader className="bg-gray-50 border-b border-gray-200"><CardTitle className="text-lg font-semibold text-gray-800">Allocate Pending Due</CardTitle></CardHeader>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-gray-50">
+                        <TableHead className="w-8 px-2"></TableHead>
+                        <TableHead className="w-16 px-2 text-sm font-medium text-gray-700">Invoice</TableHead>
+                        <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700">Total</TableHead>
+                        <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700">Due</TableHead>
+                        <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700">Allocate</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {dueInvoices.map((invoice, index) => (
+                        <TableRow key={invoice.invoice_no} className="hover:bg-gray-50">
+                          <TableCell className="w-8 px-2">
+                            <Checkbox checked={invoice.is_selected} onCheckedChange={() => handleInvoiceToggle(index)} className="border-gray-300 focus:ring-blue-500" />
+                          </TableCell>
+                          <TableCell className="w-16 px-2 font-medium text-sm text-gray-900">{abbreviateInvoiceNumber(invoice.invoice_no)}</TableCell>
+                          <TableCell className="w-20 px-2 text-right text-sm text-gray-700">{invoice.total_amount.toFixed(2)}</TableCell>
+                          <TableCell className="w-20 px-2 text-right text-sm text-gray-700">{invoice.due_amount.toFixed(2)}</TableCell>
+                          <TableCell className="w-20 px-2 text-right">
+                            <div className="flex justify-end">
+                              <Input type="number" value={invoice.allocated_amount || 0} onChange={(e) => handleAllocatedAmountChange(index, e.target.value)} disabled={!invoice.is_selected} className="w-16 h-8 text-right text-sm border-gray-300 focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100" min="0" max={invoice.due_amount} step="0.01" />
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
 
-        <div>
-          <Label htmlFor="total-amount" className="text-sm font-medium text-gray-700">
-            Amount
-          </Label>
-          <Input
-            value={totalAllocatedAmount.toFixed(2)}
-            readOnly
-            className="h-10 bg-gray-100 border-gray-300 text-gray-700 font-semibold"
-          />
-        </div>
-      </div>
-
-      {/* Due Invoices Table */}
-      {dueInvoices.length > 0 && (
-        <Card className="border border-gray-200 shadow-sm">
-          <CardHeader className="bg-gray-50 border-b border-gray-200">
-            <CardTitle className="text-lg font-semibold text-gray-800">
-              Allocate Pending Due
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-gray-50">
-                  <TableHead className="w-8 px-2"></TableHead>
-                  <TableHead className="w-16 px-2 text-sm font-medium text-gray-700">
-                    Invoice
-                  </TableHead>
-                  <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700">
-                    Total
-                  </TableHead>
-                  <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700">
-                    Due
-                  </TableHead>
-                  <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700">
-                    Allocate
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {dueInvoices.map((invoice, index) => (
-                  <TableRow key={invoice.invoice_no} className="hover:bg-gray-50">
-                    <TableCell className="w-8 px-2">
-                      <Checkbox
-                        checked={invoice.is_selected}
-                        onCheckedChange={() => handleInvoiceToggle(index)}
-                        className="border-gray-300 focus:ring-blue-500"
-                      />
-                    </TableCell>
-                    <TableCell className="w-16 px-2 font-medium text-sm text-gray-900">
-                      {abbreviateInvoiceNumber(invoice.invoice_no)}
-                    </TableCell>
-                    <TableCell className="w-20 px-2 text-right text-sm text-gray-700">
-                      {invoice.total_amount.toFixed(2)}
-                    </TableCell>
-                    <TableCell className="w-20 px-2 text-right text-sm text-gray-700">
-                      {invoice.due_amount.toFixed(2)}
-                    </TableCell>
-                    <TableCell className="w-20 px-2 text-right">
-                      <div className="flex justify-end">
-                        <Input
-                          type="number"
-                          value={invoice.allocated_amount || 0}
-                          onChange={(e) => handleAllocatedAmountChange(index, e.target.value)}
-                          disabled={!invoice.is_selected}
-                          className="w-16 h-8 text-right text-sm border-gray-300 focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100"
-                          min="0"
-                          max={invoice.due_amount}
-                          step="0.01"
-                        />
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+            <div className="flex justify-end pt-4">
+              <Button onClick={handleMakePayment} disabled={loading || !selectedCustomer || totalAllocatedAmount <= 0} className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors">{loading ? 'Processing...' : 'Make Payment'}</Button>
+              <Button variant="outline" className="ml-2" onClick={() => setIsPaymentModalOpen(false)}>Close</Button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
+      {/* Inline form removed; use Open Make Payment to launch modal. */}
 
-      {/* Make Payment Button */}
-      <div className="flex justify-end pt-4">
-        <Button
-          onClick={handleMakePayment}
-          disabled={loading || !selectedCustomer || totalAllocatedAmount <= 0}
-          className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-        >
-          {loading ? 'Processing...' : 'Make Payment'}
-        </Button>
-      </div>
-
-      {/* Payment Vouchers Section - Absolutely positioned at bottom */}
-      <div className="absolute bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200">
-        <h3 className="text-lg font-semibold text-gray-800 mb-2">Payment Vouchers</h3>
+      {/* Payment Vouchers full section */}
+      <div className="p-3 bg-white">
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-lg font-semibold text-gray-800">Payment Vouchers</h3>
+          <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => setIsPaymentModalOpen(true)}>Make Payment</Button>
+        </div>
 
         {/* Search Bar */}
         <div className="relative mb-3">
@@ -735,7 +681,7 @@ const PaymentTab: React.FC = () => {
         </div>
 
         {/* Payment Vouchers Content */}
-        <div className="max-h-48 overflow-y-auto scrollbar-hide">
+        <div>
           {filteredVouchers.length > 0 ? (
             <div className="space-y-2">
               {filteredVouchers.map((voucher, index) => (
@@ -788,48 +734,30 @@ const PaymentTab: React.FC = () => {
         </div>
       </div>
 
-      {/* Customer Selection Modal */}
-      {isCustomerModalOpen && (
+      {/* Customer Selection Modal (portal above payment modal) */}
+      {isCustomerModalOpen && createPortal(
         <div
-          className="fixed inset-0 flex items-center justify-center z-50"
+          className="fixed inset-0 z-[120] flex items-center justify-center"
           onKeyDown={handleCustomerModalKeyDown}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setIsCustomerModalOpen(false)
-            }
-          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setIsCustomerModalOpen(false) }}
           tabIndex={0}
           data-customer-modal
         >
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 w-96 max-h-96 flex flex-col shadow-lg">
+          <div className="absolute inset-0 bg-black/50" />
+          <div className="relative bg-gray-50 border border-gray-200 rounded-lg p-4 w-[420px] max-h-[70vh] flex flex-col shadow-2xl">
             <h3 className="text-lg font-semibold mb-4">Select Customer</h3>
-
-            {/* Search Input */}
             <div className="mb-4">
-              <Input
-                type="text"
-                placeholder="Search customers..."
-                value={searchTerm}
-                onChange={handleSearchChange}
-                className="w-full"
-                autoFocus
-              />
+              <Input type="text" placeholder="Search customers..." value={searchTerm} onChange={handleSearchChange} className="w-full" autoFocus />
             </div>
-
-            {/* Customer List */}
-            <div className="flex-1 overflow-y-auto space-y-1">
+            <div className="flex-1 overflow-y-auto space-y-1" onScroll={(e) => {
+              const el = e.currentTarget as HTMLDivElement
+              if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80 && customerHasMore && !isFetchingMoreCustomers) {
+                loadCustomers(searchTerm, customerPage + 1)
+              }
+            }}>
               {filteredCustomers.length > 0 ? (
                 filteredCustomers.map((customer, index) => (
-                  <div
-                    key={customer.id}
-                    data-customer-index={index}
-                    className={`p-2 cursor-pointer rounded transition-colors ${
-                      index === selectedCustomerIndex
-                        ? 'bg-blue-100 border border-blue-300'
-                        : 'hover:bg-gray-100'
-                    }`}
-                    onClick={() => handleCustomerSelect(customer)}
-                  >
+                  <div key={customer.id} data-customer-index={index} className={`p-2 cursor-pointer rounded transition-colors ${index === selectedCustomerIndex ? 'bg-blue-100 border border-blue-300' : 'hover:bg-gray-100'}`} onClick={() => handleCustomerSelect(customer)}>
                     <div className="font-medium">{customer.customer_name}</div>
                     <div className="text-sm text-gray-500">{customer.name}</div>
                   </div>
@@ -837,9 +765,11 @@ const PaymentTab: React.FC = () => {
               ) : (
                 <div className="text-center text-gray-500 py-4">No customers found</div>
               )}
+              {isFetchingMoreCustomers && <div className="text-center text-xs text-gray-500 py-2">Loading...</div>}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

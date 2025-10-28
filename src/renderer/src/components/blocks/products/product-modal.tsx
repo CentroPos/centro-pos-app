@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { yupResolver } from '@hookform/resolvers/yup'
 import * as Yup from 'yup'
@@ -33,6 +33,7 @@ import {
 } from '@renderer/components/ui/form'
 import { ScrollArea } from '@renderer/components/ui/scroll-area'
 import { Badge } from '@renderer/components/ui/badge'
+import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 import { Separator } from '@renderer/components/ui/separator'
 
 // API and Hooks
@@ -94,30 +95,74 @@ const ProductSearch: React.FC<{
 }> = ({ onSelect, onCreateNew, selectedPriceList = 'Standard Selling' }) => {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(-1)
+  const { profile } = usePOSProfileStore()
+  const currencySymbol = profile?.custom_currency_symbol || profile?.currency_symbol || profile?.currency || '$'
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
-  const scrollAreaRef = useRef<HTMLDivElement>(null)
+  const listContainerRef = useRef<HTMLDivElement>(null)
 
-  // Fetch product list using POS API method (includes price list)
-  const { data: productMethodResp, isLoading } = useProductList(searchTerm, selectedPriceList, 50)
-  
-  // Debug: Log the API response structure
-  console.log('🔍 Product List API Response:', {
-    productMethodResp,
-    isLoading,
-    selectedPriceList
-  })
-  
-  // Handle different possible response structures
-  let productList = []
-  if (productMethodResp?.data?.data) {
-    productList = productMethodResp.data.data
-  } else if (productMethodResp?.data) {
-    productList = productMethodResp.data
-  } else if (Array.isArray(productMethodResp)) {
-    productList = productMethodResp
+  // Server-driven product list with cumulative pagination
+  const [products, setProducts] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [isFetchingMore, setIsFetchingMore] = useState(false)
+  const [page, setPage] = useState(1)
+  const perPage = 10
+  const [hasMore, setHasMore] = useState(true)
+  const latestRequestId = useRef(0)
+
+  const fetchProducts = async (term: string, pageToLoad = 1) => {
+    const requestId = ++latestRequestId.current
+    const isAppend = pageToLoad > 1
+    if (isAppend) setIsFetchingMore(true)
+    else setIsLoading(true)
+    try {
+      const limit_start = 1
+      const limit_page_length = pageToLoad * perPage
+      console.log('[ProductModal] Fetching', { term, price_list: selectedPriceList, limit_start, limit_page_length })
+      const res = await window.electronAPI?.proxy?.request({
+        url: '/api/method/centro_pos_apis.api.product.product_list',
+        params: {
+          price_list: selectedPriceList,
+          item: term,
+          limit_start,
+          limit_page_length
+        }
+      })
+
+      if (requestId !== latestRequestId.current) return
+      const rows = Array.isArray(res?.data?.data) ? res.data.data : []
+      console.log('[ProductModal] Received', rows.length, 'rows (cumulative)')
+      setHasMore(rows.length === limit_page_length)
+      setPage(pageToLoad)
+      setProducts(rows)
+    } catch (e) {
+      console.error('[ProductModal] Fetch error', e)
+    } finally {
+      if (isAppend) setIsFetchingMore(false)
+      else setIsLoading(false)
+    }
   }
-  
-  console.log('🔍 Processed Product List:', productList.slice(0, 2))
+
+  // Initial load and when price list changes
+  useEffect(() => {
+    if (!selectedPriceList) return
+    setProducts([])
+    setPage(1)
+    setHasMore(true)
+    fetchProducts(searchTerm, 1)
+  }, [selectedPriceList])
+
+  // Debounced server-side search
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setProducts([])
+      setPage(1)
+      setHasMore(true)
+      fetchProducts(searchTerm, 1)
+    }, 300)
+    return () => clearTimeout(handle)
+  }, [searchTerm])
+
+  const productList = useMemo(() => products || [], [products])
 
   // Auto-focus first item when modal opens
   useEffect(() => {
@@ -223,7 +268,18 @@ const ProductSearch: React.FC<{
       </div>
 
       {/* Search Results */}
-      <ScrollArea className="h-[300px]" ref={scrollAreaRef}>
+      <div
+        className="h-[300px] overflow-y-auto"
+        ref={listContainerRef}
+        onScroll={(e) => {
+          const el = e.currentTarget as HTMLDivElement
+          const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 120
+          if (nearBottom && hasMore && !isFetchingMore && !isLoading) {
+            console.log('[ProductModal] Near bottom → increase page size to', (page + 1) * perPage)
+            fetchProducts(searchTerm, page + 1)
+          }
+        }}
+      >
         {isLoading ? (
           <div className="flex items-center justify-center h-32">
             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
@@ -290,7 +346,7 @@ const ProductSearch: React.FC<{
                     uomRates: (Array.isArray(product.uom_details) ? Object.fromEntries(product.uom_details.map((d: any) => [d.uom, d.rate])) : {})
                   } as any)
                 }}
-                onMouseEnter={() => setSelectedIndex(index)}
+                // Disable cursor-driven navigation; cursor for click only
               >
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
@@ -306,14 +362,19 @@ const ProductSearch: React.FC<{
                     </p>
                   </div>
                   <Badge variant={selectedIndex === index ? 'secondary' : 'outline'}>
-                    ${displayRate.toFixed(2)}
+                    {currencySymbol} {displayRate.toFixed(2)}
                   </Badge>
                 </div>
               </div>
             )})}
+            {isFetchingMore && (
+              <div className="flex items-center justify-center py-3 text-sm text-muted-foreground">
+                Loading more...
+              </div>
+            )}
           </div>
         )}
-      </ScrollArea>
+      </div>
     </div>
   )
 }
