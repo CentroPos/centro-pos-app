@@ -1,13 +1,8 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Plus, Search, User } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
 import { handleServerErrorMessages } from '@renderer/lib/error-handler'
-
-import { useCreateCustomer, useCustomers } from '@renderer/hooks/useCustomer'
-import { customersAPI } from '@renderer/api/customer'
-
 import {
   Dialog,
   DialogContent,
@@ -17,9 +12,8 @@ import {
 } from '@renderer/components/ui/dialog'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
-import { ScrollArea } from '@renderer/components/ui/scroll-area'
 import { Badge } from '@renderer/components/ui/badge'
-import { Separator } from '@renderer/components/ui/separator'
+import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import {
   Select,
   SelectContent,
@@ -28,8 +22,7 @@ import {
   SelectValue
 } from '@renderer/components/ui/select'
 
-// Default walking customer (unchanged)
-const walkingCustomer = { name: 'Walking Customer', gst: 'Not Applicable' }
+// Default walking customer removed (unused)
 
 interface CustomerSearchModalProps {
   open: boolean
@@ -38,14 +31,17 @@ interface CustomerSearchModalProps {
 }
 
 const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose, onSelect }) => {
+  const { getCurrentTabCustomer } = usePOSTabStore()
+  const currentSelectedCustomer = getCurrentTabCustomer()
   // View switching (UI-only change)
   const [view, setView] = useState<'search' | 'create'>('search')
 
   // Search state (kept)
   const [search, setSearch] = useState('')
 
-  // Selection index (kept)
+  // Selection index and last interaction source
   const [selectedIndex, setSelectedIndex] = useState(-1)
+  const [lastInteraction, setLastInteraction] = useState<'keyboard' | 'mouse'>('keyboard')
 
   // Create form state - updated to match API structure
   const [newCustomer, setNewCustomer] = useState({
@@ -66,86 +62,119 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
   // Loading state for create customer
   const [isCreatingCustomer, setIsCreatingCustomer] = useState(false)
 
-  // Direct API call - bypass React Query for now
+  // Direct API call with pagination and server-side search
   const [apiCustomers, setApiCustomers] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [isFetchingMore, setIsFetchingMore] = useState(false)
   const [error, setError] = useState<any>(null)
+  const perPage = 10
+  const [page, setPage] = useState(1)
+  const [hasMore, setHasMore] = useState(true)
+  const latestRequestId = useRef(0)
 
-  // Extract loadCustomers function to be reusable
-  const loadCustomers = async () => {
-    setIsLoading(true)
+  // Load customers (server-side search + pagination). When append=true, we add to list.
+  const loadCustomers = async (term: string, pageToLoad = 1, append = false) => {
+    // Manage loading flags
+    if (append) setIsFetchingMore(true)
+    else setIsLoading(true)
     setError(null)
+
+    const requestId = ++latestRequestId.current
     try {
-      console.log('🧪 Loading customers via direct proxy request...')
+      // API expects cumulative pagination: (1, 10), (1, 20), (1, 30)...
+      const limit_start = 1
+      const limit_page_length = pageToLoad * perPage
+      console.log('[CustomerModal] Fetching page', pageToLoad, {
+        search_term: term,
+        limit_start,
+        limit_page_length,
+        append
+      })
       const res = await window.electronAPI?.proxy?.request({
         url: '/api/method/centro_pos_apis.api.customer.customer_list',
         params: {
-          search_term: '',
-          limit_start: 0,
-          limit_page_length: 1000
+          search_term: term,
+          limit_start,
+          limit_page_length
         }
       })
-      console.log('🧪 Proxy response:', res)
 
-      // Extract customers from response.data.data array
+      // Ignore if a newer request has been issued
+      if (requestId !== latestRequestId.current) return
+
       const customers = Array.isArray(res?.data?.data) ? res.data.data : []
-      console.log('🧪 Extracted customers:', customers)
+      console.log(
+        '[CustomerModal] Received',
+        customers.length,
+        'rows (cumulative) for page',
+        pageToLoad
+      )
 
-      // Transform to the format expected by the UI
-      const transformedCustomers = customers.map((customer: any) => {
-        console.log('🔍 Raw customer from API:', customer)
-        console.log('🔍 Customer API fields:', {
-          name: customer.name,
-          customer_name: customer.customer_name,
-          email_id: customer.email_id,
-          tax_id: customer.tax_id
-        })
-        const transformed = {
-          id: customer.name, // This is the actual customer_id (CUS-00001)
-          name: customer.customer_name || customer.name, // Display name
-          email: customer.email_id || '',
-          phone: customer.phone || null,
-          address: customer.address_line1 || null,
-          city: customer.city || null,
-          state: customer.state || null,
-          country: 'Saudi Arabia',
-          pincode: customer.pincode || null,
-          customerType: 'Individual',
-          gst: customer.tax_id || null, // Keep tax_id for reference
-          customer_id: customer.name, // Store the actual customer_id separately
-          isActive: true,
-          createdAt: '',
-          updatedAt: ''
-        }
-        console.log('🔍 Transformed customer:', transformed)
-        return transformed
-      })
+      const transformedCustomers = customers.map((customer: any) => ({
+        id: customer.name,
+        name: customer.customer_name || customer.name,
+        email: customer.email_id || '',
+        phone: customer.phone || null,
+        address: customer.address_line1 || null,
+        city: customer.city || null,
+        state: customer.state || null,
+        country: 'Saudi Arabia',
+        pincode: customer.pincode || null,
+        customerType: 'Individual',
+        gst: customer.tax_id || null,
+        customer_id: customer.name,
+        isActive: true,
+        createdAt: '',
+        updatedAt: ''
+      }))
 
-      console.log('🧪 Transformed customers:', transformedCustomers)
+      // If we received fewer than perPage, no more data
+      // If server returns fewer than requested cumulative length, we've reached the end
+      setHasMore(transformedCustomers.length === limit_page_length)
+      setPage(pageToLoad)
+      // Always replace list with cumulative result (prevents duplicates)
       setApiCustomers(transformedCustomers)
     } catch (err) {
-      console.error('🧪 Error loading customers:', err)
+      if (requestId !== latestRequestId.current) return
       setError(err instanceof Error ? err.message : 'Failed to load customers')
     } finally {
-      setIsLoading(false)
+      if (append) setIsFetchingMore(false)
+      else setIsLoading(false)
     }
   }
-
-  // Load customers on component mount and when modal opens
+  // Load customers on modal open
   useEffect(() => {
     if (open) {
-      console.log('🔄 Modal opened, loading customers...')
-      loadCustomers()
+      setApiCustomers([])
+      setPage(1)
+      setHasMore(true)
+      loadCustomers(search, 1, false)
     }
-  }, [open])
+  }, [open, search])
 
-  // Refresh customers when switching back to search view
+  // When switching back to search view
   useEffect(() => {
     if (view === 'search') {
-      console.log('🔄 Switching to search view, refreshing customer list...')
-      loadCustomers()
+      setApiCustomers([])
+      setPage(1)
+      setHasMore(true)
+      loadCustomers(search, 1, false)
     }
-  }, [view])
+  }, [view, search])
+
+  // Debounced server-side search with cutoff (only last request applies)
+  useEffect(() => {
+    if (!open || view !== 'search') return
+    // Immediately clear the list while waiting for the next server response
+    console.log('[CustomerModal] Search changed → clearing list and resetting pagination', search)
+    setApiCustomers([])
+    setPage(1)
+    setHasMore(true)
+    const handle = setTimeout(() => {
+      loadCustomers(search, 1, false)
+    }, 300)
+    return () => clearTimeout(handle)
+  }, [search, open, view])
 
   console.log('👥 Customer data:', {
     apiCustomers,
@@ -160,9 +189,9 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
       const res = await window.electronAPI?.proxy?.request({
         url: '/api/method/centro_pos_apis.api.customer.customer_list',
         params: {
-          search_term: '',
-          limit_start: 0,
-          limit_page_length: 1000
+          search_term: search,
+          limit_start: 1,
+          limit_page_length: 10
         }
       })
       console.log('🧪 Customer API result:', res)
@@ -173,49 +202,35 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
     }
   }
 
-  const createCustomerMutation = useCreateCustomer()
+  // Removed unused mutation hook
 
-  // Build customer list - apiCustomers is already transformed by customersAPI.getAll()
-  const customersFromAPI = apiCustomers || []
-  const allCustomers = useMemo(() => {
-    console.log('📋 Raw API customers:', customersFromAPI)
-    // apiCustomers is already Customer[] objects from customersAPI.getAll()
-    // Just map to the format needed for display
-    const mapped = customersFromAPI.map((customer: any) => ({
-      name: customer.name, // Customer.name is already the display name
+  // Build customer list for display (server already filtered)
+  const customersForDisplay = useMemo(() => {
+    return (apiCustomers || []).map((customer: any) => ({
+      id: customer.id,
+      name: customer.name,
       gst: customer.gst || 'Not Available'
     }))
-    console.log('📋 Mapped customers for display:', mapped)
-    return mapped
-  }, [customersFromAPI])
-
-  // Filter (kept)
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase()
-    console.log('🔍 Filtering with term:', term, 'allCustomers:', allCustomers)
-    if (!term) return allCustomers
-    const result = allCustomers.filter((c) => c.name && c.name.toLowerCase().includes(term))
-    console.log('🎯 Filtered result:', result)
-    return result
-  }, [allCustomers, search])
+  }, [apiCustomers])
 
   // Keyboard scroll support (UI-only)
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
   useEffect(() => {
+    if (lastInteraction !== 'keyboard') return
     if (selectedIndex >= 0 && itemRefs.current[selectedIndex]) {
       itemRefs.current[selectedIndex]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }
-  }, [selectedIndex])
+  }, [selectedIndex, lastInteraction])
 
   // Handlers (logic kept)
   const handleSelect = () => {
-    if (selectedIndex >= 0 && filtered[selectedIndex]) {
-      const selectedCustomer = filtered[selectedIndex]
+    if (selectedIndex >= 0 && customersForDisplay[selectedIndex]) {
+      const selectedCustomer = customersForDisplay[selectedIndex]
       // Store customer with correct customer_id for order creation
       const customerForOrder = {
         name: selectedCustomer.name, // Display name (customer_name field)
         gst: selectedCustomer.gst, // Tax ID for reference
-        customer_id: selectedCustomer.id // Actual customer_id (CUS-00001) - use the name field which contains CUS-XXXXX
+        customer_id: selectedCustomer.id // Actual customer_id
       }
       console.log('🔍 Customer selection debug:', {
         selectedCustomer,
@@ -319,7 +334,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
 
         // Refresh customer list to show the newly created customer
         console.log('🔄 Refreshing customer list after creation...')
-        await loadCustomers()
+        await loadCustomers('', 1, false)
 
         onSelect(newCustomerForSelection)
         resetAndClose()
@@ -382,15 +397,22 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
     <Dialog open={open} onOpenChange={(isOpen) => (isOpen ? undefined : resetAndClose())}>
       <DialogContent className="max-w-5xl max-h-[90vh] bg-white m-4">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <User className="h-5 w-5" />
-            {view === 'search' ? 'Select Customer' : 'Create New Customer'}
-          </DialogTitle>
+          <div className="flex items-center justify-between">
+            <DialogTitle className="flex items-center gap-2">
+              <User className="h-5 w-5" />
+              {view === 'search' ? 'Select Customer' : 'Create New Customer'}
+            </DialogTitle>
+            {view === 'search' && currentSelectedCustomer?.name && (
+              <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded mr-8">
+                Selected: {currentSelectedCustomer.name}
+              </div>
+            )}
+          </div>
         </DialogHeader>
 
         {view === 'search' ? (
           <>
-            {/* Search Bar with New button (ProductModal style) */}
+            {/* Search Bar with New button (Refresh removed) */}
             <div className="relative mb-4">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
@@ -403,9 +425,11 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                 onKeyDown={(e) => {
                   if (e.key === 'ArrowDown') {
                     e.preventDefault()
-                    setSelectedIndex((prev) => Math.min(prev + 1, filtered.length - 1))
+                    setLastInteraction('keyboard')
+                    setSelectedIndex((prev) => Math.min(prev + 1, customersForDisplay.length - 1))
                   } else if (e.key === 'ArrowUp') {
                     e.preventDefault()
+                    setLastInteraction('keyboard')
                     setSelectedIndex((prev) => Math.max(prev - 1, 0))
                   } else if (e.key === 'Enter') {
                     e.preventDefault()
@@ -414,22 +438,10 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     resetAndClose()
                   }
                 }}
-                className="pl-10 pr-32"
+                className="pl-10 pr-20"
                 autoFocus
               />
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    console.log('🔄 Manual refresh triggered')
-                    loadCustomers()
-                  }}
-                  className="h-7 px-2"
-                  title="Refresh customer list"
-                >
-                  ↻
-                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -443,7 +455,20 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
             </div>
 
             {/* Results */}
-            <ScrollArea className="h-[300px]">
+            <div
+              className="h-[300px] overflow-y-auto"
+              onScroll={(e) => {
+                const el = e.currentTarget as HTMLDivElement
+                const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 120
+                if (nearBottom && !isFetchingMore && hasMore && !isLoading) {
+                  console.log(
+                    '[CustomerModal] Near bottom → increase page size to',
+                    (page + 1) * perPage
+                  )
+                  loadCustomers(search, page + 1, true)
+                }
+              }}
+            >
               {isLoading ? (
                 <div className="flex items-center justify-center h-32">
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
@@ -452,16 +477,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
               ) : error ? (
                 <div className="flex flex-col items-center justify-center h-32 text-red-500 text-sm px-4 text-center">
                   <span className="font-semibold mb-1">Error loading customers</span>
-                  <span className="text-red-600/90 break-words">
-                    {(() => {
-                      const err: any = error
-                      const msg = err?.message || err?.error || err?.exc || err?.statusText
-                      try {
-                        if (!msg && typeof err === 'object') return JSON.stringify(err)
-                      } catch {}
-                      return msg || 'Unknown error'
-                    })()}
-                  </span>
+                  <span className="text-red-600/90 break-words">{String(error)}</span>
                   <button
                     onClick={() => window.location.reload()}
                     className="mt-2 px-3 py-1 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200"
@@ -469,18 +485,15 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     Retry
                   </button>
                 </div>
-              ) : filtered.length === 0 ? (
+              ) : customersForDisplay.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-32 text-muted-foreground text-sm">
                   <div>No customers found</div>
-                  <div className="text-xs mt-1">
-                    API: {apiCustomers.length}, All: {allCustomers.length}
-                  </div>
                 </div>
               ) : (
                 <div className="space-y-1">
-                  {filtered.map((c, index) => (
+                  {customersForDisplay.map((c, index) => (
                     <div
-                      key={c.name}
+                      key={`${c.id}-${index}`}
                       ref={(el) => {
                         itemRefs.current[index] = el
                       }}
@@ -493,7 +506,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                         setSelectedIndex(index)
                         handleSelect()
                       }}
-                      onMouseEnter={() => setSelectedIndex(index)}
+                      // Disable cursor-driven navigation; cursor is for click only
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
@@ -514,9 +527,14 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                       </div>
                     </div>
                   ))}
+                  {isFetchingMore && (
+                    <div className="flex items-center justify-center py-3 text-sm text-muted-foreground">
+                      Loading more...
+                    </div>
+                  )}
                 </div>
               )}
-            </ScrollArea>
+            </div>
 
             <DialogFooter className="mt-4">
               <Button variant="outline" onClick={resetAndClose}>

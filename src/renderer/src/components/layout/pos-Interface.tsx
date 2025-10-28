@@ -262,7 +262,7 @@ const POSInterface: React.FC = () => {
     }
   };
 
-  useHotkeys('shift', () => setOpen(true))
+  useHotkeys('shift', () => setOpen(true), { enableOnFormTags: false })
   useHotkeys('backspace', () => {
     if (selectedItemId) {
       removeItem(selectedItemId);
@@ -318,7 +318,10 @@ const POSInterface: React.FC = () => {
     <Fragment>
       <div className="h-screen bg-gray-50 flex w-screen overflow-hidden scrollbar-hide">
         <div className="flex-1 flex flex-col">
-          <Header />
+          <Header onNewOrder={() => {
+            // Open customer selection immediately when a new order is created
+            setIsCustomerModalOpen(true)
+          }} />
           {/* <button onClick={() => setOpen(true)} className="m-4 p-2 bg-blue-500 text-white rounded">
             Open
           </button> */}
@@ -334,11 +337,16 @@ const POSInterface: React.FC = () => {
           <OrderDetails 
             onPriceListChange={setSelectedPriceList} 
             onCustomerModalChange={setIsCustomerModalOpen}
-            onCustomerSelect={handleCustomerSelect}
+            onCustomerSelect={(customer) => {
+              handleCustomerSelect(customer)
+              // After customer selection, open product list popup
+              setOpen(true)
+            }}
+            forceOpenCustomerModal={isCustomerModalOpen}
           />
 
           {/* Items area takes remaining space; inner table handles its own scroll */}
-          <div className="flex-1">
+          <div className="flex-1 flex flex-col">
             <ItemsTable
               onRemoveItem={removeItem}
               selectedItemId={selectedItemId}
@@ -353,15 +361,15 @@ const POSInterface: React.FC = () => {
               onEditingStateChange={setIsItemTableEditing}
               errorItems={insufficientStockErrors.map(error => error.itemCode).filter(Boolean)}
             />
+            
+            {/* Fixed bottom: Discount/Summary section */}
+            <DiscountSection 
+              errors={insufficientStockErrors}
+              onCloseErrors={handleCloseInsufficientStockErrors}
+              onErrorBoxFocusChange={setIsErrorBoxFocused}
+              onFocusItem={handleFocusItem}
+            />
           </div>
-
-          {/* Fixed bottom: Discount/Summary section */}
-          <DiscountSection 
-            errors={insufficientStockErrors}
-            onCloseErrors={handleCloseInsufficientStockErrors}
-            onErrorBoxFocusChange={setIsErrorBoxFocused}
-            onFocusItem={handleFocusItem}
-          />
         </div>
         <RightPanel 
           key={`${selectedCustomer?.name || 'no-customer'}-${selectedItemId || 'no-item'}`}

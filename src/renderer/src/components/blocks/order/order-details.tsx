@@ -21,9 +21,10 @@ type OrderDetailsProps = {
   onPriceListChange?: (priceList: string) => void
   onCustomerModalChange?: (isOpen: boolean) => void
   onCustomerSelect?: (customer: any) => void
+  forceOpenCustomerModal?: boolean
 }
 
-const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange, onCustomerModalChange, onCustomerSelect }) => {
+const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange, onCustomerModalChange, onCustomerSelect, forceOpenCustomerModal }) => {
 
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [selectedPriceList, setSelectedPriceList] = useState<string>('Standard Selling');
@@ -89,6 +90,13 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange, onCustom
   React.useEffect(() => {
     onCustomerModalChange?.(showCustomerModal)
   }, [showCustomerModal, onCustomerModalChange])
+
+  // Open customer modal when forced by parent (e.g., after New Order)
+  React.useEffect(() => {
+    if (forceOpenCustomerModal) {
+      setShowCustomerModal(true)
+    }
+  }, [forceOpenCustomerModal])
 
   // Debug logging
   React.useEffect(() => {
@@ -169,7 +177,7 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange, onCustom
           <label className="block text-sm font-semibold text-gray-700">Date</label>
           <Input
             type="date"
-            defaultValue="2025-01-21"
+            defaultValue={new Date().toISOString().slice(0, 10)}
             onChange={handleDateChange}
             className="w-full p-4 bg-white/80 border border-white/40 rounded-xl shadow-lg focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
           />

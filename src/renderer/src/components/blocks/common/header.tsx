@@ -1,12 +1,17 @@
 import { Button } from '@renderer/components/ui/button'
 import { usePOSTabStore } from '../../../store/usePOSTabStore'
 
-const Header: React.FC = () => {
+type HeaderProps = {
+  onNewOrder?: () => void
+}
+
+const Header: React.FC<HeaderProps> = ({ onNewOrder }) => {
 
   const { tabs, activeTabId, setActiveTab, closeTab, createNewTab } = usePOSTabStore()
 
   const handleNewOrder = () => {
     createNewTab()
+    onNewOrder?.()
   }
 
   // Helper function to abbreviate order ID to last 5 digits
@@ -36,11 +41,18 @@ const Header: React.FC = () => {
               <div
                 key={tab.id}
                 className={`flex items-center px-3 py-2 rounded-xl cursor-pointer transition-all duration-200 ${
-                  activeTabId === tab.id ? 'bg-white/80 font-bold shadow' : 'bg-white/40'
+                  activeTabId === tab.id
+                    ? 'bg-white text-gray-900 font-bold shadow-md shadow-gray-300'
+                    : 'bg-white/60 text-gray-800 hover:bg-white/80'
                 }`}
                 onClick={() => setActiveTab(tab.id)}
+                aria-selected={activeTabId === tab.id}
+                title={tab.orderId || (tab.type === 'new' ? 'New Order' : 'Order')}
               >
-                <span>
+                <span className="flex items-center gap-2">
+                  {activeTabId === tab.id && (
+                    <span className="inline-block w-2 h-2 rounded-full bg-gray-300" />
+                  )}
                   {tab.displayName || (tab.orderId ? abbreviateOrderId(tab.orderId) : tab.type === 'new' ? 'New' : 'Order')}
                 </span>
                 <button
@@ -61,7 +73,7 @@ const Header: React.FC = () => {
         
 
         <div className="ml-auto text-right bg-white/60 backdrop-blur rounded-xl p-4 shadow-lg">
-          <div className="font-bold text-lg">{new Date().toLocaleDateString()}</div>
+          <div className="font-bold text-lg">{new Date().toLocaleDateString('en-GB').replace(/\//g, '-')}</div>
           <div className="text-sm text-gray-600">
             {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </div>
