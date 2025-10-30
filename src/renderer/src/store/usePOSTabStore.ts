@@ -175,17 +175,31 @@ export const usePOSTabStore = create<POSTabStore>()(
 
       updateItemInTab: (tabId: string, itemCode: string, updates: any) => {
         set((state) => ({
-          tabs: state.tabs.map((tab) =>
-            tab.id === tabId 
-              ? { 
-                  ...tab, 
-                  items: tab.items.map(item => 
-                    item.item_code === itemCode ? { ...item, ...updates } : item
-                  ),
-                  isEdited: true 
-                } 
-              : tab
-          )
+          tabs: state.tabs.map((tab) => {
+            if (tab.id !== tabId) return tab
+            let updatedOnce = false
+            const newItems = tab.items.map((item) => {
+              if (!updatedOnce && item.item_code === itemCode) {
+                updatedOnce = true
+                return { ...item, ...updates }
+              }
+              return item
+            })
+            return { ...tab, items: newItems, isEdited: true }
+          })
+        }))
+      },
+
+      // Update by absolute item index within the tab (supports duplicate item codes)
+      updateItemInTabByIndex: (tabId: string, index: number, updates: any) => {
+        set((state) => ({
+          tabs: state.tabs.map((tab) => {
+            if (tab.id !== tabId) return tab
+            if (index < 0 || index >= tab.items.length) return tab
+            const newItems = tab.items.slice()
+            newItems[index] = { ...newItems[index], ...updates }
+            return { ...tab, items: newItems, isEdited: true }
+          })
         }))
       },
 
