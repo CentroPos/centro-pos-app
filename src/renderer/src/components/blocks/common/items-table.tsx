@@ -19,6 +19,7 @@ import MultiWarehousePopup from './multi-warehouse-popup'
 import api from '@renderer/services/api'
 import { API_Endpoints } from '@renderer/config/endpoints'
 import { toast } from 'sonner'
+import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore';
 
 type Props = {
   selectedItemId?: string
@@ -38,7 +39,7 @@ type Props = {
 type EditField = 'quantity' | 'standard_rate' | 'uom' | 'discount_percentage' | 'item_name'
 
 const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem, shouldStartEditing = false, onEditingStarted, onAddItemClick, onSaveCompleted, isProductModalOpen = false, isCustomerModalOpen = false, isErrorBoxFocused = false, onEditingStateChange, errorItems = [] }) => {
-  const { getCurrentTabItems, activeTabId, updateItemInTab, getCurrentTab, setTabEdited } = usePOSTabStore();
+  const { getCurrentTabItems, activeTabId, updateItemInTab, updateItemInTabByIndex, getCurrentTab, setTabEdited } = usePOSTabStore();
   const items = getCurrentTabItems();
   const hasBottomErrors = Array.isArray(errorItems) && errorItems.length > 0;
   const [tableSearch, setTableSearch] = useState('')
@@ -60,12 +61,17 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   const cancelBtnRef = useRef<HTMLButtonElement>(null)
   // const isReadOnly = currentTab?.status === 'confirmed' || currentTab?.status === 'paid';
 
-  // Helper function to update item and mark tab as edited
+  // Helper function to update item and mark tab as edited (by exact row when possible)
   const updateItemAndMarkEdited = (itemCode: string, updates: any) => {
-    if (activeTabId) {
+    if (!activeTabId) return
+    const currentRef = filteredItems[selectedRowIndex]
+    const absoluteIndex = items.indexOf(currentRef)
+    if (absoluteIndex >= 0) {
+      updateItemInTabByIndex(activeTabId, absoluteIndex, updates)
+    } else {
       updateItemInTab(activeTabId, itemCode, updates)
-      setTabEdited(activeTabId, true)
     }
+    setTabEdited(activeTabId, true)
   }
 
   // Editable field order and keyboard navigation between fields
@@ -124,11 +130,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
     e.preventDefault()
     e.stopPropagation()
-    const currentIndex = items.findIndex((i) => i.item_code === itemCode)
-    if (currentIndex === -1) return
-    const nextIndex = e.key === 'ArrowDown' ? Math.min(currentIndex + 1, items.length - 1) : Math.max(currentIndex - 1, 0)
-    const nextItem = items[nextIndex]
+    const currentIndex = selectedRowIndex
+    const nextIndex = e.key === 'ArrowDown' ? Math.min(currentIndex + 1, filteredItems.length - 1) : Math.max(currentIndex - 1, 0)
+    const nextItem = filteredItems[nextIndex]
     if (!nextItem) return
+    setSelectedRowIndex(nextIndex)
     moveToField(nextItem.item_code, currentField)
   }
 
@@ -139,6 +145,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   
   const [activeField, setActiveField] = useState<EditField>('quantity');
   const [isEditing, setIsEditing] = useState(false);
+  // Selected visual row index to avoid selecting all duplicates
+  const [selectedRowIndex, setSelectedRowIndex] = useState(0)
   
   // Notify parent component when editing state changes
   useEffect(() => {
@@ -917,6 +925,9 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     }, 100)
   }
 
+  const { profile } = usePOSProfileStore();
+  const allowDuplicateItems = Boolean(profile?.custom_allow_duplicate_items_in_cart === 1);
+
   return (
     <div className="p-4 bg-white">
       <Tabs defaultValue="items" className="w-full">
@@ -982,7 +993,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
               <Table className="table-fixed w-full">
                 <TableBody>
                 {filteredItems.map((item, index) => {
-                  const isSelected = item.item_code === selectedItemId
+                  const isSelected = item.item_code === selectedItemId && index === selectedRowIndex
                   const isEditingQuantity = isSelected && isEditing && activeField === 'quantity'
                   const isEditingRate = isSelected && isEditing && activeField === 'standard_rate'
                   const isEditingUom = isSelected && isEditing && activeField === 'uom'
@@ -1000,6 +1011,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                         console.log('🖱️ Row clicked:', item.item_code, 'isEditing:', isEditing, 'isReadOnly:', isReadOnly)
                         if (!isEditing && !isReadOnly) {
                           selectItem(item.item_code)
+                          setSelectedRowIndex(index)
                           scrollToSelectedItem(item.item_code)
                         }
                       }}
@@ -1028,6 +1040,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             // Use a small delay to ensure reset is complete
                             setTimeout(() => {
                             selectItem(item.item_code)
+                            setSelectedRowIndex(index)
                             setActiveField('item_name')
                             setIsEditing(true)
                             setEditValue(String(item.item_name ?? ''))
@@ -1096,6 +1109,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             // Use a small delay to ensure reset is complete
                             setTimeout(() => {
                             selectItem(item.item_code)
+                            setSelectedRowIndex(index)
                             setActiveField('quantity')
                             setIsEditing(true)
                             setEditValue(String(item.quantity ?? ''))
@@ -1234,6 +1248,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             // Use a small delay to ensure reset is complete
                             setTimeout(() => {
                             selectItem(item.item_code)
+                            setSelectedRowIndex(index)
                             setActiveField('discount_percentage')
                             setIsEditing(true)
                             setEditValue(String(item.discount_percentage ?? '0'))
@@ -1284,6 +1299,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             // Use a small delay to ensure reset is complete
                             setTimeout(() => {
                             selectItem(item.item_code)
+                            setSelectedRowIndex(index)
                             setActiveField('standard_rate')
                             setIsEditing(true)
                             setEditValue(String(item.standard_rate ?? ''))

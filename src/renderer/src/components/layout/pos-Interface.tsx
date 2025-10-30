@@ -110,6 +110,7 @@ const POSInterface: React.FC = () => {
   const { data: posProfile } = usePosProfile()
   const { user } = useAuthStore()
   const { setProfile, setCurrentUserPrivileges } = usePOSProfileStore()
+  const { profile } = usePOSProfileStore()
 
   // Test direct API call and set profile data
   React.useEffect(() => {
@@ -192,7 +193,8 @@ const POSInterface: React.FC = () => {
       return;
     }
 
-    if (itemExists(item.item_code)) {
+    const allowDuplicate = profile?.custom_allow_duplicate_items_in_cart === 1
+    if (!allowDuplicate && itemExists(item.item_code)) {
       toast.error('Item already in cart');
       return;
     }

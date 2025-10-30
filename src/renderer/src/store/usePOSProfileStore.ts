@@ -14,6 +14,7 @@ interface POSProfile {
   currency?: string
   currency_symbol?: string
   custom_currency_symbol?: string
+  custom_allow_duplicate_items_in_cart?: number
 }
 
 interface POSProfileStore {

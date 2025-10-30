@@ -243,6 +243,8 @@ const ProductSearch: React.FC<{
     }
   }
 
+  const allowAddNew = Boolean(profile?.custom_allow_adding_new_products === 1)
+
   return (
     <div className="space-y-4">
       {/* Search Input */}
@@ -261,6 +263,7 @@ const ProductSearch: React.FC<{
           size="sm"
           onClick={onCreateNew}
           className="absolute right-2 top-1/2 transform -translate-y-1/2 h-7"
+          style={{ display: allowAddNew ? undefined : 'none' }}
         >
           <Plus className="h-3 w-3 mr-1" />
           New
