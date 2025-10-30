@@ -317,6 +317,12 @@ const ProductSearch: React.FC<{
               }
               
               const displayRate = Number(primaryUOM.rate || product.standard_rate || product.rate || 0)
+
+              // Compute On Hand quantity for default_uom
+              const defaultUom = product.default_uom || primaryUOM.uom
+              const onHandQty = Array.isArray(product.uom_details)
+                ? (product.uom_details.find((d: any) => String(d.uom).toLowerCase() === String(defaultUom).toLowerCase())?.qty ?? 0)
+                : 0
               
               console.log('🔍 Processed product data:', {
                 code,
@@ -362,6 +368,15 @@ const ProductSearch: React.FC<{
                       }`}
                     >
                       {code}
+                    </p>
+                    <p
+                      className={`text-[11px] mt-1 ${
+                        selectedIndex === index
+                          ? 'text-primary-foreground/80'
+                          : 'text-muted-foreground'
+                      }`}
+                    >
+                      On Hand qty: {Number(onHandQty || 0)} {defaultUom || primaryUOM.uom}
                     </p>
                   </div>
                   <Badge variant={selectedIndex === index ? 'secondary' : 'outline'}>
