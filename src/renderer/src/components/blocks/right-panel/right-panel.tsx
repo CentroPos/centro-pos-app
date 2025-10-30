@@ -622,8 +622,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
     } catch (error) {
       console.error('❌ ===== CUSTOMER HISTORY API ERROR =====')
       console.error('❌ Error details:', error)
-      console.error('❌ Error message:', error?.message)
-      console.error('❌ Error stack:', error?.stack)
+      console.error('❌ Error message:', (error as any)?.message)
+      console.error('❌ Error stack:', (error as any)?.stack)
       setCustomerHistory([])
     } finally {
       setCustomerHistoryLoading(false)
@@ -678,8 +678,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
     } catch (error) {
       console.error('❌ ===== PURCHASE HISTORY API ERROR =====')
       console.error('❌ Error details:', error)
-      console.error('❌ Error message:', error?.message)
-      console.error('❌ Error stack:', error?.stack)
+      console.error('❌ Error message:', (error as any)?.message)
+      console.error('❌ Error stack:', (error as any)?.stack)
       setPurchaseHistory([])
     } finally {
       setPurchaseHistoryLoading(false)
@@ -770,10 +770,14 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [customerDetailsLoading, setCustomerDetailsLoading] = useState(false)
   const [customerDetailsError, setCustomerDetailsError] = useState<string | null>(null)
 
-  // All orders and returns
-  const [allOrders, setAllOrders] = useState<any[]>([])
+  // Orders/Returns lists with pagination
+  const [ordersList, setOrdersList] = useState<any[]>([])
+  const [returnsList, setReturnsList] = useState<any[]>([])
   const [ordersTabLoading, setOrdersTabLoading] = useState(false)
   const [ordersTabError, setOrdersTabError] = useState<string | null>(null)
+  const [ordersPage, setOrdersPage] = useState(1)
+  const [returnsPage, setReturnsPage] = useState(1)
+  const [pageLength, setPageLength] = useState(10)
 
   // Profile data and dropdown
   const [profileData, setProfileData] = useState<any>(null)
@@ -844,9 +848,9 @@ const RightPanel: React.FC<RightPanelProps> = ({
     )
   }, [mostOrdered, mostOrderedSearch])
 
-  // Filter orders based on search
+  // Filter orders based on search (current page only)
   const filteredOrders = useMemo(() => {
-    const orders = allOrders.filter((order) => order.status !== 'Return')
+    const orders = ordersList
     if (!ordersSearch.trim()) return orders
 
     const searchTerm = ordersSearch.toLowerCase()
@@ -859,11 +863,11 @@ const RightPanel: React.FC<RightPanelProps> = ({
         order.status?.toLowerCase().includes(searchTerm) ||
         order.creation_datetime?.toLowerCase().includes(searchTerm)
     )
-  }, [allOrders, ordersSearch])
+  }, [ordersList, ordersSearch])
 
-  // Filter returns based on search
+  // Filter returns based on search (current page only)
   const filteredReturns = useMemo(() => {
-    const returns = allOrders.filter((order) => order.status === 'Return')
+    const returns = returnsList
     if (!returnsSearch.trim()) return returns
 
     const searchTerm = returnsSearch.toLowerCase()
@@ -876,7 +880,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
         order.status?.toLowerCase().includes(searchTerm) ||
         order.creation_datetime?.toLowerCase().includes(searchTerm)
     )
-  }, [allOrders, returnsSearch])
+  }, [returnsList, returnsSearch])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -1162,163 +1166,106 @@ const RightPanel: React.FC<RightPanelProps> = ({
     }
   }, [selectedCustomer?.name])
 
-  // Fetch all orders when Orders tab is active
+  // PATCH 1: Add page size state
+  const pageSizeOptions = [10, 25, 50];
+
+  // PATCH 2: Refetch and reset page on pageLength change
   useEffect(() => {
-    let cancelled = false
-    async function loadAllOrders() {
-      if (activeTab !== 'orders') {
-        return
-      }
-      try {
-        setOrdersTabLoading(true)
-        setOrdersTabError(null)
-
-        // Use the same API as recent orders but get all orders for all customers
-        // We'll fetch orders for each customer and combine them
-        const customerListRes = await window.electronAPI?.proxy?.request({
-          url: '/api/method/centro_pos_apis.api.customer.customer_list',
-          params: { search_term: '', limit_start: 1, limit_page_length: 50 }
-        })
-
-        const customers = customerListRes?.data?.data || []
-        let allOrdersData: any[] = []
-
-        // Fetch orders for each customer
-        for (const customer of customers) {
-          try {
-            const res = await window.electronAPI?.proxy?.request({
-              url: '/api/method/centro_pos_apis.api.customer.get_customer_recent_orders',
-              params: {
-                customer_id: customer.name,
-                limit_start: 0,
-                limit_page_length: 50 // Get more orders per customer
-              }
-            })
-
-            if (res?.success && res?.data?.data) {
-              const orders = Array.isArray(res.data.data) ? res.data.data : []
-              allOrdersData = [...allOrdersData, ...orders]
-            }
-          } catch (err) {
-            console.error(`Error fetching orders for customer ${customer.name}:`, err)
-            // Continue with other customers even if one fails
-          }
-        }
-
-        if (!cancelled) {
-          setAllOrders(allOrdersData)
-        }
-      } catch (err) {
-        console.error('❌ Error loading all orders:', err)
-        if (!cancelled) {
-          setOrdersTabError(err instanceof Error ? err.message : 'Failed to load orders')
-        }
-      } finally {
-        if (!cancelled) {
-          setOrdersTabLoading(false)
-        }
-      }
-    }
-    loadAllOrders()
-    return () => {
-      cancelled = true
-    }
-  }, [activeTab])
-
-  // Fetch profile data on component mount
+    setOrdersPage(1);
+  }, [pageLength]);
   useEffect(() => {
-    let cancelled = false
-    async function loadProfile() {
-      try {
-        setProfileLoading(true)
-        setProfileError(null)
+    setReturnsPage(1);
+  }, [pageLength]);
 
+  // PATCH 3: Console.log API responses, use limit_start = page
+  useEffect(() => {
+    let cancelled = false;
+    async function loadOrdersPaginated(page: number) {
+      try {
+        setOrdersTabLoading(true);
+        setOrdersTabError(null);
         const res = await window.electronAPI?.proxy?.request({
-          url: '/api/method/centro_pos_apis.api.profile.get_pos_profile',
-          params: {}
-        })
-
-        if (res?.success && res?.data?.data) {
-          if (!cancelled) {
-            setProfileData(res.data.data)
-          }
+          url: '/api/method/centro_pos_apis.api.order.order_list',
+          params: {
+            is_returned: 0,
+            limit_start: page,
+            limit_page_length: pageLength
+          },
+        });
+        console.log('Orders API result:', res);
+        if (!cancelled) {
+          const data = Array.isArray(res?.data?.data) ? res.data.data : [];
+          setOrdersList(data);
+          // PATCH 4: Store total (API: res.data.total or data.length fallback)
+          setOrdersTotal(typeof res?.data?.total === 'number' ? res.data.total : data.length);
         }
       } catch (err) {
-        console.error('❌ Error loading profile:', err)
-        if (!cancelled) {
-          setProfileError(err instanceof Error ? err.message : 'Failed to load profile')
-        }
+        if (!cancelled) setOrdersTabError(err instanceof Error ? err.message : 'Failed to load orders');
       } finally {
-        if (!cancelled) {
-          setProfileLoading(false)
-        }
+        if (!cancelled) setOrdersTabLoading(false);
       }
     }
-    loadProfile()
+    if (activeTab === 'orders' && subTab === 'orders') {
+      loadOrdersPaginated(ordersPage);
+    }
     return () => {
-      cancelled = true
+      cancelled = true;
+    };
+  }, [ordersPage, pageLength, activeTab, subTab]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadReturnsPaginated(page: number) {
+      try {
+        setOrdersTabLoading(true);
+        setOrdersTabError(null);
+        const res = await window.electronAPI?.proxy?.request({
+          url: '/api/method/centro_pos_apis.api.order.order_list',
+          params: {
+            is_returned: 1,
+            limit_start: page,
+            limit_page_length: pageLength
+          },
+        });
+        console.log('Returns API result:', res);
+        if (!cancelled) {
+          const data = Array.isArray(res?.data?.data) ? res.data.data : [];
+          setReturnsList(data);
+          setReturnsTotal(typeof res?.data?.total === 'number' ? res.data.total : data.length);
+        }
+      } catch (err) {
+        if (!cancelled) setOrdersTabError(err instanceof Error ? err.message : 'Failed to load returns');
+      } finally {
+        if (!cancelled) setOrdersTabLoading(false);
+      }
     }
-  }, [])
+    if (activeTab === 'orders' && subTab === 'returns') {
+      loadReturnsPaginated(returnsPage);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [returnsPage, pageLength, activeTab, subTab]);
 
-  // Default product data when no item is selected
-  const defaultProduct = {
-    item_code: 'SGS24-256',
-    item_name: 'Samsung Galaxy S24',
-    category: 'Smartphones',
-    location: 'Rack A-15, Shelf 3',
-    standard_rate: 799.0,
-    on_hand: 3,
-    cost: 650.0,
-    margin: 18.6,
-    warehouses: [
-      { name: 'Warehouse - 2', qty: 10 },
-      { name: 'Warehouse - 3', qty: 12 },
-      { name: 'Warehouse - 4', qty: 30 }
-    ]
-  }
+  // PATCH 5: Show total state for orders/returns
+  const [ordersTotal, setOrdersTotal] = useState(0);
+  const [returnsTotal, setReturnsTotal] = useState(0);
 
-  // Calculate on-hand units from product list API based on selected UOM
-  const getOnHandUnits = () => {
-    if (!productListData || !currentUom) return 0
-
-    const uomDetails = Array.isArray(productListData.uom_details) ? productListData.uom_details : []
-    const selectedUomDetail = uomDetails.find(
-      (detail: any) => String(detail.uom).toLowerCase() === String(currentUom).toLowerCase()
-    )
-
-    const onHandUnits = selectedUomDetail ? Number(selectedUomDetail.qty || 0) : 0
-
-    console.log('📊 On-hand calculation:', {
-      itemCode: selectedItem?.item_code,
-      currentUom,
-      uomDetails,
-      selectedUomDetail,
-      onHandUnits
-    })
-
-    return onHandUnits
-  }
-
-  // Use selected item data or default
-  const productData = selectedItem
-    ? {
-        item_code: selectedItem.item_code || 'N/A',
-        item_name: selectedItem.item_name || selectedItem.label || 'Unknown Product',
-        category: selectedItem.category || 'General',
-        location: selectedItem.location || 'Location not specified',
-        standard_rate: parseFloat(selectedItem.standard_rate || '0') || 0,
-        on_hand: getOnHandUnits(), // Use API data instead of selectedItem.on_hand
-        cost: selectedItem.cost || 0,
-        margin: selectedItem.margin || 0,
-        warehouses: warehouseStock.length > 0 ? warehouseStock : selectedItem.warehouses || []
-      }
-    : {
-        ...defaultProduct,
-        warehouses: [] // Empty warehouses when no item selected
-      }
-
-  const { profile } = usePOSProfileStore()
-  const hideCostAndMargin = profile?.custom_hide_cost_and_margin_info === 1
+  // PATCH 6: Add dropdown and show total above each list
+  // ... in the JSX for Orders list, above the result count ...
+  <div className="flex items-center justify-between mb-2">
+    <span className="text-xs text-gray-500">{ordersTotal} results found</span>
+    <select
+      value={pageLength}
+      onChange={e => setPageLength(Number(e.target.value))}
+      className="text-xs border rounded px-2 py-1"
+    >
+      {pageSizeOptions.map(opt => (
+        <option key={opt} value={opt}>{opt} / page</option>
+      ))}
+    </select>
+  </div>
+  // ... and similarly for Returns list, use returnsTotal.
 
   return (
     <div className="w-[480px] bg-white/60 backdrop-blur border-l border-white/20 flex flex-col overflow-y-auto scrollbar-hide">
@@ -2180,7 +2127,16 @@ const RightPanel: React.FC<RightPanelProps> = ({
                   {!ordersTabLoading &&
                     !ordersTabError &&
                     filteredOrders.length > 0 &&
-                    filteredOrders.map((order, index) => (
+                    filteredOrders.map((order, index) => {
+                      const createdRaw = order.creation_datetime || order.creation_date || order.posting_datetime || order.posting_date
+                      const createdDate = createdRaw ? new Date(String(createdRaw).replace(' ', 'T')) : null
+                      const amountVal =
+                        (typeof order.total_amount === 'number' ? order.total_amount : undefined) ??
+                        (typeof order.grand_total === 'number' ? order.grand_total : undefined) ??
+                        (typeof order.total === 'number' ? order.total : undefined) ??
+                        (typeof order.amount === 'number' ? order.amount : undefined)
+                      const qtyVal = order.total_qty ?? order.qty ?? order.total_quantity
+                      return (
                       <div
                         key={index}
                         className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200"
@@ -2190,17 +2146,17 @@ const RightPanel: React.FC<RightPanelProps> = ({
                             {order.invoice_no || order.sales_order_no}
                           </div>
                           <div className="text-gray-600 text-xs">
-                            {new Date(order.creation_datetime).toLocaleDateString('en-US', {
+                            {createdDate ? createdDate.toLocaleDateString('en-US', {
                               month: 'short',
                               day: 'numeric',
                               year: 'numeric'
-                            })}
+                            }) : '—'}
                           </div>
                         </div>
                         <div className="flex justify-between items-center mb-2">
-                          <span className="text-gray-600 font-medium">Qty: {order.total_qty}</span>
+                          <span className="text-gray-600 font-medium">Qty: {qtyVal ?? '—'}</span>
                           <span className="font-bold text-green-600 text-sm">
-                            {currencySymbol} {order.total_amount?.toLocaleString()}
+                            {currencySymbol} {typeof amountVal === 'number' ? amountVal.toLocaleString() : '—'}
                           </span>
                         </div>
                         <div className="flex justify-between items-center">
@@ -2218,20 +2174,50 @@ const RightPanel: React.FC<RightPanelProps> = ({
                             {order.status}
                           </span>
                           <span className="text-gray-500 text-xs">
-                            {new Date(order.creation_datetime).toLocaleTimeString('en-US', {
+                            {createdDate ? createdDate.toLocaleTimeString('en-US', {
                               hour: '2-digit',
                               minute: '2-digit'
-                            })}
+                            }) : '—'}
                           </span>
                         </div>
                       </div>
-                    ))}
+                    )})}
                   {!ordersTabLoading && !ordersTabError && filteredOrders.length === 0 && (
                     <div className="text-xs text-gray-500 text-center py-4">No orders found</div>
                   )}
+                  <div className="flex items-center justify-between pt-3">
+                    <button
+                      className="px-3 py-1 text-xs border rounded disabled:opacity-40"
+                      onClick={() => setOrdersPage((p) => Math.max(1, p - 1))}
+                      disabled={ordersPage <= 1}
+                    >
+                      Prev
+                    </button>
+                    <div className="text-xs text-gray-600">Page {ordersPage}</div>
+                    <button
+                      className="px-3 py-1 text-xs border rounded disabled:opacity-40"
+                      onClick={() => setOrdersPage((p) => p + 1)}
+                      disabled={filteredOrders.length < pageLength}
+                    >
+                      Next
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-gray-500">{ordersTotal} results found</span>
+                    <select
+                      value={pageLength}
+                      onChange={e => setPageLength(Number(e.target.value))}
+                      className="text-xs border rounded px-2 py-1"
+                    >
+                      {pageSizeOptions.map(opt => (
+                        <option key={opt} value={opt}>{opt} / page</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
-            ) : (
+            )
+             : (
               <div className="p-4">
                 <div className="text-xs text-gray-500 mb-2">Returns ({filteredReturns.length})</div>
 
@@ -2271,7 +2257,16 @@ const RightPanel: React.FC<RightPanelProps> = ({
                   {!ordersTabLoading &&
                     !ordersTabError &&
                     filteredReturns.length > 0 &&
-                    filteredReturns.map((order, index) => (
+                    filteredReturns.map((order, index) => {
+                      const createdRaw = order.creation_datetime || order.creation_date || order.posting_datetime || order.posting_date
+                      const createdDate = createdRaw ? new Date(String(createdRaw).replace(' ', 'T')) : null
+                      const amountVal =
+                        (typeof order.total_amount === 'number' ? order.total_amount : undefined) ??
+                        (typeof order.grand_total === 'number' ? order.grand_total : undefined) ??
+                        (typeof order.total === 'number' ? order.total : undefined) ??
+                        (typeof order.amount === 'number' ? order.amount : undefined)
+                      const qtyVal = order.total_qty ?? order.qty ?? order.total_quantity
+                      return (
                       <div
                         key={index}
                         className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg text-xs border border-purple-200"
@@ -2281,17 +2276,17 @@ const RightPanel: React.FC<RightPanelProps> = ({
                             {order.invoice_no || order.sales_order_no}
                           </div>
                           <div className="text-gray-600 text-xs">
-                            {new Date(order.creation_datetime).toLocaleDateString('en-US', {
+                            {createdDate ? createdDate.toLocaleDateString('en-US', {
                               month: 'short',
                               day: 'numeric',
                               year: 'numeric'
-                            })}
+                            }) : '—'}
                           </div>
                         </div>
                         <div className="flex justify-between items-center mb-2">
-                          <span className="text-gray-600">Qty: {order.total_qty}</span>
+                          <span className="text-gray-600">Qty: {qtyVal ?? '—'}</span>
                           <span className="font-bold text-purple-600 text-sm">
-                            {currencySymbol} {order.total_amount?.toLocaleString()}
+                            {currencySymbol} {typeof amountVal === 'number' ? amountVal.toLocaleString() : '—'}
                           </span>
                         </div>
                         <div className="flex justify-between items-center">
@@ -2299,17 +2294,46 @@ const RightPanel: React.FC<RightPanelProps> = ({
                             Return
                           </span>
                           <span className="text-gray-500 text-xs">
-                            {new Date(order.creation_datetime).toLocaleTimeString('en-US', {
+                            {createdDate ? createdDate.toLocaleTimeString('en-US', {
                               hour: '2-digit',
                               minute: '2-digit'
-                            })}
+                            }) : '—'}
                           </span>
                         </div>
                       </div>
-                    ))}
+                    )})}
                   {!ordersTabLoading && !ordersTabError && filteredReturns.length === 0 && (
                     <div className="text-xs text-gray-500 text-center py-4">No returns found</div>
                   )}
+                  <div className="flex items-center justify-between pt-3">
+                    <button
+                      className="px-3 py-1 text-xs border rounded disabled:opacity-40"
+                      onClick={() => setReturnsPage((p) => Math.max(1, p - 1))}
+                      disabled={returnsPage <= 1}
+                    >
+                      Prev
+                    </button>
+                    <div className="text-xs text-gray-600">Page {returnsPage}</div>
+                    <button
+                      className="px-3 py-1 text-xs border rounded disabled:opacity-40"
+                      onClick={() => setReturnsPage((p) => p + 1)}
+                      disabled={filteredReturns.length < pageLength}
+                    >
+                      Next
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-gray-500">{returnsTotal} results found</span>
+                    <select
+                      value={pageLength}
+                      onChange={e => setPageLength(Number(e.target.value))}
+                      className="text-xs border rounded px-2 py-1"
+                    >
+                      {pageSizeOptions.map(opt => (
+                        <option key={opt} value={opt}>{opt} / page</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
             )}
