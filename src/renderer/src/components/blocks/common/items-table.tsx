@@ -929,8 +929,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   const allowDuplicateItems = Boolean(profile?.custom_allow_duplicate_items_in_cart === 1);
 
   return (
-    <div className="p-4 bg-white">
-      <Tabs defaultValue="items" className="w-full">
+    <div className="p-4 bg-white h-full flex flex-col min-h-0">
+      <Tabs defaultValue="items" className="w-full h-full flex flex-col min-h-0">
         <div className="flex items-center justify-between">
           <TabsList>
             <TabsTrigger value="items">Items</TabsTrigger>
@@ -946,42 +946,44 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
             />
           </div>
         </div>
-        <TabsContent value="items" className="mt-4">
-          <div className="border rounded-lg">
-            {/* Fixed header (outside scroll) */}
+        <TabsContent value="items" className="mt-4 flex-1 flex flex-col min-h-0">
+          <div className="border rounded-lg flex flex-col min-h-0 flex-1">
+            {/* Sticky table head, scrollable body only */}
+            <div className="bg-white sticky top-0 z-10">
               <Table className="table-fixed w-full">
-              <TableHeader>
+                <TableHeader>
                   <TableRow>
-                  <TableHead className="w-[50px] text-center">S.No</TableHead>
-                  <TableHead className="w-[110px]">
-                    <div className="flex items-center gap-2">
-                      <span>Product</span>
-                      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-200 text-[10px] font-semibold">
-                        {totalProducts}
-                      </span>
-                    </div>
-                  </TableHead>
-                  <TableHead className="w-[300px]">Label</TableHead>
-                  <TableHead className="w-[70px] text-center">
-                    <div className="flex items-center justify-center gap-2">
-                      <span>Qty</span>
-                      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-200 text-[10px] font-semibold">
-                        {totalQuantity}
-                      </span>
-                    </div>
-                  </TableHead>
-                  <TableHead className="w-[80px] text-center px-1">UOM</TableHead>
-                  <TableHead className="w-[80px] text-center">Discount</TableHead>
-                  <TableHead className="w-[100px] text-center">Unit Price</TableHead>
-                  <TableHead className="w-[100px] text-left pl-8">Total</TableHead>
-                  <TableHead className="w-[60px] text-center pl-1">Actions</TableHead>
+                    <TableHead className="w-[50px] text-center">S.No</TableHead>
+                    <TableHead className="w-[110px]">
+                      <div className="flex items-center gap-2">
+                        <span>Product</span>
+                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-200 text-[10px] font-semibold">
+                          {totalProducts}
+                        </span>
+                      </div>
+                    </TableHead>
+                    <TableHead className="w-[300px]">Label</TableHead>
+                    <TableHead className="w-[70px] text-center">
+                      <div className="flex items-center justify-center gap-2">
+                        <span>Qty</span>
+                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-200 text-[10px] font-semibold">
+                          {totalQuantity}
+                        </span>
+                      </div>
+                    </TableHead>
+                    <TableHead className="w-[80px] text-center px-1">UOM</TableHead>
+                    <TableHead className="w-[80px] text-center">Discount</TableHead>
+                    <TableHead className="w-[100px] text-center">Unit Price</TableHead>
+                    <TableHead className="w-[100px] text-left pl-8">Total</TableHead>
+                    <TableHead className="w-[60px] text-center pl-1">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
-            </Table>
-
-            {/* Scrollable body only */}
-            <div 
-              className={`${hasBottomErrors ? 'max-h-[22vh]' : 'max-h-[55vh]'} overflow-y-auto cursor-pointer`}
+              </Table>
+            </div>
+            {/* Only the body scrolls: fixed max-h for 6 visible rows */}
+            <div
+              className={`flex-1 min-h-0 overflow-y-auto`}
+              style={{ maxHeight: '288px' }}
               onClick={(e) => {
                 // Only trigger if clicking on empty space (not on table cells)
                 if (e.target === e.currentTarget || (e.target as HTMLElement).tagName === 'DIV') {
@@ -992,422 +994,414 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
             >
               <Table className="table-fixed w-full">
                 <TableBody>
-                {filteredItems.map((item, index) => {
-                  const isSelected = item.item_code === selectedItemId && index === selectedRowIndex
-                  const isEditingQuantity = isSelected && isEditing && activeField === 'quantity'
-                  const isEditingRate = isSelected && isEditing && activeField === 'standard_rate'
-                  const isEditingUom = isSelected && isEditing && activeField === 'uom'
-                  const isEditingDiscount =
-                    isSelected && isEditing && activeField === 'discount_percentage'
-                  const isEditingItemName = isSelected && isEditing && activeField === 'item_name'
-                  const hasError = hasItemError(item.item_code)
+                  {filteredItems.map((item, index) => {
+                    const isSelected = item.item_code === selectedItemId && index === selectedRowIndex
+                    const isEditingQuantity = isSelected && isEditing && activeField === 'quantity'
+                    const isEditingRate = isSelected && isEditing && activeField === 'standard_rate'
+                    const isEditingUom = isSelected && isEditing && activeField === 'uom'
+                    const isEditingDiscount =
+                      isSelected && isEditing && activeField === 'discount_percentage'
+                    const isEditingItemName = isSelected && isEditing && activeField === 'item_name'
+                    const hasError = hasItemError(item.item_code)
 
-                  return (
-                    <TableRow
-                      key={item.item_code}
-                      data-item-code={item.item_code}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        console.log('🖱️ Row clicked:', item.item_code, 'isEditing:', isEditing, 'isReadOnly:', isReadOnly)
-                        if (!isEditing && !isReadOnly) {
-                          selectItem(item.item_code)
-                          setSelectedRowIndex(index)
-                          scrollToSelectedItem(item.item_code)
-                        }
-                      }}
-                      className={`transition-all ${
-                        isSelected
-                          ? 'bg-gradient-to-r from-blue-50 to-blue-100 border-l-4 border-l-blue-500 shadow-md'
-                          : 'hover:bg-gray-50'
-                        }`}
-                    >
-                      <TableCell className="w-[50px] text-center">{index + 1}</TableCell>
-                      <TableCell className={`${hasError ? 'text-red-600 font-semibold' : isSelected ? 'font-semibold text-blue-900' : ''} w-[110px]`}>
-                        {item.item_code}
-                      </TableCell>
-                      {/* Label Cell */}
-                      <TableCell
-                        className={`${hasError ? 'text-red-600 font-medium' : isSelected ? 'font-medium' : ''} w-[300px]`}
+                    return (
+                      <TableRow
+                        key={item.item_code}
                         data-item-code={item.item_code}
-                        data-field="item_name"
                         onClick={(e) => {
                           e.stopPropagation()
-                          console.log('🖱️ Label cell clicked:', item.item_code, 'isReadOnly:', isReadOnly)
-                          if (!isReadOnly) {
-                            // Always reset editing state first, regardless of current state
-                            resetEditingState()
-                            
-                            // Use a small delay to ensure reset is complete
-                            setTimeout(() => {
+                          console.log('🖱️ Row clicked:', item.item_code, 'isEditing:', isEditing, 'isReadOnly:', isReadOnly)
+                          if (!isEditing && !isReadOnly) {
                             selectItem(item.item_code)
                             setSelectedRowIndex(index)
-                            setActiveField('item_name')
-                            setIsEditing(true)
-                            setEditValue(String(item.item_name ?? ''))
-                            console.log('✅ Started editing label for:', item.item_code)
-                            }, 50)
+                            scrollToSelectedItem(item.item_code)
                           }
                         }}
+                        className={`transition-all ${
+                          isSelected
+                            ? 'bg-gradient-to-r from-blue-50 to-blue-100 border-l-4 border-l-blue-500 shadow-md'
+                            : 'hover:bg-gray-50'
+                          }`}
                       >
-                        {isEditingItemName ? (
-                          <input
-                            key={`label-${item.item_code}-${isEditingItemName}-${forceFocus}`}
-                            ref={inputRef}
-                            type="text"
-                            value={editValue}
-                            onChange={(e) => {
-                              const newValue = e.target.value
-                              setEditValue(newValue)
-                              // Real-time update for item name
-                              if (selectedItemId && activeTabId) {
-                                updateItemAndMarkEdited(selectedItemId, { item_name: newValue })
-                              }
-                            }}
-                            onKeyDown={(e) => {
-                              handleArrowNavigation(e, 'item_name', item.item_code)
-                              handleVerticalNavigation(e, 'item_name', item.item_code)
-                              if (e.key === 'Enter') {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                // Save label value and end editing
-                                if (activeTabId && selectedItemId) {
-                                  updateItemAndMarkEdited(selectedItemId, { item_name: editValue })
-                                }
-                                setIsEditing(false)
-                              } else if (e.key === 'Escape') {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                setIsEditing(false)
-                              }
-                            }}
-                            onBlur={handleSaveEdit}
-                            className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            placeholder="Enter label"
-                          />
-                        ) : (
-                          <span
-                            className="block truncate"
-                            title={item.item_name || ''}
-                          >
-                        {item.item_name}
-                          </span>
-                        )}
-                      </TableCell>
-
-                      {/* Quantity Cell */}
-                      <TableCell
-                        className={`${hasError ? 'text-red-600 font-medium' : isSelected ? 'font-medium' : ''} w-[70px] text-center`}
-                        data-item-code={item.item_code}
-                        data-field="quantity"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          console.log('🖱️ Quantity cell clicked:', item.item_code, 'isReadOnly:', isReadOnly)
-                          if (!isReadOnly) {
-                            // Always reset editing state first, regardless of current state
-                            resetEditingState()
-                            
-                            // Use a small delay to ensure reset is complete
-                            setTimeout(() => {
-                            selectItem(item.item_code)
-                            setSelectedRowIndex(index)
-                            setActiveField('quantity')
-                            setIsEditing(true)
-                            setEditValue(String(item.quantity ?? ''))
-                            console.log('✅ Started editing quantity for:', item.item_code)
-                            }, 50)
-                          }
-                        }}
-                      >
-                        {isEditingQuantity ? (
-                          <input
-                            key={`qty-${item.item_code}-${isEditingQuantity}-${forceFocus}`}
-                            ref={inputRef}
-                            type="number"
-                            data-item-code={item.item_code}
-                            data-field="quantity"
-                            value={editValue}
-                            onChange={(e) => {
-                              const newValue = e.target.value
-                              setEditValue(newValue)
-                              // Real-time update for quantity
-                              if (selectedItemId && activeTabId) {
-                                const numValue = parseFloat(newValue)
-                                if (!isNaN(numValue) && numValue >= 0) {
-                                  updateItemAndMarkEdited(selectedItemId, { quantity: numValue })
-                                  
-                                  // Clear warehouse-allocated status when quantity changes
-                                  if (warehouseAllocatedItems.has(selectedItemId)) {
-                                    console.log('🔄 Quantity changed for warehouse-allocated item, clearing allocation status:', selectedItemId)
-                                    setWarehouseAllocatedItems(prev => {
-                                      const newSet = new Set(prev)
-                                      newSet.delete(selectedItemId)
-                                      return newSet
-                                    })
-                                    
-                                    // Clear warehouse allocation data from the item
-                                    updateItemInTab(activeTabId, selectedItemId, { 
-                                      warehouseAllocations: [] // Clear previous warehouse allocations
-                                    })
-                                    console.log('🧹 Cleared warehouse allocation data for item:', selectedItemId)
-                                  }
-                                }
-                              }
-                            }}
-                            onKeyDown={async (e) => {
-                              handleArrowNavigation(e, 'quantity', item.item_code)
-                              handleVerticalNavigation(e, 'quantity', item.item_code)
-                              if (e.key === 'Enter') {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                // Save qty value directly without ending editing
-                                const numValue = parseFloat(editValue)
-                                if (!isNaN(numValue) && numValue >= 0 && activeTabId && selectedItemId) {
-                                  updateItemAndMarkEdited(selectedItemId, { quantity: numValue })
-                                  
-                                  // Check for quantity validation and show warehouse popup if needed
-                                  const popupShown = await validateQuantityAndShowPopup(item, numValue, item.uom || 'Nos')
-                                  if (popupShown) {
-                                    // Don't navigate if popup is shown - wait for user to handle allocation
-                                    return
-                                  }
-                                }
-                                // Navigate to unit price and keep editing
-                                moveToField(item.item_code, 'standard_rate')
-                              } else if (e.key === 'Escape') {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                setIsEditing(false)
-                              }
-                            }}
-                            onBlur={handleSaveEdit}
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            className="w-[50px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
-                            min="0"
-                            step="0.01"
-                          />
-                        ) : (
-                          <div className="px-2 py-1">{item.quantity}</div>
-                        )}
-                      </TableCell>
-
-                      {/* UOM Cell - Not clickable, only editable via spacebar */}
-                      <TableCell
-                        className={`${hasError ? 'text-red-600 font-medium' : isSelected ? 'font-medium' : ''} w-[80px] text-center`}
-                      >
-                        {isEditingUom ? (
-                          <input
-                            key={`uom-${item.item_code}-${isEditingUom}-${forceFocus}`}
-                            ref={inputRef}
-                            type="text"
-                            value={editValue}
-                            onChange={() => { /* disabled manual edit */ }}
-                            onKeyDown={(e) => {
-                              // Allow horizontal navigation to other fields
-                              handleArrowNavigation(e, 'uom', item.item_code)
-                              handleVerticalNavigation(e, 'uom', item.item_code)
-                              if (e.key === ' ') {
-                                e.preventDefault()
-                                // Cycle to next UOM
-                                const rates = item.uomRates || {}
-                                const uoms = Object.keys(rates)
-                                const currentUom = String(item.uom || 'Nos')
-                                const currentIndex = Math.max(0, uoms.indexOf(currentUom))
-                                const nextIndex = (currentIndex + 1) % (uoms.length || 1)
-                                const nextUom = uoms.length ? uoms[nextIndex] : currentUom
-                                setEditValue(nextUom)
-                                if (activeTabId && selectedItemId) {
-                                  updateItemAndMarkEdited(selectedItemId, {
-                                    uom: nextUom,
-                                    standard_rate: rates[nextUom] ?? item.standard_rate
-                                  })
-                                }
-                              } else if (e.key === 'Escape') {
-                                e.preventDefault()
-                                setIsEditing(false)
-                              }
-                            }}
-                            onBlur={handleSaveEdit}
-                            className="w-[70px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center truncate"
-                            readOnly
-                          />
-                        ) : (
-                          <div className="px-2 py-1">{item.uom || 'Nos'}</div>
-                        )}
-                      </TableCell>
-
-                      {/* Discount Cell */}
-                      <TableCell
-                        className={`${hasError ? 'text-red-600 font-medium' : isSelected ? 'font-medium' : ''} w-[80px] text-center`}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          if (!isReadOnly) {
-                            // Always reset editing state first, regardless of current state
-                            resetEditingState()
-                            
-                            // Use a small delay to ensure reset is complete
-                            setTimeout(() => {
-                            selectItem(item.item_code)
-                            setSelectedRowIndex(index)
-                            setActiveField('discount_percentage')
-                            setIsEditing(true)
-                            setEditValue(String(item.discount_percentage ?? '0'))
-                            }, 50)
-                          }
-                        }}
-                      >
-                        {isEditingDiscount ? (
-                          <input
-                            key={`discount-${item.item_code}-${isEditingDiscount}-${forceFocus}`}
-                            ref={inputRef}
-                            type="number"
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            onKeyDown={(e) => {
-                              handleArrowNavigation(e, 'discount_percentage', item.item_code)
-                              handleVerticalNavigation(e, 'discount_percentage', item.item_code)
-                              if (e.key === 'Enter') {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                handleSaveEdit()
-                              } else if (e.key === 'Escape') {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                setIsEditing(false)
-                              }
-                            }}
-                            onBlur={handleSaveEdit}
-                            className="w-[60px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
-                            min="0"
-                            max="100"
-                            step="0.01"
-                          />
-                        ) : (
-                          <div className="px-2 py-1">{item.discount_percentage ?? 0}</div>
-                        )}
-                      </TableCell>
-
-                      {/* Unit Price (editable) */}
-                      <TableCell
-                        className={`${hasError ? 'text-red-600 font-medium' : isSelected ? 'font-medium' : ''} w-[100px] text-center`}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          if (!isReadOnly) {
-                            // Always reset editing state first, regardless of current state
-                            resetEditingState()
-                            
-                            // Use a small delay to ensure reset is complete
-                            setTimeout(() => {
-                            selectItem(item.item_code)
-                            setSelectedRowIndex(index)
-                            setActiveField('standard_rate')
-                            setIsEditing(true)
-                            setEditValue(String(item.standard_rate ?? ''))
-                            }, 50)
-                          }
-                        }}
-                      >
-                        {isEditingRate ? (
-                          <input
-                            key={`rate-${item.item_code}-${isEditingRate}-${forceFocus}`}
-                            ref={inputRef}
-                            type="number"
-                            value={editValue}
-                            onChange={(e) => {
-                              const newValue = e.target.value
-                              setEditValue(newValue)
-                              // Real-time update for unit price
-                              if (selectedItemId && activeTabId) {
-                                const numValue = parseFloat(newValue)
-                                if (!isNaN(numValue) && numValue >= 0) {
-                                  updateItemAndMarkEdited(selectedItemId, { standard_rate: numValue })
-                                }
-                              }
-                            }}
-                            onKeyDown={(e) => {
-                              handleArrowNavigation(e, 'standard_rate', item.item_code)
-                              handleVerticalNavigation(e, 'standard_rate', item.item_code)
-                              if (e.key === 'Enter') {
-                                e.preventDefault()
-                                handleSaveEdit()
-                                // End editing - no further navigation
-                                setIsEditing(false)
-                                
-                                // If this is the last item, open product modal
-                                const currentIndex = filteredItems.findIndex(i => i.item_code === item.item_code)
-                                if (currentIndex === filteredItems.length - 1) {
-                                  console.log('⌨️ Enter pressed on last item unit price - opening product modal')
-                                  onAddItemClick?.()
-                                }
-                              } else if (e.key === 'Escape') {
-                                e.preventDefault()
-                                setIsEditing(false)
-                              }
-                            }}
-                            onBlur={handleSaveEdit}
-                            min="0"
-                            step="0.01"
-                            className="w-[80px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
-                          />
-                        ) : (
-                          <>{Number(item.standard_rate || 0).toFixed(2)}</>
-                        )}
-                      </TableCell>
-                      <TableCell className={`font-semibold ${hasError ? 'text-red-600' : isSelected ? 'text-blue-900' : ''} w-[100px] text-left pl-8`}>
-                        {(
-                          Number(item.standard_rate || 0) *
-                          Number(item.quantity || 0) *
-                          (1 - Number(item.discount_percentage || 0) / 100)
-                        ).toFixed(2)}
-                      </TableCell>
-                      <TableCell className="w-[60px] text-center">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          data-action="delete"
-                          className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1"
+                        <TableCell className="w-[50px] text-center">{index + 1}</TableCell>
+                        <TableCell className={`${hasError ? 'text-red-600 font-semibold' : isSelected ? 'font-semibold text-blue-900' : ''} w-[110px]`}>
+                          {item.item_code}
+                        </TableCell>
+                        {/* Label Cell */}
+                        <TableCell
+                          className={`${hasError ? 'text-red-600 font-medium' : isSelected ? 'font-medium' : ''} w-[300px]`}
+                          data-item-code={item.item_code}
+                          data-field="item_name"
                           onClick={(e) => {
                             e.stopPropagation()
-                            if (isReadOnly) return
-                            setDeleteCandidate(item.item_code)
-                            setShowDeleteConfirm(true)
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault()
-                              if (!isReadOnly) {
-                                setDeleteCandidate(item.item_code)
-                                setShowDeleteConfirm(true)
-                              }
-                            } else if (e.key === 'ArrowLeft') {
-                              e.preventDefault()
-                              moveToField(item.item_code, 'standard_rate')
-                            } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-                              handleVerticalNavigation(e as any, 'standard_rate', item.item_code)
+                            console.log('🖱️ Label cell clicked:', item.item_code, 'isReadOnly:', isReadOnly)
+                            if (!isReadOnly) {
+                              // Always reset editing state first, regardless of current state
+                              resetEditingState()
+                              
+                              // Use a small delay to ensure reset is complete
+                              setTimeout(() => {
+                              selectItem(item.item_code)
+                              setSelectedRowIndex(index)
+                              setActiveField('item_name')
+                              setIsEditing(true)
+                              setEditValue(String(item.item_name ?? ''))
+                              console.log('✅ Started editing label for:', item.item_code)
+                              }, 50)
                             }
                           }}
-                          disabled={isReadOnly}
                         >
-                          <X className="w-4 h-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
+                          {isEditingItemName ? (
+                            <input
+                              key={`label-${item.item_code}-${isEditingItemName}-${forceFocus}`}
+                              ref={inputRef}
+                              type="text"
+                              value={editValue}
+                              onChange={(e) => {
+                                const newValue = e.target.value
+                                setEditValue(newValue)
+                                // Real-time update for item name
+                                if (selectedItemId && activeTabId) {
+                                  updateItemAndMarkEdited(selectedItemId, { item_name: newValue })
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                handleArrowNavigation(e, 'item_name', item.item_code)
+                                handleVerticalNavigation(e, 'item_name', item.item_code)
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  // Save label value and end editing
+                                  if (activeTabId && selectedItemId) {
+                                    updateItemAndMarkEdited(selectedItemId, { item_name: editValue })
+                                  }
+                                  setIsEditing(false)
+                                } else if (e.key === 'Escape') {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  setIsEditing(false)
+                                }
+                              }}
+                              onBlur={handleSaveEdit}
+                              className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              placeholder="Enter label"
+                            />
+                          ) : (
+                            <span
+                              className="block truncate"
+                              title={item.item_name || ''}
+                            >
+                          {item.item_name}
+                            </span>
+                          )}
+                        </TableCell>
+
+                        {/* Quantity Cell */}
+                        <TableCell
+                          className={`${hasError ? 'text-red-600 font-medium' : isSelected ? 'font-medium' : ''} w-[70px] text-center`}
+                          data-item-code={item.item_code}
+                          data-field="quantity"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            console.log('🖱️ Quantity cell clicked:', item.item_code, 'isReadOnly:', isReadOnly)
+                            if (!isReadOnly) {
+                              // Always reset editing state first, regardless of current state
+                              resetEditingState()
+                              
+                              // Use a small delay to ensure reset is complete
+                              setTimeout(() => {
+                              selectItem(item.item_code)
+                              setSelectedRowIndex(index)
+                              setActiveField('quantity')
+                              setIsEditing(true)
+                              setEditValue(String(item.quantity ?? ''))
+                              console.log('✅ Started editing quantity for:', item.item_code)
+                              }, 50)
+                            }
+                          }}
+                        >
+                          {isEditingQuantity ? (
+                            <input
+                              key={`qty-${item.item_code}-${isEditingQuantity}-${forceFocus}`}
+                              ref={inputRef}
+                              type="number"
+                              data-item-code={item.item_code}
+                              data-field="quantity"
+                              value={editValue}
+                              onChange={(e) => {
+                                const newValue = e.target.value
+                                setEditValue(newValue)
+                                // Real-time update for quantity
+                                if (selectedItemId && activeTabId) {
+                                  const numValue = parseFloat(newValue)
+                                  if (!isNaN(numValue) && numValue >= 0) {
+                                    updateItemAndMarkEdited(selectedItemId, { quantity: numValue })
+                                    
+                                    // Clear warehouse-allocated status when quantity changes
+                                    if (warehouseAllocatedItems.has(selectedItemId)) {
+                                      console.log('🔄 Quantity changed for warehouse-allocated item, clearing allocation status:', selectedItemId)
+                                      setWarehouseAllocatedItems(prev => {
+                                        const newSet = new Set(prev)
+                                        newSet.delete(selectedItemId)
+                                        return newSet
+                                      })
+                                      
+                                      // Clear warehouse allocation data from the item
+                                      updateItemInTab(activeTabId, selectedItemId, { 
+                                        warehouseAllocations: [] // Clear previous warehouse allocations
+                                      })
+                                      console.log('🧹 Cleared warehouse allocation data for item:', selectedItemId)
+                                    }
+                                  }
+                                }
+                              }}
+                              onKeyDown={async (e) => {
+                                handleArrowNavigation(e, 'quantity', item.item_code)
+                                handleVerticalNavigation(e, 'quantity', item.item_code)
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  // Save qty value directly without ending editing
+                                  const numValue = parseFloat(editValue)
+                                  if (!isNaN(numValue) && numValue >= 0 && activeTabId && selectedItemId) {
+                                    updateItemAndMarkEdited(selectedItemId, { quantity: numValue })
+                                    
+                                    // Check for quantity validation and show warehouse popup if needed
+                                    const popupShown = await validateQuantityAndShowPopup(item, numValue, item.uom || 'Nos')
+                                    if (popupShown) {
+                                      // Don't navigate if popup is shown - wait for user to handle allocation
+                                      return
+                                    }
+                                  }
+                                  // Navigate to unit price and keep editing
+                                  moveToField(item.item_code, 'standard_rate')
+                                } else if (e.key === 'Escape') {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  setIsEditing(false)
+                                }
+                              }}
+                              onBlur={handleSaveEdit}
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              className="w-[50px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
+                              min="0"
+                              step="0.01"
+                            />
+                          ) : (
+                            <div className="px-2 py-1">{item.quantity}</div>
+                          )}
+                        </TableCell>
+
+                        {/* UOM Cell - Not clickable, only editable via spacebar */}
+                        <TableCell
+                          className={`${hasError ? 'text-red-600 font-medium' : isSelected ? 'font-medium' : ''} w-[80px] text-center`}
+                        >
+                          {isEditingUom ? (
+                            <input
+                              key={`uom-${item.item_code}-${isEditingUom}-${forceFocus}`}
+                              ref={inputRef}
+                              type="text"
+                              value={editValue}
+                              onChange={() => { /* disabled manual edit */ }}
+                              onKeyDown={(e) => {
+                                // Allow horizontal navigation to other fields
+                                handleArrowNavigation(e, 'uom', item.item_code)
+                                handleVerticalNavigation(e, 'uom', item.item_code)
+                                if (e.key === ' ') {
+                                  e.preventDefault()
+                                  // Cycle to next UOM
+                                  const rates = item.uomRates || {}
+                                  const uoms = Object.keys(rates)
+                                  const currentUom = String(item.uom || 'Nos')
+                                  const currentIndex = Math.max(0, uoms.indexOf(currentUom))
+                                  const nextIndex = (currentIndex + 1) % (uoms.length || 1)
+                                  const nextUom = uoms.length ? uoms[nextIndex] : currentUom
+                                  setEditValue(nextUom)
+                                  if (activeTabId && selectedItemId) {
+                                    updateItemAndMarkEdited(selectedItemId, {
+                                      uom: nextUom,
+                                      standard_rate: rates[nextUom] ?? item.standard_rate
+                                    })
+                                  }
+                                } else if (e.key === 'Escape') {
+                                  e.preventDefault()
+                                  setIsEditing(false)
+                                }
+                              }}
+                              onBlur={handleSaveEdit}
+                              className="w-[70px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center truncate"
+                              readOnly
+                            />
+                          ) : (
+                            <div className="px-2 py-1">{item.uom || 'Nos'}</div>
+                          )}
+                        </TableCell>
+
+                        {/* Discount Cell */}
+                        <TableCell
+                          className={`${hasError ? 'text-red-600 font-medium' : isSelected ? 'font-medium' : ''} w-[80px] text-center`}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (!isReadOnly) {
+                              // Always reset editing state first, regardless of current state
+                              resetEditingState()
+                              
+                              // Use a small delay to ensure reset is complete
+                              setTimeout(() => {
+                              selectItem(item.item_code)
+                              setSelectedRowIndex(index)
+                              setActiveField('discount_percentage')
+                              setIsEditing(true)
+                              setEditValue(String(item.discount_percentage ?? '0'))
+                              }, 50)
+                            }
+                          }}
+                        >
+                          {isEditingDiscount ? (
+                            <input
+                              key={`discount-${item.item_code}-${isEditingDiscount}-${forceFocus}`}
+                              ref={inputRef}
+                              type="number"
+                              value={editValue}
+                              onChange={(e) => setEditValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                handleArrowNavigation(e, 'discount_percentage', item.item_code)
+                                handleVerticalNavigation(e, 'discount_percentage', item.item_code)
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  handleSaveEdit()
+                                } else if (e.key === 'Escape') {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  setIsEditing(false)
+                                }
+                              }}
+                              onBlur={handleSaveEdit}
+                              className="w-[60px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
+                              min="0"
+                              max="100"
+                              step="0.01"
+                            />
+                          ) : (
+                            <div className="px-2 py-1">{item.discount_percentage ?? 0}</div>
+                          )}
+                        </TableCell>
+
+                        {/* Unit Price (editable) */}
+                        <TableCell
+                          className={`${hasError ? 'text-red-600 font-medium' : isSelected ? 'font-medium' : ''} w-[100px] text-center`}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (!isReadOnly) {
+                              // Always reset editing state first, regardless of current state
+                              resetEditingState()
+                              
+                              // Use a small delay to ensure reset is complete
+                              setTimeout(() => {
+                              selectItem(item.item_code)
+                              setSelectedRowIndex(index)
+                              setActiveField('standard_rate')
+                              setIsEditing(true)
+                              setEditValue(String(item.standard_rate ?? ''))
+                              }, 50)
+                            }
+                          }}
+                        >
+                          {isEditingRate ? (
+                            <input
+                              key={`rate-${item.item_code}-${isEditingRate}-${forceFocus}`}
+                              ref={inputRef}
+                              type="number"
+                              value={editValue}
+                              onChange={(e) => {
+                                const newValue = e.target.value
+                                setEditValue(newValue)
+                                // Real-time update for unit price
+                                if (selectedItemId && activeTabId) {
+                                  const numValue = parseFloat(newValue)
+                                  if (!isNaN(numValue) && numValue >= 0) {
+                                    updateItemAndMarkEdited(selectedItemId, { standard_rate: numValue })
+                                  }
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                handleArrowNavigation(e, 'standard_rate', item.item_code)
+                                handleVerticalNavigation(e, 'standard_rate', item.item_code)
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  handleSaveEdit()
+                                  // End editing - no further navigation
+                                  setIsEditing(false)
+                                  
+                                  // If this is the last item, open product modal
+                                  const currentIndex = filteredItems.findIndex(i => i.item_code === item.item_code)
+                                  if (currentIndex === filteredItems.length - 1) {
+                                    console.log('⌨️ Enter pressed on last item unit price - opening product modal')
+                                    onAddItemClick?.()
+                                  }
+                                } else if (e.key === 'Escape') {
+                                  e.preventDefault()
+                                  setIsEditing(false)
+                                }
+                              }}
+                              onBlur={handleSaveEdit}
+                              min="0"
+                              step="0.01"
+                              className="w-[80px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
+                            />
+                          ) : (
+                            <>{Number(item.standard_rate || 0).toFixed(2)}</>
+                          )}
+                        </TableCell>
+                        <TableCell className={`font-semibold ${hasError ? 'text-red-600' : isSelected ? 'text-blue-900' : ''} w-[100px] text-left pl-8`}>
+                          {(
+                            Number(item.standard_rate || 0) *
+                            Number(item.quantity || 0) *
+                            (1 - Number(item.discount_percentage || 0) / 100)
+                          ).toFixed(2)}
+                        </TableCell>
+                        <TableCell className="w-[60px] text-center">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            data-action="delete"
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (isReadOnly) return
+                              setDeleteCandidate(item.item_code)
+                              setShowDeleteConfirm(true)
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                if (!isReadOnly) {
+                                  setDeleteCandidate(item.item_code)
+                                  setShowDeleteConfirm(true)
+                                }
+                              } else if (e.key === 'ArrowLeft') {
+                                e.preventDefault()
+                                moveToField(item.item_code, 'standard_rate')
+                              } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                                handleVerticalNavigation(e as any, 'standard_rate', item.item_code)
+                              }
+                            }}
+                            disabled={isReadOnly}
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
             </div>
             
-            {/* Invalid UOM Message */}
-            {invalidUomMessage && (
-              <div className="px-3 py-2 bg-red-50 border-t border-red-200">
-                <div className="text-red-700 text-sm text-center">
-                  ⚠️ {invalidUomMessage}
-                </div>
-              </div>
-            )}
-            
-            <div className="p-3 border-t bg-gray-50">
+            {/* Add Item button sticky at bottom of table card */}
+            <div className="bg-gray-50 border-t p-3 sticky bottom-0 z-10">
               <Button
                 variant="ghost"
                 className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
@@ -1420,6 +1414,14 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                 Click or press &apos;Shift&apos; to add item • Space to switch UOM • ← → to navigate fields • ↑ ↓ to navigate rows
               </Button>
             </div>
+            {/* Invalid UOM Message (not sticky, stays above add button) */}
+            {invalidUomMessage && (
+              <div className="px-3 py-2 bg-red-50 border-t border-red-200">
+                <div className="text-red-700 text-sm text-center">
+                  ⚠️ {invalidUomMessage}
+                </div>
+              </div>
+            )}
           </div>
         </TabsContent>
         <TabsContent value="other" className="mt-4">
