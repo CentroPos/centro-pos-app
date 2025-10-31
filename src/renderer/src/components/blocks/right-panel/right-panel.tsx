@@ -408,6 +408,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
     'customer-history'
   )
   const [currencySymbol, setCurrencySymbol] = useState('$')
+  const { profile } = usePOSProfileStore()
+  const hideCostAndMargin = profile?.custom_hide_cost_and_margin_info === 1
 
   // Get logout function from useAuthStore
   const { logout } = useAuthStore()
@@ -530,7 +532,19 @@ const RightPanel: React.FC<RightPanelProps> = ({
   }, [selectedItemId, currentUom])
 
   // Fetch customer history for selected product
-  const fetchCustomerHistory = async (itemCode: string) => {
+  // Pagination state for product tab histories
+  const [customerHistoryPage, setCustomerHistoryPage] = useState(1)
+  const [purchaseHistoryPage, setPurchaseHistoryPage] = useState(1)
+  const customerHasMoreRef = useRef(true)
+  const purchaseHasMoreRef = useRef(true)
+  const isFetchingCustomerRef = useRef(false)
+  const isFetchingPurchaseRef = useRef(false)
+  const customerHistoryScrollRef = useRef<HTMLDivElement | null>(null)
+  const purchaseHistoryScrollRef = useRef<HTMLDivElement | null>(null)
+
+  const PAGE_LEN = 3
+
+  const fetchCustomerHistory = async (itemCode: string, page = customerHistoryPage) => {
     if (!itemCode || !selectedCustomer) {
       console.log('🚫 Customer history fetch skipped - missing itemCode or selectedCustomer:', {
         itemCode,
@@ -584,12 +598,16 @@ const RightPanel: React.FC<RightPanelProps> = ({
     console.log('📊 Selected Customer name:', selectedCustomer.name)
     console.log('📊 Selected Customer id:', selectedCustomer.id)
 
+    if (isFetchingCustomerRef.current) return
+    isFetchingCustomerRef.current = true
     setCustomerHistoryLoading(true)
     try {
       const apiUrl = '/api/method/centro_pos_apis.api.product.get_product_customer_history'
       const apiParams = {
         item_id: itemCode,
-        customer_id: customerId
+        customer_id: customerId,
+        limit_start: page,
+        limit_page_length: PAGE_LEN
       }
 
       console.log('📊 API URL:', apiUrl)
@@ -610,7 +628,10 @@ const RightPanel: React.FC<RightPanelProps> = ({
       console.log('📊 Response Headers:', response?.headers)
 
       if (response?.success && response?.data?.data) {
-        setCustomerHistory(response.data.data)
+        const newData = response.data.data
+        // hasMore: if returned fewer than PAGE_LEN, no next page
+        customerHasMoreRef.current = Array.isArray(newData) && newData.length === PAGE_LEN
+        setCustomerHistory(newData)
         console.log('✅ Customer history loaded successfully:', response.data.data)
         console.log('✅ Number of history items:', response.data.data.length)
       } else {
@@ -627,12 +648,13 @@ const RightPanel: React.FC<RightPanelProps> = ({
       setCustomerHistory([])
     } finally {
       setCustomerHistoryLoading(false)
+      isFetchingCustomerRef.current = false
       console.log('📊 Customer history loading completed')
     }
   }
 
   // Fetch purchase history for selected product
-  const fetchPurchaseHistory = async (itemCode: string) => {
+  const fetchPurchaseHistory = async (itemCode: string, page = purchaseHistoryPage) => {
     if (!itemCode) {
       console.log('🚫 Purchase history fetch skipped - missing itemCode:', itemCode)
       return
@@ -641,11 +663,15 @@ const RightPanel: React.FC<RightPanelProps> = ({
     console.log('📦 ===== PURCHASE HISTORY API CALL =====')
     console.log('📦 Item Code:', itemCode)
 
+    if (isFetchingPurchaseRef.current) return
+    isFetchingPurchaseRef.current = true
     setPurchaseHistoryLoading(true)
     try {
       const apiUrl = '/api/method/centro_pos_apis.api.product.get_product_purchase_history'
       const apiParams = {
-        item_id: itemCode
+        item_id: itemCode,
+        limit_start: page,
+        limit_page_length: PAGE_LEN
       }
 
       console.log('📦 API URL:', apiUrl)
@@ -666,7 +692,9 @@ const RightPanel: React.FC<RightPanelProps> = ({
       console.log('📦 Response Headers:', response?.headers)
 
       if (response?.success && response?.data?.data) {
-        setPurchaseHistory(response.data.data)
+        const newData = response.data.data
+        purchaseHasMoreRef.current = Array.isArray(newData) && newData.length === PAGE_LEN
+        setPurchaseHistory(newData)
         console.log('✅ Purchase history loaded successfully:', response.data.data)
         console.log('✅ Number of purchase history items:', response.data.data.length)
       } else {
@@ -683,6 +711,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
       setPurchaseHistory([])
     } finally {
       setPurchaseHistoryLoading(false)
+      isFetchingPurchaseRef.current = false
       console.log('📦 Purchase history loading completed')
     }
   }
@@ -709,7 +738,20 @@ const RightPanel: React.FC<RightPanelProps> = ({
       setCustomerHistory([])
       setPurchaseHistory([])
     }
+    // reset pagination on product or customer change
+    setCustomerHistoryPage(1)
+    setPurchaseHistoryPage(1)
+    customerHasMoreRef.current = true
+    purchaseHasMoreRef.current = true
   }, [selectedItemId, selectedCustomer])
+
+  // Reset customer/most pagination when customer tab switches or customer changes
+  useEffect(() => {
+    setRecentPage(1)
+    setRecentHasMore(true)
+    setMostPage(1)
+    setMostHasMore(true)
+  }, [customerSubTab, selectedCustomer?.name])
 
   // Load history data when subtab changes
   useEffect(() => {
@@ -738,6 +780,38 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [productListData, setProductListData] = useState<any>(null)
   const [productListLoading, setProductListLoading] = useState(false)
 
+  // Unified product data used by the Product tab UI
+  const productData = (() => {
+    const code = productListData?.item_id || selectedItem?.item_code || ''
+    const name = productListData?.item_name || selectedItem?.item_name || ''
+    const defaultUom = productListData?.default_uom || selectedItem?.uom || 'Nos'
+    const uomDetails = Array.isArray(productListData?.uom_details)
+      ? productListData.uom_details
+      : []
+    const rateFromApi = uomDetails.length > 0 ? Number(uomDetails[0]?.rate || 0) : undefined
+    const standardRate = Number(
+      rateFromApi ?? selectedItem?.standard_rate ?? 0
+    )
+    const onHandQty = (() => {
+      if (!uomDetails || uomDetails.length === 0) return 0
+      const match = uomDetails.find(
+        (d: any) => String(d.uom).toLowerCase() === String(defaultUom).toLowerCase()
+      )
+      return Number(match?.qty || 0)
+    })()
+    return {
+      item_code: code,
+      item_name: name,
+      standard_rate: standardRate,
+      on_hand: onHandQty,
+      cost: Number(productListData?.cost_price || 0),
+      margin: Number(productListData?.margin || 0),
+      warehouses: Array.isArray(productListData?.warehouses) ? productListData.warehouses : [],
+      category: productListData?.item_group || '',
+      location: (productListData as any)?.location || ''
+    }
+  })()
+
   // Product history states
   const [customerHistory, setCustomerHistory] = useState<any[]>([])
   const [purchaseHistory, setPurchaseHistory] = useState<any[]>([])
@@ -758,11 +832,15 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [recentOrders, setRecentOrders] = useState<any[]>([])
   const [ordersLoading, setOrdersLoading] = useState(false)
   const [ordersError, setOrdersError] = useState<string | null>(null)
+  const [recentPage, setRecentPage] = useState(1)
+  const [recentHasMore, setRecentHasMore] = useState(true)
 
   // Most ordered products for selected customer
   const [mostOrdered, setMostOrdered] = useState<any[]>([])
   const [mostLoading, setMostLoading] = useState(false)
   const [mostError, setMostError] = useState<string | null>(null)
+  const [mostPage, setMostPage] = useState(1)
+  const [mostHasMore, setMostHasMore] = useState(true)
 
   // Customer details and insights
   const [customerDetails, setCustomerDetails] = useState<any>(null)
@@ -967,7 +1045,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
   // Fetch recent orders when customer is selected
   useEffect(() => {
     let cancelled = false
-    async function loadRecentOrders() {
+    async function loadRecentOrders(page: number) {
       console.log('🔍 loadRecentOrders called with selectedCustomer:', selectedCustomer)
       if (!selectedCustomer) {
         console.log('❌ No selected customer, clearing orders')
@@ -1016,8 +1094,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
         )
         console.log('🔍 API Params:', {
           customer_id: customerId,
-          limit_start: 0,
-          limit_page_length: 10
+          limit_start: page,
+          limit_page_length: PAGE_LEN
         })
 
         // Step 4: Call recent orders API with correct customer_id
@@ -1025,8 +1103,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
           url: '/api/method/centro_pos_apis.api.customer.get_customer_recent_orders',
           params: {
             customer_id: customerId,
-            limit_start: 0,
-            limit_page_length: 10
+            limit_start: page,
+            limit_page_length: PAGE_LEN
           }
         })
         console.log('📦 Recent orders API response:', res)
@@ -1040,7 +1118,28 @@ const RightPanel: React.FC<RightPanelProps> = ({
           console.log('📋 Recent orders array:', orders)
           console.log('📋 Recent orders length:', orders.length)
           if (!cancelled) {
+            if (orders.length === 0) {
+              setRecentHasMore(false)
+              // Do not move to an empty page; revert page index
+              if (page > 1) setRecentPage(page - 1)
+              return
+            }
+            // Optimistically assume possibly more if full page, then verify by probing next page
+            setRecentHasMore(orders.length === PAGE_LEN)
             setRecentOrders(orders)
+
+            if (orders.length === PAGE_LEN) {
+              try {
+                const probe = await window.electronAPI?.proxy?.request({
+                  url: '/api/method/centro_pos_apis.api.customer.get_customer_recent_orders',
+                  params: { customer_id: customerId, limit_start: page + 1, limit_page_length: PAGE_LEN }
+                })
+                const nextItems = Array.isArray(probe?.data?.data) ? probe.data.data : []
+                setRecentHasMore(nextItems.length > 0)
+              } catch (_) {
+                // If probe fails, keep previous hasMore assumption
+              }
+            }
           }
         } else {
           console.log('❌ No orders found in response or API failed')
@@ -1059,16 +1158,16 @@ const RightPanel: React.FC<RightPanelProps> = ({
         }
       }
     }
-    loadRecentOrders()
+    loadRecentOrders(recentPage)
     return () => {
       cancelled = true
     }
-  }, [selectedCustomer?.id])
+  }, [selectedCustomer?.id, recentPage])
 
   // Fetch most ordered when customer is selected
   useEffect(() => {
     let cancelled = false
-    async function loadMostOrdered() {
+    async function loadMostOrdered(page: number) {
       if (!selectedCustomer) {
         setMostOrdered([])
         return
@@ -1090,21 +1189,42 @@ const RightPanel: React.FC<RightPanelProps> = ({
         }
         const res = await window.electronAPI?.proxy?.request({
           url: '/api/method/centro_pos_apis.api.customer.get_customer_most_ordered_products',
-          params: { customer_id: customerId, limit_start: 0, limit_page_length: 10 }
+          params: { customer_id: customerId, limit_start: page, limit_page_length: PAGE_LEN }
         })
         const items = Array.isArray(res?.data?.data) ? res.data.data : []
-        if (!cancelled) setMostOrdered(items)
+        if (!cancelled) {
+          if (items.length === 0) {
+            setMostHasMore(false)
+            if (page > 1) setMostPage(page - 1)
+            return
+          }
+          setMostHasMore(items.length === PAGE_LEN)
+          setMostOrdered(items)
+
+          if (items.length === PAGE_LEN) {
+            try {
+              const probe = await window.electronAPI?.proxy?.request({
+                url: '/api/method/centro_pos_apis.api.customer.get_customer_most_ordered_products',
+                params: { customer_id: customerId, limit_start: page + 1, limit_page_length: PAGE_LEN }
+              })
+              const nextItems = Array.isArray(probe?.data?.data) ? probe.data.data : []
+              setMostHasMore(nextItems.length > 0)
+            } catch (_) {
+              // ignore probe failure
+            }
+          }
+        }
       } catch (e: any) {
         if (!cancelled) setMostError(e?.message || 'Failed to load most ordered')
       } finally {
         if (!cancelled) setMostLoading(false)
       }
     }
-    loadMostOrdered()
+    loadMostOrdered(mostPage)
     return () => {
       cancelled = true
     }
-  }, [selectedCustomer?.name])
+  }, [selectedCustomer?.name, mostPage])
 
   // Fetch customer details and insights when customer is selected
   useEffect(() => {
@@ -1184,9 +1304,9 @@ const RightPanel: React.FC<RightPanelProps> = ({
       try {
         setOrdersTabLoading(true);
         setOrdersTabError(null);
-        const res = await window.electronAPI?.proxy?.request({
+            const res = await window.electronAPI?.proxy?.request({
           url: '/api/method/centro_pos_apis.api.order.order_list',
-          params: {
+              params: {
             is_returned: 0,
             limit_start: page,
             limit_page_length: pageLength
@@ -1203,8 +1323,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
         if (!cancelled) setOrdersTabError(err instanceof Error ? err.message : 'Failed to load orders');
       } finally {
         if (!cancelled) setOrdersTabLoading(false);
+        }
       }
-    }
     if (activeTab === 'orders' && subTab === 'orders') {
       loadOrdersPaginated(ordersPage);
     }
@@ -1228,7 +1348,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
           },
         });
         console.log('Returns API result:', res);
-        if (!cancelled) {
+          if (!cancelled) {
           const data = Array.isArray(res?.data?.data) ? res.data.data : [];
           setReturnsList(data);
           setReturnsTotal(typeof res?.data?.total === 'number' ? res.data.total : data.length);
@@ -1237,8 +1357,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
         if (!cancelled) setOrdersTabError(err instanceof Error ? err.message : 'Failed to load returns');
       } finally {
         if (!cancelled) setOrdersTabLoading(false);
+        }
       }
-    }
     if (activeTab === 'orders' && subTab === 'returns') {
       loadReturnsPaginated(returnsPage);
     }
@@ -1478,18 +1598,18 @@ const RightPanel: React.FC<RightPanelProps> = ({
                   </div>
                   {!hideCostAndMargin && (
                     <>
-                      <div className="p-3 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl">
-                        <div className="text-xs text-gray-600">Cost</div>
-                        <div className="font-bold text-orange-600">
-                          {currencySymbol} {productData.cost.toFixed(2)}
-                        </div>
-                      </div>
-                      <div className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl">
-                        <div className="text-xs text-gray-600">Margin</div>
-                        <div className="font-bold text-purple-600">
-                          {productData.margin.toFixed(1)}%
-                        </div>
-                      </div>
+                  <div className="p-3 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl">
+                    <div className="text-xs text-gray-600">Cost</div>
+                    <div className="font-bold text-orange-600">
+                      {currencySymbol} {productData.cost.toFixed(2)}
+                    </div>
+                  </div>
+                  <div className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl">
+                    <div className="text-xs text-gray-600">Margin</div>
+                    <div className="font-bold text-purple-600">
+                      {productData.margin.toFixed(1)}%
+                    </div>
+                  </div>
                     </>
                   )}
                 </div>
@@ -1600,7 +1720,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     </div>
 
                     {/* Customer History Content */}
-                    <div className="max-h-64 overflow-y-auto scrollbar-hide">
+                    <div ref={customerHistoryScrollRef} className="max-h-64 overflow-y-auto scrollbar-hide">
                       {!selectedCustomer ? (
                         <div className="text-center py-4">
                           <div className="text-sm text-gray-500">
@@ -1655,6 +1775,36 @@ const RightPanel: React.FC<RightPanelProps> = ({
                         </div>
                       )}
                     </div>
+                    {/* Pager */}
+                    <div className="flex items-center justify-between mt-3">
+                      <button
+                        className={`px-3 py-1 text-sm rounded border ${customerHistoryPage > 1 ? 'bg-white hover:bg-gray-50' : 'opacity-40 cursor-not-allowed'}`}
+                        disabled={customerHistoryPage <= 1}
+                        onClick={() => {
+                          if (customerHistoryPage <= 1) return
+                          const prev = Math.max(1, customerHistoryPage - 1)
+                          setCustomerHistoryPage(prev)
+                          fetchCustomerHistory(selectedItemId as string, prev)
+                          customerHistoryScrollRef.current?.scrollTo({ top: 0 })
+                        }}
+                      >
+                        Prev
+                      </button>
+                      <div className="text-sm text-gray-600">Page {customerHistoryPage}</div>
+                      <button
+                        className={`px-3 py-1 text-sm rounded border ${customerHasMoreRef.current ? 'bg-white hover:bg-gray-50' : 'opacity-40 cursor-not-allowed'}`}
+                        disabled={!customerHasMoreRef.current}
+                        onClick={() => {
+                          if (!customerHasMoreRef.current) return
+                          const next = customerHistoryPage + 1
+                          setCustomerHistoryPage(next)
+                          fetchCustomerHistory(selectedItemId as string, next)
+                          customerHistoryScrollRef.current?.scrollTo({ top: 0 })
+                        }}
+                      >
+                        Next
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -1692,7 +1842,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     </div>
 
                     {/* Purchase History Content */}
-                    <div className="max-h-64 overflow-y-auto scrollbar-hide">
+                    <div ref={purchaseHistoryScrollRef} className="max-h-64 overflow-y-auto scrollbar-hide">
                       {purchaseHistoryLoading ? (
                         <div className="text-center py-4">
                           <div className="text-sm text-gray-500">Loading purchase history...</div>
@@ -1740,6 +1890,36 @@ const RightPanel: React.FC<RightPanelProps> = ({
                           <div className="text-sm text-gray-500">No purchase history found</div>
                         </div>
                       )}
+                    </div>
+                    {/* Pager */}
+                    <div className="flex items-center justify-between mt-3">
+                      <button
+                        className={`px-3 py-1 text-sm rounded border ${purchaseHistoryPage > 1 ? 'bg-white hover:bg-gray-50' : 'opacity-40 cursor-not-allowed'}`}
+                        disabled={purchaseHistoryPage <= 1}
+                        onClick={() => {
+                          if (purchaseHistoryPage <= 1) return
+                          const prev = Math.max(1, purchaseHistoryPage - 1)
+                          setPurchaseHistoryPage(prev)
+                          fetchPurchaseHistory(selectedItemId as string, prev)
+                          purchaseHistoryScrollRef.current?.scrollTo({ top: 0 })
+                        }}
+                      >
+                        Prev
+                      </button>
+                      <div className="text-sm text-gray-600">Page {purchaseHistoryPage}</div>
+                      <button
+                        className={`px-3 py-1 text-sm rounded border ${purchaseHasMoreRef.current ? 'bg-white hover:bg-gray-50' : 'opacity-40 cursor-not-allowed'}`}
+                        disabled={!purchaseHasMoreRef.current}
+                        onClick={() => {
+                          if (!purchaseHasMoreRef.current) return
+                          const next = purchaseHistoryPage + 1
+                          setPurchaseHistoryPage(next)
+                          fetchPurchaseHistory(selectedItemId as string, next)
+                          purchaseHistoryScrollRef.current?.scrollTo({ top: 0 })
+                        }}
+                      >
+                        Next
+                      </button>
                     </div>
                   </div>
                 )}
@@ -1915,7 +2095,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                   {!ordersLoading &&
                     !ordersError &&
                     filteredRecentOrders.length > 0 &&
-                    filteredRecentOrders.slice(0, 3).map((order, index) => (
+                    filteredRecentOrders.map((order, index) => (
                       <div
                         key={index}
                         className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200"
@@ -1969,11 +2149,24 @@ const RightPanel: React.FC<RightPanelProps> = ({
                         No recent orders found
                       </div>
                     )}
-                  {!ordersLoading && !ordersError && filteredRecentOrders.length > 3 && (
-                    <div className="text-xs text-gray-400 text-center py-2">
-                      Showing 3 of {filteredRecentOrders.length} orders
+                  {/* Pager for Recent Orders */}
+                  <div className="flex items-center justify-between mt-3">
+                    <button
+                      className={`px-3 py-1 text-sm rounded border ${recentPage > 1 ? 'bg-white hover:bg-gray-50' : 'opacity-40 cursor-not-allowed'}`}
+                      disabled={recentPage <= 1}
+                      onClick={() => setRecentPage(Math.max(1, recentPage - 1))}
+                    >
+                      Prev
+                    </button>
+                    <div className="text-sm text-gray-600">Page {recentPage}</div>
+                    <button
+                      className={`px-3 py-1 text-sm rounded border ${recentHasMore ? 'bg-white hover:bg-gray-50' : 'opacity-40 cursor-not-allowed'}`}
+                      disabled={!recentHasMore}
+                      onClick={() => setRecentPage(recentPage + 1)}
+                    >
+                      Next
+                    </button>
                     </div>
-                  )}
                 </div>
               </div>
             ) : (
@@ -2021,7 +2214,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                   )}
                   {!mostLoading &&
                     !mostError &&
-                    filteredMostOrdered.slice(0, 3).map((item, idx) => (
+                    filteredMostOrdered.map((item, idx) => (
                       <div
                         key={idx}
                         className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-200 text-xs"
@@ -2046,6 +2239,24 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     selectedCustomer && (
                       <div className="text-xs text-gray-500 text-center py-4">No data</div>
                     )}
+                  {/* Pager for Most Ordered */}
+                  <div className="flex items-center justify-between mt-3">
+                    <button
+                      className={`px-3 py-1 text-sm rounded border ${mostPage > 1 ? 'bg-white hover:bg-gray-50' : 'opacity-40 cursor-not-allowed'}`}
+                      disabled={mostPage <= 1}
+                      onClick={() => setMostPage(Math.max(1, mostPage - 1))}
+                    >
+                      Prev
+                    </button>
+                    <div className="text-sm text-gray-600">Page {mostPage}</div>
+                    <button
+                      className={`px-3 py-1 text-sm rounded border ${mostHasMore ? 'bg-white hover:bg-gray-50' : 'opacity-40 cursor-not-allowed'}`}
+                      disabled={!mostHasMore}
+                      onClick={() => setMostPage(mostPage + 1)}
+                    >
+                      Next
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -2201,7 +2412,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     >
                       Next
                     </button>
-                  </div>
+                </div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs text-gray-500">{ordersTotal} results found</span>
                     <select
@@ -2213,7 +2424,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                         <option key={opt} value={opt}>{opt} / page</option>
                       ))}
                     </select>
-                  </div>
+              </div>
                 </div>
               </div>
             )
