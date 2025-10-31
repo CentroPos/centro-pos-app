@@ -347,6 +347,7 @@ const ProductSearch: React.FC<{
                     name: code,
                     item_name: itemName,
                     item_code: code,
+                    item_description: product.description || '',
                     image: product.image,
                     standard_rate: displayRate,
                     uom: primaryUOM.uom,
