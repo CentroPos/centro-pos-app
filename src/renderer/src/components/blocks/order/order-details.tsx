@@ -140,7 +140,7 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange, onCustom
             onClick={() => setShowCustomerModal(true)}
             className="w-full p-4 bg-white/80 border border-white/40 rounded-xl shadow-lg focus:ring-2 focus:ring-accent focus:border-transparent transition-all text-left flex items-center justify-between hover:bg-white/90"
           >
-            <span className={selectedCustomer.name === 'Walking Customer' ? 'text-gray-400' : ''}>
+            <span className={`font-bold ${selectedCustomer.name === 'Walking Customer' ? 'text-gray-400' : ''}`}>
               {selectedCustomer.name === 'Walking Customer' ? 'Select Customer' : selectedCustomer.name}
             </span>
             <ChevronDown className="h-4 w-4 text-gray-400" />
@@ -154,7 +154,7 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange, onCustom
             onValueChange={handlePriceListChange}
             disabled={loadingPriceLists}
           >
-            <SelectTrigger className="w-full p-4 bg-white/80 border border-white/40 rounded-xl shadow-lg focus:ring-2 focus:ring-accent focus:border-transparent transition-all">
+            <SelectTrigger className="w-full p-4 bg-white/80 border border-white/40 rounded-xl shadow-lg focus:ring-2 focus:ring-accent focus:border-transparent transition-all [&_span]:font-bold">
               <SelectValue placeholder={loadingPriceLists ? "Loading price lists..." : "Select Price List"} />
             </SelectTrigger>
             <SelectContent className="bg-white border-gray-200 shadow-lg">
@@ -179,7 +179,7 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange, onCustom
             type="date"
             defaultValue={new Date().toISOString().slice(0, 10)}
             onChange={handleDateChange}
-            className="w-full p-4 bg-white/80 border border-white/40 rounded-xl shadow-lg focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
+            className="w-full p-4 bg-white/80 border border-white/40 rounded-xl shadow-lg focus:ring-2 focus:ring-accent focus:border-transparent transition-all font-bold"
           />
         </div>
 
