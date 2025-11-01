@@ -377,7 +377,7 @@ const ProductSearch: React.FC<{
                           : 'text-muted-foreground'
                       }`}
                     >
-                      On Hand qty: {Number(onHandQty || 0)} {defaultUom || primaryUOM.uom}
+                      On Hand: {Number(onHandQty || 0)} {defaultUom || primaryUOM.uom}
                     </p>
                   </div>
                   <Badge variant={selectedIndex === index ? 'secondary' : 'outline'}>

@@ -673,6 +673,10 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         return // Allow normal spacebar behavior in text fields
       }
 
+      // Save current scroll position to prevent scroll jump
+      const container = tableScrollRef.current
+      const savedScrollTop = container?.scrollTop ?? 0
+
       try {
         const item = items.find((i) => i.item_code === selectedItemId)
         if (!item) return
@@ -720,11 +724,20 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         if (isEditing && activeField === 'uom') {
           setEditValue(next.uom)
         }
+
+        // Restore scroll position to prevent scroll jump
+        if (container && savedScrollTop !== undefined) {
+          requestAnimationFrame(() => {
+            if (container) {
+              container.scrollTop = savedScrollTop
+            }
+          })
+        }
       } catch (err) {
         console.error('Space-to-cycle UOM failed:', err)
       }
     },
-    { preventDefault: false, enableOnFormTags: false }
+    { preventDefault: true, enableOnFormTags: false }
   )
 
   // Emergency reset shortcut (Ctrl+R)
@@ -993,7 +1006,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
               <Table className="table-fixed w-full">
               <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[50px] text-center">S.No</TableHead>
+                    <TableHead className="w-[50px] text-center font-bold">S.No</TableHead>
                     <TableHead className="w-[110px]">
                       <div className="flex items-center gap-2">
                         <span>Product</span>
@@ -1013,7 +1026,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                     </TableHead>
                   <TableHead className="w-[80px] text-center px-1">UOM</TableHead>
                   <TableHead className="w-[80px] text-center">Discount</TableHead>
-                  <TableHead className="w-[100px] text-center">Unit Price</TableHead>
+                  <TableHead className="w-[100px] text-center font-bold">Unit Price</TableHead>
                     <TableHead className="w-[100px] text-left pl-8">Total</TableHead>
                   <TableHead className="w-[60px] text-center pl-1">Actions</TableHead>
                   </TableRow>
@@ -1089,7 +1102,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                           : 'hover:bg-gray-50'
                         }`}
                     >
-                        <TableCell className="w-[50px] text-center">{index + 1}</TableCell>
+                        <TableCell className="w-[50px] text-center font-bold">{index + 1}</TableCell>
                       <TableCell className={`w-[110px]`}>
                         <div className="flex flex-col">
                           <span className={`${hasError ? 'text-red-600 font-semibold' : isSelected ? 'font-semibold text-blue-900' : 'text-gray-800'} text-[11px] leading-4 truncate`}>{item.item_code}</span>
@@ -1432,7 +1445,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             className="w-[80px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
                           />
                         ) : (
-                          <>{Number(item.standard_rate || 0).toFixed(2)}</>
+                          <span className="font-bold">{Number(item.standard_rate || 0).toFixed(2)}</span>
                         )}
                       </TableCell>
                       <TableCell className={`font-semibold ${hasError ? 'text-red-600' : isSelected ? 'text-blue-900' : ''} w-[100px] text-left pl-8`}>
@@ -1556,7 +1569,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                 setDeleteCandidate(null)
               }}
               autoFocus
+              className="flex items-center gap-2"
             >
+              <svg className="w-4 h-4" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="paper-plane" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="currentColor">
+                <path d="M498.1 5.6c10.1 7 15.4 19.1 13.5 31.2l-64 416c-1.5 9.7-7.4 18.2-16 23s-18.9 5.4-28 1.6L284 427.7l-68.5 74.1c-8.9 9.7-22.9 12.9-35.2 8.1S160 493.2 160 480V396.4c0-4 1.5-7.8 4.2-10.7L331.8 202.8c5.8-6.3 5.6-16-.4-22s-15.7-6.4-22-.7L106 360.8 17.7 316.6C7.1 311.3 .3 300.7 0 288.9s5.9-22.8 16.1-28.7l448-256c10.7-6.1 23.9-5.5 34 1.4z"></path>
+              </svg>
               Confirm
             </Button>
             <Button ref={cancelBtnRef} variant="outline" onClick={() => setShowDeleteConfirm(false)}>Cancel</Button>
