@@ -7,6 +7,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 import PaymentTab from '../payment/payment-tab'
+import MultiWarehousePopup from '../common/multi-warehouse-popup'
 
 // A right-side panel for the POS screen, adapted from pos.html
 // Contains tabs for Product, Customer, Prints, Payments, Orders
@@ -442,6 +443,22 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [currencySymbol, setCurrencySymbol] = useState('$')
   const { profile } = usePOSProfileStore()
   const hideCostAndMargin = profile?.custom_hide_cost_and_margin_info === 1
+  const { updateItemInTab } = usePOSTabStore()
+
+  // Multi-warehouse popup state
+  const [showWarehousePopup, setShowWarehousePopup] = useState(false)
+  const [warehousePopupData, setWarehousePopupData] = useState<{
+    itemCode: string
+    itemName: string
+    requiredQty: number
+    currentWarehouseQty: number
+    warehouses: Array<{
+      name: string
+      available: number
+      allocated: number
+      selected: boolean
+    }>
+  } | null>(null)
 
   // Get logout function from useAuthStore
   const { logout } = useAuthStore()
@@ -1088,12 +1105,13 @@ const RightPanel: React.FC<RightPanelProps> = ({
     const searchTerm = ordersSearch.toLowerCase()
     return orders.filter(
       (order: any) =>
-        order.invoice_no?.toLowerCase().includes(searchTerm) ||
-        order.sales_order_no?.toLowerCase().includes(searchTerm) ||
+        order.sales_order_id?.toLowerCase().includes(searchTerm) ||
+        order.customer_name?.toLowerCase().includes(searchTerm) ||
         order.total_qty?.toString().includes(searchTerm) ||
-        order.total_amount?.toString().includes(searchTerm) ||
-        order.status?.toLowerCase().includes(searchTerm) ||
-        order.creation_datetime?.toLowerCase().includes(searchTerm)
+        order.grand_total?.toString().includes(searchTerm) ||
+        order.invoice_status?.toLowerCase().includes(searchTerm) ||
+        order.custom_reverse_status?.toLowerCase().includes(searchTerm) ||
+        order.creation?.toLowerCase().includes(searchTerm)
     )
   }, [ordersList, ordersSearch])
 
@@ -1105,12 +1123,13 @@ const RightPanel: React.FC<RightPanelProps> = ({
     const searchTerm = returnsSearch.toLowerCase()
     return returns.filter(
       (order: any) =>
-        order.invoice_no?.toLowerCase().includes(searchTerm) ||
-        order.sales_order_no?.toLowerCase().includes(searchTerm) ||
+        order.sales_order_id?.toLowerCase().includes(searchTerm) ||
+        order.customer_name?.toLowerCase().includes(searchTerm) ||
         order.total_qty?.toString().includes(searchTerm) ||
-        order.total_amount?.toString().includes(searchTerm) ||
-        order.status?.toLowerCase().includes(searchTerm) ||
-        order.creation_datetime?.toLowerCase().includes(searchTerm)
+        order.grand_total?.toString().includes(searchTerm) ||
+        order.invoice_status?.toLowerCase().includes(searchTerm) ||
+        order.custom_reverse_status?.toLowerCase().includes(searchTerm) ||
+        order.creation?.toLowerCase().includes(searchTerm)
     )
   }, [returnsList, returnsSearch])
 
@@ -1490,9 +1509,11 @@ const RightPanel: React.FC<RightPanelProps> = ({
         });
         console.log('Orders API result:', res);
         if (!cancelled) {
-          const data = Array.isArray(res?.data?.data) ? res.data.data : [];
+          // Handle nested data structure: response.data.data or response.data
+          const actualData = res?.data?.data || res?.data
+          const data = Array.isArray(actualData) ? actualData : [];
           setOrdersList(data);
-          // PATCH 4: Store total (API: res.data.total or data.length fallback)
+          // Store total (API: res.data.total or data.length fallback)
           setOrdersTotal(typeof res?.data?.total === 'number' ? res.data.total : data.length);
         }
       } catch (err) {
@@ -1524,8 +1545,10 @@ const RightPanel: React.FC<RightPanelProps> = ({
           },
         });
         console.log('Returns API result:', res);
-          if (!cancelled) {
-          const data = Array.isArray(res?.data?.data) ? res.data.data : [];
+        if (!cancelled) {
+          // Handle nested data structure: response.data.data or response.data
+          const actualData = res?.data?.data || res?.data
+          const data = Array.isArray(actualData) ? actualData : [];
           setReturnsList(data);
           setReturnsTotal(typeof res?.data?.total === 'number' ? res.data.total : data.length);
         }
@@ -1793,7 +1816,60 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
               {/* Stock Details */}
               <div className="p-4 border-b border-gray-200/60 bg-white/90">
-                <h4 className="font-bold text-gray-800 mb-3">Stock Details</h4>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-bold text-gray-800">Stock Details</h4>
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      const selectedItemFromTable = items.find((item: any) => item.item_code === selectedItemId)
+                      if (!selectedItemFromTable || warehouseStock.length === 0) {
+                        toast.error('Please select an item with stock to use Split Wise')
+                        return
+                      }
+
+                      // Get current UOM from selected item
+                      const currentUom = selectedItemFromTable.uom || 'Nos'
+                      
+                      // Transform warehouseStock to MultiWarehousePopup format
+                      const warehouses = warehouseStock.map((warehouse) => {
+                        // Find quantity for current UOM
+                        const qtyForUom = warehouse.quantities.find(
+                          (qtyItem) => qtyItem.uom.toLowerCase() === currentUom.toLowerCase()
+                        )
+                        const availableQty = qtyForUom ? Number(qtyForUom.qty) : 0
+
+                        return {
+                          name: warehouse.name,
+                          available: availableQty,
+                          allocated: 0,
+                          selected: false
+                        }
+                      })
+
+                      // Filter out warehouses with 0 available stock
+                      const warehousesWithStock = warehouses.filter((w) => w.available > 0)
+
+                      if (warehousesWithStock.length === 0) {
+                        toast.error('No stock available in warehouses for the current UOM')
+                        return
+                      }
+
+                      // Open the popup
+                      setWarehousePopupData({
+                        itemCode: selectedItemFromTable.item_code,
+                        itemName: selectedItemFromTable.item_name || selectedItemFromTable.item_code,
+                        requiredQty: Number(selectedItemFromTable.quantity || 0),
+                        currentWarehouseQty: warehousesWithStock.reduce((sum, w) => sum + w.available, 0),
+                        warehouses: warehousesWithStock
+                      })
+                      setShowWarehousePopup(true)
+                    }}
+                    className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded"
+                    disabled={!selectedItemId || warehouseStock.length === 0}
+                  >
+                    Split Wise
+                  </Button>
+                </div>
                 <div className="space-y-2">
                   {stockLoading && <div className="text-xs text-gray-500">Loading stock...</div>}
                   {stockError && <div className="text-xs text-red-600">{stockError}</div>}
@@ -2853,6 +2929,43 @@ const RightPanel: React.FC<RightPanelProps> = ({
         </div>
       )}
 
+      {/* Multi Warehouse Popup */}
+      {warehousePopupData && (
+        <MultiWarehousePopup
+          open={showWarehousePopup}
+          onClose={() => {
+            setShowWarehousePopup(false)
+            setWarehousePopupData(null)
+          }}
+          onAssign={(allocations) => {
+            if (!warehousePopupData) return
+
+            // Calculate total allocated quantity from all warehouses
+            const totalAllocated = allocations.reduce((sum, allocation) => {
+              return sum + (Number(allocation.allocated) || 0)
+            }, 0)
+
+            // Get the current tab and update the item
+            const currentTab = usePOSTabStore.getState().getCurrentTab()
+            if (currentTab) {
+              updateItemInTab(currentTab.id, warehousePopupData.itemCode, {
+                quantity: totalAllocated,
+                warehouseAllocations: allocations
+              })
+              toast.success('Warehouse allocation updated successfully')
+            }
+
+            setShowWarehousePopup(false)
+            setWarehousePopupData(null)
+          }}
+          itemCode={warehousePopupData.itemCode}
+          itemName={warehousePopupData.itemName}
+          requiredQty={warehousePopupData.requiredQty}
+          currentWarehouseQty={warehousePopupData.currentWarehouseQty}
+          warehouses={warehousePopupData.warehouses}
+        />
+      )}
+
       {activeTab === 'orders' && (
         <div className="flex-1 overflow-y-auto scrollbar-hide">
           <div className="bg-white/90 mt-2">
@@ -2922,60 +3035,86 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     !ordersTabError &&
                     filteredOrders.length > 0 &&
                     filteredOrders.map((order, index) => {
-                      const createdRaw = order.creation_datetime || order.creation_date || order.posting_datetime || order.posting_date
-                      const createdDate = createdRaw ? new Date(String(createdRaw).replace(' ', 'T')) : null
-                      const amountVal =
-                        (typeof order.total_amount === 'number' ? order.total_amount : undefined) ??
-                        (typeof order.grand_total === 'number' ? order.grand_total : undefined) ??
-                        (typeof order.total === 'number' ? order.total : undefined) ??
-                        (typeof order.amount === 'number' ? order.amount : undefined)
-                      const qtyVal = order.total_qty ?? order.qty ?? order.total_quantity
+                      // Parse creation datetime
+                      const creationRaw = order.creation
+                      const creationDate = creationRaw ? new Date(String(creationRaw).replace(' ', 'T')) : null
+                      const formatDate = (date: Date | null) => {
+                        if (!date) return '—'
+                        const day = String(date.getDate()).padStart(2, '0')
+                        const month = String(date.getMonth() + 1).padStart(2, '0')
+                        const year = date.getFullYear()
+                        return `${day}/${month}/${year}`
+                      }
+                      const formatTime = (date: Date | null) => {
+                        if (!date) return '—'
+                        const hours = String(date.getHours()).padStart(2, '0')
+                        const minutes = String(date.getMinutes()).padStart(2, '0')
+                        return `${hours}:${minutes}`
+                      }
+
                       return (
-                      <div
-                        key={index}
-                        className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200"
-                      >
-                        <div className="flex justify-between items-center mb-2">
-                          <div className="font-semibold text-primary text-sm">
-                            {order.invoice_no || order.sales_order_no}
+                        <div
+                          key={index}
+                          className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200"
+                        >
+                          {/* Order No and Date Row */}
+                          <div className="flex justify-between items-center mb-2">
+                            <div className="font-semibold text-black text-sm">
+                              {order.sales_order_id || '—'}
+                            </div>
+                            <div className="text-gray-600 text-xs">
+                              {formatDate(creationDate)}
+                            </div>
                           </div>
-                          <div className="text-gray-600 text-xs">
-                            {createdDate ? createdDate.toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric'
-                            }) : '—'}
+
+                          {/* Customer Name and Amount Row */}
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-gray-700 font-medium text-xs">
+                              {order.customer_name || '—'}
+                            </span>
+                            <span className="font-bold text-green-600 text-sm">
+                              {typeof order.grand_total === 'number' 
+                                ? `${order.grand_total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currencySymbol}`
+                                : '—'}
+                            </span>
+                          </div>
+
+                          {/* Total Qty Row */}
+                          <div className="mb-2">
+                            <span className="text-gray-600 font-medium text-xs">
+                              Qty: {order.total_qty ?? '—'}
+                            </span>
+                          </div>
+
+                          {/* Invoice Status and Reverse Status Row */}
+                          <div className="flex items-center gap-2">
+                            {order.invoice_status && (
+                              <span
+                                className={`text-xs px-2 py-1 rounded-full font-medium ${
+                                  order.invoice_status === 'Overdue'
+                                    ? 'bg-red-100 text-red-700'
+                                    : order.invoice_status === 'Paid'
+                                      ? 'bg-green-100 text-green-700'
+                                      : order.invoice_status === 'Draft'
+                                        ? 'bg-yellow-100 text-yellow-700'
+                                        : 'bg-gray-100 text-gray-700'
+                                }`}
+                              >
+                                {order.invoice_status}
+                              </span>
+                            )}
+                            {order.custom_reverse_status && (
+                              <span className="text-xs px-2 py-1 rounded-full font-medium bg-purple-100 text-purple-700">
+                                {order.custom_reverse_status}
+                              </span>
+                            )}
+                            {!order.invoice_status && !order.custom_reverse_status && (
+                              <span className="text-gray-400 text-xs">—</span>
+                            )}
                           </div>
                         </div>
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-gray-600 font-medium">Qty: {qtyVal ?? '—'}</span>
-                          <span className="font-bold text-green-600 text-sm">
-                            {currencySymbol} {typeof amountVal === 'number' ? amountVal.toLocaleString() : '—'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span
-                            className={`text-xs px-2 py-1 rounded-full font-medium ${
-                              order.status === 'Overdue'
-                                ? 'bg-red-100 text-red-700'
-                                : order.status === 'Paid'
-                                  ? 'bg-green-100 text-green-700'
-                                  : order.status === 'Draft'
-                                    ? 'bg-yellow-100 text-yellow-700'
-                                    : 'bg-gray-100 text-gray-700'
-                            }`}
-                          >
-                            {order.status}
-                          </span>
-                          <span className="text-gray-500 text-xs">
-                            {createdDate ? createdDate.toLocaleTimeString('en-US', {
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            }) : '—'}
-                          </span>
-                        </div>
-                      </div>
-                    )})}
+                      )
+                    })}
                   {!ordersTabLoading && !ordersTabError && filteredOrders.length === 0 && (
                     <div className="text-xs text-gray-500 text-center py-4">No orders found</div>
                   )}
@@ -3052,50 +3191,86 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     !ordersTabError &&
                     filteredReturns.length > 0 &&
                     filteredReturns.map((order, index) => {
-                      const createdRaw = order.creation_datetime || order.creation_date || order.posting_datetime || order.posting_date
-                      const createdDate = createdRaw ? new Date(String(createdRaw).replace(' ', 'T')) : null
-                      const amountVal =
-                        (typeof order.total_amount === 'number' ? order.total_amount : undefined) ??
-                        (typeof order.grand_total === 'number' ? order.grand_total : undefined) ??
-                        (typeof order.total === 'number' ? order.total : undefined) ??
-                        (typeof order.amount === 'number' ? order.amount : undefined)
-                      const qtyVal = order.total_qty ?? order.qty ?? order.total_quantity
+                      // Parse creation datetime
+                      const creationRaw = order.creation
+                      const creationDate = creationRaw ? new Date(String(creationRaw).replace(' ', 'T')) : null
+                      const formatDate = (date: Date | null) => {
+                        if (!date) return '—'
+                        const day = String(date.getDate()).padStart(2, '0')
+                        const month = String(date.getMonth() + 1).padStart(2, '0')
+                        const year = date.getFullYear()
+                        return `${day}/${month}/${year}`
+                      }
+                      const formatTime = (date: Date | null) => {
+                        if (!date) return '—'
+                        const hours = String(date.getHours()).padStart(2, '0')
+                        const minutes = String(date.getMinutes()).padStart(2, '0')
+                        return `${hours}:${minutes}`
+                      }
+
                       return (
-                      <div
-                        key={index}
-                        className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg text-xs border border-purple-200"
-                      >
-                        <div className="flex justify-between items-center mb-2">
-                          <div className="font-semibold text-purple-700 text-sm">
-                            {order.invoice_no || order.sales_order_no}
+                        <div
+                          key={index}
+                          className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200"
+                        >
+                          {/* Order No and Date Row */}
+                          <div className="flex justify-between items-center mb-2">
+                            <div className="font-semibold text-black text-sm">
+                              {order.sales_order_id || '—'}
+                            </div>
+                            <div className="text-gray-600 text-xs">
+                              {formatDate(creationDate)}
+                            </div>
                           </div>
-                          <div className="text-gray-600 text-xs">
-                            {createdDate ? createdDate.toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric'
-                            }) : '—'}
+
+                          {/* Customer Name and Amount Row */}
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-gray-700 font-medium text-xs">
+                              {order.customer_name || '—'}
+                            </span>
+                            <span className="font-bold text-green-600 text-sm">
+                              {typeof order.grand_total === 'number' 
+                                ? `${order.grand_total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currencySymbol}`
+                                : '—'}
+                            </span>
+                          </div>
+
+                          {/* Total Qty Row */}
+                          <div className="mb-2">
+                            <span className="text-gray-600 font-medium text-xs">
+                              Qty: {order.total_qty ?? '—'}
+                            </span>
+                          </div>
+
+                          {/* Invoice Status and Reverse Status Row */}
+                          <div className="flex items-center gap-2">
+                            {order.invoice_status && (
+                              <span
+                                className={`text-xs px-2 py-1 rounded-full font-medium ${
+                                  order.invoice_status === 'Overdue'
+                                    ? 'bg-red-100 text-red-700'
+                                    : order.invoice_status === 'Paid'
+                                      ? 'bg-green-100 text-green-700'
+                                      : order.invoice_status === 'Draft'
+                                        ? 'bg-yellow-100 text-yellow-700'
+                                        : 'bg-gray-100 text-gray-700'
+                                }`}
+                              >
+                                {order.invoice_status}
+                              </span>
+                            )}
+                            {order.custom_reverse_status && (
+                              <span className="text-xs px-2 py-1 rounded-full font-medium bg-purple-100 text-purple-700">
+                                {order.custom_reverse_status}
+                              </span>
+                            )}
+                            {!order.invoice_status && !order.custom_reverse_status && (
+                              <span className="text-gray-400 text-xs">—</span>
+                            )}
                           </div>
                         </div>
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-gray-600">Qty: {qtyVal ?? '—'}</span>
-                          <span className="font-bold text-purple-600 text-sm">
-                            {currencySymbol} {typeof amountVal === 'number' ? amountVal.toLocaleString() : '—'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs px-2 py-1 rounded-full font-medium bg-purple-100 text-purple-700">
-                            Return
-                          </span>
-                          <span className="text-gray-500 text-xs">
-                            {createdDate ? createdDate.toLocaleTimeString('en-US', {
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            }) : '—'}
-                          </span>
-                        </div>
-                      </div>
-                    )})}
+                      )
+                    })}
                   {!ordersTabLoading && !ordersTabError && filteredReturns.length === 0 && (
                     <div className="text-xs text-gray-500 text-center py-4">No returns found</div>
                   )}
