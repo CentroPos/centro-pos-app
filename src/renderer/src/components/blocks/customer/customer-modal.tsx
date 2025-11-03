@@ -46,6 +46,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
   // Create form state - updated to match API structure
   const [newCustomer, setNewCustomer] = useState({
     customer_name: '',
+    customer_name_arabic: '',
     email: '',
     mobile: '',
     customer_type: 'Individual',
@@ -259,15 +260,12 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
         return
       }
 
-      if (!newCustomer.email.trim()) {
-        toast.error('Email is required', {
-          duration: 5000
-        })
-        return
-      }
-
       // Validate required fields based on customer type
       if (newCustomer.customer_type === 'Company') {
+        if (!newCustomer.mobile.trim()) {
+          toast.error('Mobile is required for Company customers', { duration: 5000 })
+          return
+        }
         if (!newCustomer.tax_id.trim()) {
           toast.error('Tax ID is required for Company customers', {
             duration: 5000
@@ -310,6 +308,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
         // Reset create form
         setNewCustomer({
           customer_name: '',
+          customer_name_arabic: '',
           email: '',
           mobile: '',
           customer_type: 'Individual',
@@ -554,7 +553,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
 
             {/* Create Form - Compact layout to fit in one window */}
             <div className="space-y-3 p-2">
-              {/* Row 1: Customer Name and Type */}
+              {/* Row 1: Customer Name and Name in Arabic */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-sm font-medium">Customer Name *</label>
@@ -575,6 +574,21 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     disabled={isCreatingCustomer}
                   />
                 </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Name in Arabic</label>
+                  <Input
+                    value={newCustomer.customer_name_arabic}
+                    onChange={(e) =>
+                      setNewCustomer((p) => ({ ...p, customer_name_arabic: e.target.value }))
+                    }
+                    placeholder="اكتب الاسم بالعربية"
+                    disabled={isCreatingCustomer}
+                  />
+                </div>
+              </div>
+
+              {/* Row 1b: Customer Type */}
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-sm font-medium">Customer Type *</label>
                   <Select
@@ -601,7 +615,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
               {/* Row 2: Email and Mobile */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-sm font-medium">Email *</label>
+                  <label className="text-sm font-medium">Email</label>
                   <Input
                     type="email"
                     value={newCustomer.email}
@@ -616,7 +630,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-sm font-medium">Mobile *</label>
+                  <label className="text-sm font-medium">Mobile{newCustomer.customer_type === 'Company' ? ' *' : ''}</label>
                   <Input
                     value={newCustomer.mobile}
                     onChange={(e) =>
@@ -630,12 +644,12 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                 </div>
               </div>
 
-              {/* Row 3: Tax ID and ZATCA fields (conditional) */}
+              
+
+              {/* Row 3: Tax ID and ZATCA fields */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-sm font-medium">
-                    Tax ID {newCustomer.customer_type === 'Company' ? '*' : '(Optional)'}
-                  </label>
+                  <label className="text-sm font-medium">Tax ID{newCustomer.customer_type === 'Company' ? ' *' : ''}</label>
                   <Input
                     value={newCustomer.tax_id}
                     onChange={(e) =>
@@ -647,52 +661,48 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     placeholder="310123456700003"
                   />
                 </div>
-                {newCustomer.customer_type === 'Company' && (
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium">Customer ID Type for ZATCA *</label>
-                    <Select
-                      value={newCustomer.customer_id_type_for_zatca}
-                      onValueChange={(value) =>
-                        setNewCustomer((p) => ({
-                          ...p,
-                          customer_id_type_for_zatca: value
-                        }))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select ID type" />
-                      </SelectTrigger>
-                      <SelectContent className="z-[9999] bg-white border border-gray-200 shadow-xl">
-                        <SelectItem value="CRN">CRN</SelectItem>
-                        <SelectItem value="TIN">TIN</SelectItem>
-                        <SelectItem value="VAT">VAT</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-              </div>
-
-              {/* Row 4: ZATCA ID Number (only for Company) */}
-              {newCustomer.customer_type === 'Company' && (
                 <div className="space-y-1">
-                  <label className="text-sm font-medium">Customer ID Number for ZATCA *</label>
-                  <Input
-                    value={newCustomer.customer_id_number_for_zatca}
-                    onChange={(e) =>
+                  <label className="text-sm font-medium">Customer ID Type for ZATCA{newCustomer.customer_type === 'Company' ? ' *' : ''}</label>
+                  <Select
+                    value={newCustomer.customer_id_type_for_zatca}
+                    onValueChange={(value) =>
                       setNewCustomer((p) => ({
                         ...p,
-                        customer_id_number_for_zatca: e.target.value
+                        customer_id_type_for_zatca: value
                       }))
                     }
-                    onKeyDown={(e) => {
-                      if (e.key === ' ') {
-                        e.stopPropagation()
-                      }
-                    }}
-                    placeholder="1010123456"
-                  />
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select ID type" />
+                    </SelectTrigger>
+                    <SelectContent className="z-[9999] bg-white border border-gray-200 shadow-xl">
+                      <SelectItem value="CRN">CRN</SelectItem>
+                      <SelectItem value="TIN">TIN</SelectItem>
+                      <SelectItem value="VAT">VAT</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-              )}
+              </div>
+
+              {/* Row 4: ZATCA ID Number */}
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Customer ID Number for ZATCA{newCustomer.customer_type === 'Company' ? ' *' : ''}</label>
+                <Input
+                  value={newCustomer.customer_id_number_for_zatca}
+                  onChange={(e) =>
+                    setNewCustomer((p) => ({
+                      ...p,
+                      customer_id_number_for_zatca: e.target.value
+                    }))
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === ' ') {
+                      e.stopPropagation()
+                    }
+                  }}
+                  placeholder="1010123456"
+                />
+              </div>
 
               {/* Row 5: Address Line 1 and 2 */}
               <div className="grid grid-cols-2 gap-4">
@@ -801,12 +811,11 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                 disabled={
                   isCreatingCustomer ||
                   !newCustomer.customer_name.trim() ||
-                  !newCustomer.email.trim() ||
-                  !newCustomer.mobile.trim() ||
                   !newCustomer.address_line1.trim() ||
                   !newCustomer.city.trim() ||
                   !newCustomer.state.trim() ||
-                  !newCustomer.pincode.trim()
+                  !newCustomer.pincode.trim() ||
+                  (newCustomer.customer_type === 'Company' && (!newCustomer.mobile.trim() || !newCustomer.tax_id.trim() || !newCustomer.customer_id_type_for_zatca.trim() || !newCustomer.customer_id_number_for_zatca.trim()))
                 }
               >
                 {isCreatingCustomer ? (

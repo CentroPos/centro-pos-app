@@ -209,6 +209,31 @@ const PrintsTabContent: React.FC = () => {
     fetchPrintItems()
   }, [currentTab?.orderId])
 
+  // Keyboard navigation for print sub tabs (MUST be before any conditional returns)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey && e.shiftKey)) return
+      const key = e.key.toLowerCase()
+      if (key === 'd') {
+        if (!Array.isArray(printItems) || printItems.length === 0) return
+        e.preventDefault()
+        const index = printItems.findIndex(i => `${i.report_title}-${i.url}` === activePrintTab)
+        const nextIndex = (index + 1) % printItems.length
+        const nextKey = `${printItems[nextIndex].report_title}-${printItems[nextIndex].url}`
+        setActivePrintTab(nextKey)
+      } else if (key === 'a') {
+        if (!Array.isArray(printItems) || printItems.length === 0) return
+        e.preventDefault()
+        const index = printItems.findIndex(i => `${i.report_title}-${i.url}` === activePrintTab)
+        const prevIndex = (index - 1 + printItems.length) % printItems.length
+        const prevKey = `${printItems[prevIndex].report_title}-${printItems[prevIndex].url}`
+        setActivePrintTab(prevKey)
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [activePrintTab, printItems])
+
   if (!currentTab?.orderId) {
     return (
       <div className="p-4">
@@ -440,10 +465,21 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [productSubTab, setProductSubTab] = useState<'sales-history' | 'customer-history' | 'purchase-history'>(
     'sales-history'
   )
+  
+  // Tab configuration - update this array when adding/removing tabs
+  const productTabs = [
+    { id: 'sales-history', label: 'Sales History', color: 'blue' },
+    { id: 'customer-history', label: 'Customer History', color: 'emerald' },
+    { id: 'purchase-history', label: 'Purchase History', color: 'purple' }
+  ]
+  
+  const shouldScrollTabs = productTabs.length >= 4
   const [currencySymbol, setCurrencySymbol] = useState('$')
   const { profile } = usePOSProfileStore()
   const hideCostAndMargin = profile?.custom_hide_cost_and_margin_info === 1
   const { updateItemInTab } = usePOSTabStore()
+  const { openTab } = usePOSTabStore()
+  const { tabs, setActiveTab } = usePOSTabStore()
 
   // Multi-warehouse popup state
   const [showWarehousePopup, setShowWarehousePopup] = useState(false)
@@ -923,6 +959,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
   // Product list API data for on-hand units
   const [productListData, setProductListData] = useState<any>(null)
   const [productListLoading, setProductListLoading] = useState(false)
+  const [productArabicName, setProductArabicName] = useState<string>('')
 
   // Unified product data used by the Product tab UI
   const productData = (() => {
@@ -946,19 +983,45 @@ const RightPanel: React.FC<RightPanelProps> = ({
       )
       return Number(match?.qty || 0)
     })()
+    const costPrice = Number(productListData?.cost_price ?? selectedItem?.cost ?? 0)
+    const marginPct = standardRate > 0 ? ((standardRate - costPrice) / standardRate) * 100 : 0
     return {
       item_code: code,
       item_name: name,
       standard_rate: standardRate,
       on_hand: onHandQty,
       on_hand_uom: displayUom, // Include the UOM for display
-      cost: Number(productListData?.cost_price || 0),
-      margin: Number(productListData?.margin || 0),
+      cost: costPrice,
+      margin: marginPct,
       warehouses: Array.isArray(productListData?.warehouses) ? productListData.warehouses : [],
       category: productListData?.item_group || '',
       location: (productListData as any)?.location || ''
     }
   })()
+
+  // Fetch Arabic name for the selected product
+  useEffect(() => {
+    const code = productData?.item_code
+    if (!code) {
+      setProductArabicName('')
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await window.electronAPI?.proxy.request({
+          url: `/api/resource/Item/${code}`
+        })
+        const ar = res?.data?.data?.custom_item_name_arabic || ''
+        if (!cancelled) setProductArabicName(ar)
+      } catch (e) {
+        if (!cancelled) setProductArabicName('')
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [productData?.item_code])
 
   // Product history states
   const [salesHistory, setSalesHistory] = useState<any[]>([])
@@ -1771,6 +1834,9 @@ const RightPanel: React.FC<RightPanelProps> = ({
                   <div className="space-y-2 ml-4">
                     <div className="font-bold text-lg text-primary">{productData.item_code}</div>
                     <div className="font-semibold text-gray-800">{productData.item_name}</div>
+                    {productArabicName && (
+                      <div className="text-xs text-gray-700">{productArabicName}</div>
+                    )}
                     <div className="text-sm text-gray-600">Category: {productData.category}</div>
                     <div className="text-sm text-gray-600">Location: {productData.location}</div>
                   </div>
@@ -1902,58 +1968,60 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
               {/* Product History Section */}
               <div className="bg-white/90 mt-2">
-                <div className="flex border-b border-gray-200/60">
-                  <button
-                    className={`flex-1 px-4 py-3 font-bold text-sm border-b-2 ${
-                      productSubTab === 'sales-history'
-                        ? 'border-blue-500 bg-blue-50 text-blue-700'
-                        : 'text-gray-500 hover:text-black hover:bg-white/40'
-                    }`}
-                    onClick={() => {
-                      console.log('🔄 Switching to Sales History tab')
-                      setProductSubTab('sales-history')
-                      if (selectedItemId) {
-                        console.log('🔄 Triggering sales history fetch from tab click')
-                        fetchSalesHistory(selectedItemId)
-                      }
-                    }}
-                  >
-                    Sales History
-                  </button>
-                  <button
-                    className={`flex-1 px-4 py-3 font-bold text-sm border-b-2 ${
-                      productSubTab === 'customer-history'
-                        ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                        : 'text-gray-500 hover:text-black hover:bg-white/40'
-                    }`}
-                    onClick={() => {
-                      console.log('🔄 Switching to Customer History tab')
-                      setProductSubTab('customer-history')
-                      if (selectedItemId) {
-                        console.log('🔄 Triggering customer history fetch from tab click')
-                        fetchCustomerHistory(selectedItemId)
-                      }
-                    }}
-                  >
-                    Customer History
-                  </button>
-                  <button
-                    className={`flex-1 px-4 py-3 font-bold text-sm border-b-2 ${
-                      productSubTab === 'purchase-history'
-                        ? 'border-purple-500 bg-purple-50 text-purple-700'
-                        : 'text-gray-500 hover:text-black hover:bg-white/40'
-                    }`}
-                    onClick={() => {
-                      console.log('🔄 Switching to Purchase History tab')
-                      setProductSubTab('purchase-history')
-                      if (selectedItemId) {
-                        console.log('🔄 Triggering purchase history fetch from tab click')
-                        fetchPurchaseHistory(selectedItemId)
-                      }
-                    }}
-                  >
-                    Purchase History
-                  </button>
+                <div className={`flex border-b border-gray-200/60 ${shouldScrollTabs ? 'overflow-x-auto scrollbar-hide scroll-smooth' : ''}`}>
+                  <div className={`flex ${shouldScrollTabs ? 'min-w-max' : 'w-full'}`}>
+                    <button
+                      className={`px-4 py-3 font-bold text-sm border-b-2 ${shouldScrollTabs ? 'whitespace-nowrap' : 'flex-1'} ${
+                        productSubTab === 'sales-history'
+                          ? 'border-blue-500 bg-blue-50 text-blue-700'
+                          : 'text-gray-500 hover:text-black hover:bg-white/40'
+                      }`}
+                      onClick={() => {
+                        console.log('🔄 Switching to Sales History tab')
+                        setProductSubTab('sales-history')
+                        if (selectedItemId) {
+                          console.log('🔄 Triggering sales history fetch from tab click')
+                          fetchSalesHistory(selectedItemId)
+                        }
+                      }}
+                    >
+                      Sales History
+                    </button>
+                    <button
+                      className={`px-4 py-3 font-bold text-sm border-b-2 ${shouldScrollTabs ? 'whitespace-nowrap' : 'flex-1'} ${
+                        productSubTab === 'customer-history'
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                          : 'text-gray-500 hover:text-black hover:bg-white/40'
+                      }`}
+                      onClick={() => {
+                        console.log('🔄 Switching to Customer History tab')
+                        setProductSubTab('customer-history')
+                        if (selectedItemId) {
+                          console.log('🔄 Triggering customer history fetch from tab click')
+                          fetchCustomerHistory(selectedItemId)
+                        }
+                      }}
+                    >
+                      Customer History
+                    </button>
+                    <button
+                      className={`px-4 py-3 font-bold text-sm border-b-2 ${shouldScrollTabs ? 'whitespace-nowrap' : 'flex-1'} ${
+                        productSubTab === 'purchase-history'
+                          ? 'border-purple-500 bg-purple-50 text-purple-700'
+                          : 'text-gray-500 hover:text-black hover:bg-white/40'
+                      }`}
+                      onClick={() => {
+                        console.log('🔄 Switching to Purchase History tab')
+                        setProductSubTab('purchase-history')
+                        if (selectedItemId) {
+                          console.log('🔄 Triggering purchase history fetch from tab click')
+                          fetchPurchaseHistory(selectedItemId)
+                        }
+                      }}
+                    >
+                      Purchase History
+                    </button>
+                  </div>
                 </div>
 
                 {/* Sales History Tab */}
@@ -2455,6 +2523,17 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       })()}{' '}{currencySymbol}
                     </div>
                   </div>
+                  <div className="p-3 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl">
+                    <div className="text-xs text-gray-600">Deposit Insights</div>
+                    <div className="font-bold text-emerald-600">
+                      {(() => {
+                        const value = Number(customerInsights?.advance_balance ?? 0)
+                        if (isNaN(value)) return '0.00'
+                        const formattedValue = Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                        return value < 0 ? `-${formattedValue}` : formattedValue
+                      })()}{' '}{currencySymbol}
+                    </div>
+                  </div>
                   <div className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl">
                     <div className="text-[10px] text-gray-600">Returns vs Invoices</div>
                     <div className="flex flex-col gap-1 mt-1">
@@ -2499,6 +2578,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                   <label className="text-xs text-gray-600">Customer ID</label>
                   <input className="w-full border rounded px-2 py-1 text-sm" disabled value={editForm.customer_id} />
                 </div>
+                {/* Row 1: Name and Arabic Name */}
                 <div>
                   <label className="text-xs text-gray-600">Name *</label>
                   <input className="w-full border rounded px-2 py-1 text-sm" value={editForm.customer_name} onChange={e=>setEditForm({...editForm, customer_name:e.target.value})} />
@@ -2507,14 +2587,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                   <label className="text-xs text-gray-600">Arabic Name</label>
                   <input className="w-full border rounded px-2 py-1 text-sm" value={editForm.customer_name_arabic} onChange={e=>setEditForm({...editForm, customer_name_arabic:e.target.value})} />
                 </div>
-                <div>
-                  <label className="text-xs text-gray-600">Email *</label>
-                  <input className="w-full border rounded px-2 py-1 text-sm" value={editForm.email} onChange={e=>setEditForm({...editForm, email:e.target.value})} />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600">Mobile *</label>
-                  <input className="w-full border rounded px-2 py-1 text-sm" value={editForm.mobile} onChange={e=>setEditForm({...editForm, mobile:e.target.value})} />
-                </div>
+                {/* Row 1b: Type */}
                 <div>
                   <label className="text-xs text-gray-600">Type *</label>
                   <select className="w-full border rounded px-2 py-1 text-sm" value={editForm.customer_type} onChange={e=>setEditForm({...editForm, customer_type:e.target.value})}>
@@ -2522,28 +2595,36 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     <option value="Individual">Individual</option>
                   </select>
                 </div>
+                <div></div>
+                {/* Row 2: Email and Mobile */}
                 <div>
-                  <label className="text-xs text-gray-600">Tax ID {editForm.customer_type==='Company' ? '*' : '(Optional)'} </label>
+                  <label className="text-xs text-gray-600">Email</label>
+                  <input className="w-full border rounded px-2 py-1 text-sm" value={editForm.email} onChange={e=>setEditForm({...editForm, email:e.target.value})} />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">Mobile{editForm.customer_type==='Company' ? ' *' : ''}</label>
+                  <input className="w-full border rounded px-2 py-1 text-sm" value={editForm.mobile} onChange={e=>setEditForm({...editForm, mobile:e.target.value})} />
+                </div>
+                {/* Row 3: Tax and ZATCA Type */}
+                <div>
+                  <label className="text-xs text-gray-600">Tax ID {editForm.customer_type==='Company' ? '*' : ''}</label>
                   <input className="w-full border rounded px-2 py-1 text-sm" value={editForm.tax_id} onChange={e=>setEditForm({...editForm, tax_id:e.target.value})} />
                 </div>
-                {editForm.customer_type==='Company' && (
-                  <>
-                    <div>
-                      <label className="text-xs text-gray-600">Customer ID Type for ZATCA *</label>
-                      <select className="w-full border rounded px-2 py-1 text-sm" value={editForm.customer_id_type_for_zatca} onChange={e=>setEditForm({...editForm, customer_id_type_for_zatca:e.target.value})}>
-                        <option value="">Select ID type</option>
-                        <option value="CRN">CRN</option>
-                        <option value="NIN">NIN</option>
-                        <option value="TIN">TIN</option>
-                        <option value="MOMRA">MOMRA</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-600">Customer ID Number for ZATCA *</label>
-                      <input className="w-full border rounded px-2 py-1 text-sm" value={editForm.customer_id_number_for_zatca} onChange={e=>setEditForm({...editForm, customer_id_number_for_zatca:e.target.value})} />
-                    </div>
-                  </>
-                )}
+                <div>
+                  <label className="text-xs text-gray-600">Customer ID Type for ZATCA{editForm.customer_type==='Company' ? ' *' : ''}</label>
+                  <select className="w-full border rounded px-2 py-1 text-sm" value={editForm.customer_id_type_for_zatca} onChange={e=>setEditForm({...editForm, customer_id_type_for_zatca:e.target.value})}>
+                    <option value="">Select ID type</option>
+                    <option value="CRN">CRN</option>
+                    <option value="NIN">NIN</option>
+                    <option value="TIN">TIN</option>
+                    <option value="MOMRA">MOMRA</option>
+                  </select>
+                </div>
+                {/* Row 4: ZATCA Number */}
+                <div className="col-span-2">
+                  <label className="text-xs text-gray-600">Customer ID Number for ZATCA{editForm.customer_type==='Company' ? ' *' : ''}</label>
+                  <input className="w-full border rounded px-2 py-1 text-sm" value={editForm.customer_id_number_for_zatca} onChange={e=>setEditForm({...editForm, customer_id_number_for_zatca:e.target.value})} />
+                </div>
                 <div className="col-span-2">
                   <label className="text-xs text-gray-600">Address Line 1 *</label>
                   <input className="w-full border rounded px-2 py-1 text-sm" value={editForm.address_line1} onChange={e=>setEditForm({...editForm, address_line1:e.target.value})} />
@@ -2573,8 +2654,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     console.log('📝 Editing customer - request body:', editForm)
                     // validation
                     if(!editForm.customer_name){ toast.error('Customer name is required'); setEditSubmitting(false); return }
-                    if(!editForm.email){ toast.error('Email is required'); setEditSubmitting(false); return }
-                    if(!editForm.mobile){ toast.error('Mobile is required'); setEditSubmitting(false); return }
+                    if(editForm.customer_type==='Company' && !editForm.mobile){ toast.error('Mobile is required for Company'); setEditSubmitting(false); return }
                     if(!editForm.address_line1){ toast.error('Address Line 1 is required'); setEditSubmitting(false); return }
                     if(!editForm.city){ toast.error('City is required'); setEditSubmitting(false); return }
                     if(!editForm.state){ toast.error('Province is required'); setEditSubmitting(false); return }
@@ -3055,7 +3135,26 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       return (
                         <div
                           key={index}
-                          className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200"
+                          className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200 cursor-pointer hover:shadow-sm transition"
+                          onClick={async () => {
+                            const orderId = order.sales_order_id || order.sales_invoice_id || order.name
+                            if (!orderId) return
+                            const existing = tabs.find(t => t.orderId === String(orderId))
+                            if (existing) {
+                              setActiveTab(existing.id)
+                            } else {
+                              try {
+                                const res = await window.electronAPI?.proxy.request({
+                                  url: `/api/resource/Sales Order/${String(orderId)}`
+                                })
+                                const orderData = res?.data?.data || null
+                                openTab(String(orderId), orderData)
+                              } catch (e) {
+                                console.error('Failed to fetch order details:', e)
+                                openTab(String(orderId))
+                              }
+                            }
+                          }}
                         >
                           {/* Order No and Date Row */}
                           <div className="flex justify-between items-center mb-2">
