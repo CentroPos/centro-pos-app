@@ -170,7 +170,7 @@ const ActionButtons: React.FC<Props> = ({
 }) => {
   const [open, setOpen] = useState<false | 'confirm' | 'pay'>(false)
   const [orderAmount, setOrderAmount] = useState('0.00')
-  const [prevOutstanding] = useState('0.00') // This will come from API
+  const [amountDue, setAmountDue] = useState('0.00')
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [mode, setMode] = useState('Cash')
   const [amount, setAmount] = useState('')
@@ -194,6 +194,37 @@ const ActionButtons: React.FC<Props> = ({
   const items = getCurrentTabItems()
   const currentTab = getCurrentTab()
   const globalDiscountPercent = getCurrentTabGlobalDiscount()
+  // Load Amount Due from customer insights when dialog opens
+  useEffect(() => {
+    let cancelled = false
+    const fetchAmountDue = async () => {
+      try {
+        // Determine customer id
+        let customerId = currentTab?.customer?.customer_id
+        if (!customerId && currentTab?.customer?.name) {
+          const listRes = await window.electronAPI?.proxy?.request({
+            url: '/api/method/centro_pos_apis.api.customer.customer_list',
+            params: { search_term: '', limit_start: 1, limit_page_length: 50 }
+          })
+          const list = listRes?.data?.data || []
+          const match = list.find((c: any) => c.customer_name === currentTab?.customer?.name)
+          customerId = match?.name
+        }
+        if (!customerId) return
+        const insightsRes = await window.electronAPI?.proxy?.request({
+          url: '/api/method/centro_pos_apis.api.customer.customer_amount_insights',
+          params: { customer_id: customerId }
+        })
+        const due = Number(insightsRes?.data?.data?.amount_due ?? 0)
+        if (!cancelled) setAmountDue(due.toFixed(2))
+      } catch (err) {
+        console.error('Failed to load amount due:', err)
+        if (!cancelled) setAmountDue('0.00')
+      }
+    }
+    if (open) fetchAmountDue()
+    return () => { cancelled = true }
+  }, [open, currentTab?.customer?.customer_id, currentTab?.customer?.name])
 
   // Load POS profile data
   const loadPOSProfile = async () => {
@@ -279,7 +310,7 @@ const ActionButtons: React.FC<Props> = ({
 
   const totalPending = (() => {
     const a = parseFloat(orderAmount || '0') || 0
-    const b = parseFloat(prevOutstanding || '0') || 0
+    const b = parseFloat(amountDue || '0') || 0
     return (a + b).toFixed(2)
   })()
 
@@ -798,8 +829,8 @@ const ActionButtons: React.FC<Props> = ({
       if (response?.success) {
         console.log('✅ ===== ORDER CONFIRMATION SUCCESS =====')
         console.log('✅ Order confirmed successfully!')
-        console.log('✅ Payment Amount:', paymentAmount)
-        console.log('✅ Payment Mode:', mode)
+      console.log('✅ Payment Amount:', paymentAmount)
+      console.log('✅ Payment Mode:', mode)
         console.log('✅ Order ID:', currentTab.orderId)
 
         // Update tab status based on payment amount
@@ -882,6 +913,23 @@ const ActionButtons: React.FC<Props> = ({
     } finally {
       console.log('🔄 Setting isProcessingPayment to false')
       setIsProcessingPayment(false)
+
+      // After confirming, fetch order details to check docstatus and lock tab if submitted
+      try {
+        const latestOrderId = currentTab?.orderId
+        if (latestOrderId) {
+          const res = await window.electronAPI?.proxy?.request({
+            url: `/api/resource/Sales Order/${latestOrderId}`,
+            method: 'GET'
+          })
+          const doc = res?.data?.data
+          if (doc && Number(doc.docstatus) === 1 && currentTab?.id) {
+            setTabStatus(currentTab.id, 'confirmed')
+          }
+        }
+      } catch (e) {
+        console.error('Failed to refresh order after confirm:', e)
+      }
     }
   }
 
@@ -909,15 +957,23 @@ const ActionButtons: React.FC<Props> = ({
   // Keyboard shortcuts for Confirm and Pay
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey) {
-        if (e.key === 'Enter') {
+      if (e.ctrlKey && e.shiftKey) {
+        const key = e.key.toLowerCase()
+        if (key === 's') {
           e.preventDefault()
-          console.log('⌨️ Ctrl+Enter pressed - opening confirm dialog')
+          console.log('⌨️ Ctrl+Shift+S pressed - opening confirm dialog')
           handleConfirm()
-        } else if (e.key === 'p' || e.key === 'P') {
+        } else if (key === 'f') {
           e.preventDefault()
-          console.log('⌨️ Ctrl+P pressed - opening pay dialog')
+          console.log('⌨️ Ctrl+Shift+F pressed - opening pay dialog')
           handlePay()
+        }
+      } else if (e.ctrlKey && !e.shiftKey) {
+        const key = e.key.toLowerCase()
+        if (key === 'r') {
+          e.preventDefault()
+          console.log('⌨️ Ctrl+R pressed - opening return modal')
+          handleReturn()
         }
       }
     }
@@ -985,7 +1041,7 @@ const ActionButtons: React.FC<Props> = ({
         <div className="flex justify-between items-center">
           <div className="flex gap-4">
             {/* Save Button - Show if user has sales privilege */}
-            {currentUserPrivileges?.sales && (
+            {currentUserPrivileges?.sales && currentTab?.status !== 'confirmed' && currentTab?.status !== 'paid' && (
               <Button
                 data-testid="save-button"
                 className="px-2 py-2 bg-gradient-to-r from-yellow-400 to-yellow-500 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs"
@@ -1012,7 +1068,7 @@ const ActionButtons: React.FC<Props> = ({
             )}
 
             {/* Confirm and Pay Buttons - Show if user has billing privilege */}
-            {currentUserPrivileges?.billing && (
+            {currentUserPrivileges?.billing && currentTab?.status !== 'confirmed' && currentTab?.status !== 'paid' && (
               <Button
                 className="px-2 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs"
                 disabled={isItemTableEditing}
@@ -1022,9 +1078,7 @@ const ActionButtons: React.FC<Props> = ({
                   <path d="M498.1 5.6c10.1 7 15.4 19.1 13.5 31.2l-64 416c-1.5 9.7-7.4 18.2-16 23s-18.9 5.4-28 1.6L284 427.7l-68.5 74.1c-8.9 9.7-22.9 12.9-35.2 8.1S160 493.2 160 480V396.4c0-4 1.5-7.8 4.2-10.7L331.8 202.8c5.8-6.3 5.6-16-.4-22s-15.7-6.4-22-.7L106 360.8 17.7 316.6C7.1 311.3 .3 300.7 0 288.9s5.9-22.8 16.1-28.7l448-256c10.7-6.1 23.9-5.5 34 1.4z"></path>
                 </svg>
                 Confirm{' '}
-                <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">
-                  Ctrl+Enter
-                </span>
+                <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+Shift+S</span>
               </Button>
             )}
             {currentUserPrivileges?.billing && (
@@ -1037,7 +1091,7 @@ const ActionButtons: React.FC<Props> = ({
                   <path d="M64 32C28.7 32 0 60.7 0 96v32H576V96c0-35.3-28.7-64-64-64H64zM576 224H0V416c0 35.3 28.7 64 64 64H512c35.3 0 64-28.7 64-64V224zM112 352h64c8.8 0 16 7.2 16 16s-7.2 16-16 16H112c-8.8 0-16-7.2-16-16s7.2-16 16-16zm112 16c0-8.8 7.2-16 16-16H368c8.8 0 16 7.2 16 16s-7.2 16-16 16H240c-8.8 0-16-7.2-16-16z"></path>
                 </svg>
                 Pay{' '}
-                <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+P</span>
+                <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+Shift+F</span>
               </Button>
             )}
 
@@ -1075,25 +1129,15 @@ const ActionButtons: React.FC<Props> = ({
           <div className="grid grid-cols-3 gap-4 mb-6">
             <div className="p-4 rounded-lg bg-gray-50 border-2">
               <div className="text-sm font-medium text-gray-700 mb-2 truncate">Order Amount</div>
-              <Input
-                type="number"
-                value={orderAmount}
-                readOnly
-                className="text-lg font-semibold bg-gray-100"
-              />
+              <div className="text-lg font-semibold text-gray-900">{orderAmount}</div>
             </div>
             <div className="p-4 rounded-lg bg-gray-50 border-2">
-              <div className="text-sm font-medium text-gray-700 mb-2 truncate">Outstanding</div>
-              <Input
-                type="number"
-                value={prevOutstanding}
-                readOnly
-                className="text-lg font-semibold bg-gray-100"
-              />
+              <div className="text-sm font-medium text-gray-700 mb-2 truncate">Amount Due</div>
+              <div className="text-lg font-semibold text-gray-900">{amountDue}</div>
             </div>
             <div className="p-4 rounded-lg bg-gray-50 border-2">
               <div className="text-sm font-medium text-gray-700 mb-2 truncate">Total Pending</div>
-              <Input value={totalPending} readOnly className="text-lg font-semibold bg-gray-100" />
+              <div className="text-lg font-semibold text-gray-900">{totalPending}</div>
             </div>
           </div>
 
@@ -1111,7 +1155,7 @@ const ActionButtons: React.FC<Props> = ({
             <div>
               <div className="text-sm font-medium text-gray-700 mb-2">Payment Mode</div>
               <Select value={mode} onValueChange={setMode}>
-                <SelectTrigger className="w-full text-lg py-3">
+                <SelectTrigger className="w-full text-base py-2.5">
                   <SelectValue placeholder="Select mode" />
                 </SelectTrigger>
                 <SelectContent className="bg-white border-gray-200 shadow-lg">

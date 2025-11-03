@@ -1,5 +1,6 @@
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
+import { Checkbox } from '@renderer/components/ui/checkbox'
 import { useMemo, useState, useRef, useEffect } from 'react'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { useHotkeys } from 'react-hotkeys-hook'
@@ -35,7 +36,8 @@ const DiscountSection: React.FC<Props> = ({
     getCurrentTabGlobalDiscount,
     updateTabGlobalDiscount,
     getCurrentTab,
-    setTabEdited
+    setTabEdited,
+    duplicateCurrentTab
   } = usePOSTabStore()
   const items = getCurrentTabItems()
   const currentTab = getCurrentTab()
@@ -46,6 +48,7 @@ const DiscountSection: React.FC<Props> = ({
   const globalDiscountRef = useRef<HTMLInputElement>(null)
   const [currencySymbol, setCurrencySymbol] = useState('$')
   const [vatPercentage, setVatPercentage] = useState(10)
+  const [isRoundingEnabled, setIsRoundingEnabled] = useState(true)
 
   // Focus input when editing starts
   useEffect(() => {
@@ -130,8 +133,12 @@ const DiscountSection: React.FC<Props> = ({
 
     // Final total = discounted net amount + VAT
     const totalRaw = netAfterGlobalDiscount + vatCalc
-    const totalRounded = roundToNearest(totalRaw, 0.05)
-    const roundingAdj = Number((totalRounded - totalRaw).toFixed(2))
+    const totalRoundedCandidate = roundToNearest(totalRaw, 0.05)
+    const roundingCandidate = Number((totalRoundedCandidate - totalRaw).toFixed(2))
+
+    const useRounding = isRoundingEnabled
+    const totalFinal = useRounding ? totalRoundedCandidate : Number(totalRaw.toFixed(2))
+    const roundingAdj = useRounding ? roundingCandidate : 0
 
     return {
       untaxed: Number(untaxedSum.toFixed(2)),
@@ -139,9 +146,9 @@ const DiscountSection: React.FC<Props> = ({
       globalDiscount: Number(globalDiscountAmount.toFixed(2)),
       vat: Number(vatCalc.toFixed(2)),
       rounding: roundingAdj,
-      total: totalRounded
+      total: totalFinal
     }
-  }, [items, globalDiscountPercent])
+  }, [items, globalDiscountPercent, isRoundingEnabled])
 
   const handleGlobalDiscountClick = () => {
     if (currentTab) {
@@ -182,6 +189,18 @@ const DiscountSection: React.FC<Props> = ({
     { preventDefault: true, enableOnFormTags: true }
   )
 
+  // Duplicate current order tab
+  const handleDuplicate = () => {
+    duplicateCurrentTab()
+  }
+
+  // Hotkey: Ctrl+Shift+2
+  useHotkeys(
+    'ctrl+shift+2',
+    () => handleDuplicate(),
+    { preventDefault: true, enableOnFormTags: true }
+  )
+
   return (
     <div className="p-2">
       <div className="flex gap-3 mb-2">
@@ -199,6 +218,11 @@ const DiscountSection: React.FC<Props> = ({
           <span className="text-orange-500">%</span>
           Commission
           <span className="text-xs bg-gray-200 px-1 rounded">Ctrl+C</span>
+        </Button>
+        <Button variant="outline" className="flex items-center gap-2" onClick={handleDuplicate}>
+          <span className="text-slate-600">⎘</span>
+          Duplicate
+          <span className="text-xs bg-gray-200 px-1 rounded">Ctrl+Shift+2</span>
         </Button>
       </div>
 
@@ -245,7 +269,13 @@ const DiscountSection: React.FC<Props> = ({
           </div>
         </div>
         <div className="text-center">
-          <div className="text-xs text-gray-600">Rounding</div>
+          <div className="text-xs text-gray-600 flex items-center justify-center gap-2">
+            <span>Rounding</span>
+            <label className="flex items-center gap-1 text-[11px] cursor-pointer select-none">
+              <Checkbox checked={isRoundingEnabled} onCheckedChange={(v) => setIsRoundingEnabled(Boolean(v))} />
+              <span>{isRoundingEnabled ? 'On' : 'Off'}</span>
+            </label>
+          </div>
           <div className="text-base font-semibold">
             {currencySymbol} {rounding.toLocaleString(undefined, { minimumFractionDigits: 2 })}
           </div>

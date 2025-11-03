@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { create } from 'zustand'
+import { toast } from 'sonner'
 import { persist } from 'zustand/middleware'
 
 // Helper function to abbreviate order ID to last 5 digits
@@ -35,11 +36,12 @@ interface POSTabStore {
   activeTabId: string | null
 
   openTab: (orderId: string, orderData?: any) => void
-  createNewTab: () => void
+  createNewTab: () => boolean
   closeTab: (tabId: string) => void
   setActiveTab: (tabId: string) => void
   setTabStatus: (tabId: string, status: Tab['status']) => void
   setTabPrivilege: (tabId: string, privilege: Tab['privilege']) => void
+  duplicateCurrentTab: () => boolean
 
   // Tab data methods
   addItemToTab: (tabId: string, item: any) => void
@@ -75,16 +77,38 @@ export const usePOSTabStore = create<POSTabStore>()(
 
       // Tab management methods
       openTab: (orderId: string, orderData?: any) => {
+        const state = get()
+        // Enforce total tab limit (max 6)
+        if (state.tabs.length >= 6) {
+          toast.error('You can keep only up to 6 orders open at a time')
+          return
+        }
+        // Map API order items (if provided) to cart item structure used by POS
+        const mappedItems = Array.isArray(orderData?.items)
+          ? orderData.items.map((it: any) => ({
+              item_code: it.item_code,
+              item_name: it.item_name,
+              label: it.description || it.item_name,
+              quantity: Number(it.qty || it.quantity || 0),
+              uom: it.uom || it.stock_uom,
+              discount_percentage: Number(it.discount_percentage || 0),
+              standard_rate: Number(it.rate || it.price_list_rate || 0)
+            }))
+          : []
+
         const newTab: Tab = {
           id: `tab-${Date.now()}`,
           orderId,
-          orderData,
+          orderData: orderData || null,
           type: 'existing',
           displayName: abbreviateOrderId(orderId),
           status: 'draft',
           privilege: 'billing',
-          customer: { name: 'Walking Customer', gst: 'Not Applicable' },
-          items: [],
+          customer: {
+            name: orderData?.customer_name || 'Walking Customer',
+            gst: orderData?.tax_id || 'Not Applicable'
+          },
+          items: mappedItems,
           isEdited: false,
           taxAmount: 0,
           invoiceData: null
@@ -98,7 +122,17 @@ export const usePOSTabStore = create<POSTabStore>()(
 
       createNewTab: () => {
         const state = get()
-        const newCount = state.tabs.filter(t => t.type === 'new' && !t.orderId).length + 1
+        // Enforce limits: max 6 total, max 4 new tabs
+        if (state.tabs.length >= 6) {
+          toast.error('You can keep only up to 6 orders open at a time')
+          return false
+        }
+        const existingNewCount = state.tabs.filter(t => t.type === 'new' && !t.orderId).length
+        if (existingNewCount >= 4) {
+          toast.error('You can open only up to 4 New orders')
+          return false
+        }
+        const newCount = existingNewCount + 1
         const newTab: Tab = {
           id: `tab-${Date.now()}`,
           orderId: null,
@@ -118,6 +152,7 @@ export const usePOSTabStore = create<POSTabStore>()(
           tabs: [...state.tabs, newTab],
           activeTabId: newTab.id
         }))
+        return true
       },
 
       closeTab: (tabId: string) => {
@@ -146,6 +181,40 @@ export const usePOSTabStore = create<POSTabStore>()(
         set((state) => ({
           tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, privilege } : tab))
         }))
+      },
+
+      // Duplicate current tab into a new 'new' tab (respecting limits)
+      duplicateCurrentTab: () => {
+        const state = get()
+        if (state.tabs.length >= 6) {
+          toast.error('You can keep only up to 6 orders open at a time')
+          return false
+        }
+        const existingNewCount = state.tabs.filter(t => t.type === 'new' && !t.orderId).length
+        if (existingNewCount >= 4) {
+          toast.error('You can open only up to 4 New orders')
+          return false
+        }
+        const source = state.tabs.find(t => t.id === state.activeTabId)
+        if (!source) return false
+        const newCount = existingNewCount + 1
+        const clone: Tab = {
+          id: `tab-${Date.now()}`,
+          orderId: null,
+          orderData: null,
+          type: 'new',
+          displayName: `New ${newCount}`,
+          status: 'draft',
+          privilege: source.privilege,
+          customer: { ...source.customer },
+          items: source.items.map((it) => ({ ...it })),
+          isEdited: true,
+          taxAmount: source.taxAmount || 0,
+          invoiceData: null,
+          globalDiscountPercent: source.globalDiscountPercent || 0
+        }
+        set((s) => ({ tabs: [...s.tabs, clone], activeTabId: clone.id }))
+        return true
       },
 
       // Tab item management methods

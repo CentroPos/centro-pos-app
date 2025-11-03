@@ -316,6 +316,28 @@ const POSInterface: React.FC = () => {
     // No need for global notification
   }, { enableOnFormTags: false, preventDefault: false })
 
+  // React effects to handle custom events
+  React.useEffect(() => {
+    const handleOpenCustomerModal = () => {
+      setIsCustomerModalOpen(true);
+      setOpen(false); // only customer select
+    };
+    window.addEventListener('openCustomerModal', handleOpenCustomerModal);
+    return () => window.removeEventListener('openCustomerModal', handleOpenCustomerModal);
+  }, []);
+
+  React.useEffect(() => {
+    const handleOpenPrintsTab = () => {
+      setRightPanelTab('prints');
+    };
+    window.addEventListener('openPrintsTab', handleOpenPrintsTab);
+    return () => window.removeEventListener('openPrintsTab', handleOpenPrintsTab);
+  }, []);
+
+  // Hotkeys
+  useHotkeys('ctrl+shift+p', () => setRightPanelTab('prints'), { enableOnFormTags: true });
+  useHotkeys('ctrl+c', () => setIsCustomerModalOpen(true), { enableOnFormTags: true });
+
   return (
     <Fragment>
       <div className="h-screen bg-gray-50 flex w-screen overflow-hidden scrollbar-hide">
