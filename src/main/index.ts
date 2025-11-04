@@ -47,7 +47,7 @@ function createWindow(): void {
     callback({ cancel: false, responseHeaders: details.responseHeaders })
   })
 
-  mainWindow.webContents.openDevTools()
+  // Keep DevTools enabled via shortcuts in development, but do not auto-open
 
   // Completely disable CSP
   mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
