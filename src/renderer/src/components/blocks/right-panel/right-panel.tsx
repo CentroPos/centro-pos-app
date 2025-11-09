@@ -1,11 +1,14 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@renderer/components/ui/dialog'
 import { Button } from '@renderer/components/ui/button'
+import { Input } from '@renderer/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@renderer/components/ui/select'
 import { toast } from 'sonner'
 import { useAuthStore } from '@renderer/store/useAuthStore'
 import { useNavigate } from '@tanstack/react-router'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
+import { useHotkeys } from 'react-hotkeys-hook'
 import PaymentTab from '../payment/payment-tab'
 import MultiWarehousePopup from '../common/multi-warehouse-popup'
 
@@ -22,6 +25,7 @@ const PrintsTabContent: React.FC = () => {
   const [error, setError] = useState<string | null>(null)
   const [pdfPreviews, setPdfPreviews] = useState<Record<string, string>>({})
   const [activePrintTab, setActivePrintTab] = useState<string>('')
+  const [instantPrintPreview, setInstantPrintPreview] = useState<string>('')
   const prevOrderIdRef = useRef<string | null>(null)
 
   // Persistent cache for print items and PDF previews
@@ -93,25 +97,128 @@ const PrintsTabContent: React.FC = () => {
     }
   }
 
-  // Set active tab when printItems change (must be before conditional returns)
+  // Load instant print preview when URL is available
   useEffect(() => {
-    if (printItems.length > 0 && !activePrintTab) {
+    const instantPrintUrl = currentTab?.instantPrintUrl
+    if (instantPrintUrl) {
+      const pdfUrl = `${window.location.origin}${instantPrintUrl}`
+      // Load PDF preview
+      fetch(pdfUrl, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          Accept: 'application/pdf,application/json'
+        }
+      })
+        .then(async (response) => {
+          if (response.ok) {
+            const contentType = response.headers.get('content-type')
+            if (contentType?.includes('application/pdf')) {
+              const arrayBuffer = await response.arrayBuffer()
+              const uint8Array = new Uint8Array(arrayBuffer)
+              const isPDF =
+                uint8Array.length >= 4 &&
+                uint8Array[0] === 0x25 && // %
+                uint8Array[1] === 0x50 && // P
+                uint8Array[2] === 0x44 && // D
+                uint8Array[3] === 0x46 // F
+              if (isPDF) {
+                const base64 = btoa(String.fromCharCode(...uint8Array))
+                const dataUrl = `data:application/pdf;base64,${base64}`
+                setInstantPrintPreview(dataUrl)
+              }
+            }
+          }
+        })
+        .catch((error) => {
+          console.log('📄 Error loading instant print preview:', error)
+        })
+    } else {
+      setInstantPrintPreview('')
+    }
+  }, [currentTab?.instantPrintUrl])
+
+  // Track previous instant print URL to detect when it's newly set
+  const prevInstantPrintUrlForSelectionRef = useRef<string | null>(null)
+
+  // Set active tab when instant print URL is available or printItems change
+  useEffect(() => {
+    const currentInstantPrintUrl = currentTab?.instantPrintUrl || null
+    const instantPrintUrlJustSet = currentInstantPrintUrl && currentInstantPrintUrl !== prevInstantPrintUrlForSelectionRef.current
+
+    // If instant print URL is available and was just set (after save/update/confirm/pay/return), always select it
+    // This ensures navigation to Instant Print tab after these actions
+    if (instantPrintUrlJustSet) {
+      console.log('🖨️ Instant print URL just set, selecting Instant Print tab')
+      setActivePrintTab('instant-print')
+      prevInstantPrintUrlForSelectionRef.current = currentInstantPrintUrl
+      return
+    }
+
+    // If instant print URL exists and no tab is selected, select Instant Print
+    if (currentTab?.instantPrintUrl && !activePrintTab) {
+      setActivePrintTab('instant-print')
+      prevInstantPrintUrlForSelectionRef.current = currentInstantPrintUrl
+    } else if (printItems.length > 0 && !activePrintTab && !currentTab?.instantPrintUrl) {
+      // If no instant print URL, select first API tab
       const firstItemKey = `${printItems[0].report_title}-${printItems[0].url}`
       setActivePrintTab(firstItemKey)
-    } else if (printItems.length === 0) {
-      setActivePrintTab('')
+    } else if (printItems.length === 0 && !activePrintTab) {
+      // Default to Instant Print if no API tabs available
+      setActivePrintTab('instant-print')
     }
-  }, [printItems, activePrintTab])
+
+    // Update ref to track current instant print URL
+    if (currentInstantPrintUrl) {
+      prevInstantPrintUrlForSelectionRef.current = currentInstantPrintUrl
+    }
+  }, [printItems, activePrintTab, currentTab?.instantPrintUrl])
+
+  // Track previous instant print URL to detect changes
+  const prevInstantPrintUrlRef = useRef<string | null>(null)
 
   // Fetch print items when component mounts or order changes
   useEffect(() => {
     const fetchPrintItems = async () => {
       const currentOrderId = currentTab?.orderId
+      const currentInstantPrintUrl = currentTab?.instantPrintUrl || null
       console.log('🖨️ useEffect triggered - currentOrderId:', currentOrderId)
       console.log('🖨️ useEffect triggered - prevOrderId:', prevOrderIdRef.current)
+      console.log('🖨️ useEffect triggered - currentInstantPrintUrl:', currentInstantPrintUrl)
+      console.log('🖨️ useEffect triggered - prevInstantPrintUrl:', prevInstantPrintUrlRef.current)
 
-      // Check if we have cached data for this order
-      if (currentOrderId && printItemsCache.current[currentOrderId]) {
+      // Check if instant print URL changed (indicates a new action was performed)
+      const instantPrintUrlChanged = currentInstantPrintUrl !== prevInstantPrintUrlRef.current
+      if (instantPrintUrlChanged && currentInstantPrintUrl) {
+        console.log('🖨️ Instant print URL changed, will refresh print items')
+        prevInstantPrintUrlRef.current = currentInstantPrintUrl
+        // Clear cache to force fresh fetch
+        if (currentOrderId) {
+          delete printItemsCache.current[currentOrderId]
+        }
+      }
+
+      // Check if we have pre-fetched print items from order opening (only if order ID changed)
+      const orderIdChanged = currentOrderId !== prevOrderIdRef.current
+      const preFetched = currentTab?.orderData?._relatedData?.printItems
+      if (preFetched && Array.isArray(preFetched) && preFetched.length > 0 && orderIdChanged && !instantPrintUrlChanged) {
+        console.log('✅ Using pre-fetched print items from order')
+        setPrintItems(preFetched)
+        if (currentOrderId) {
+          printItemsCache.current[currentOrderId] = preFetched
+        }
+        // Auto-load PDF previews
+        preFetched.forEach((item: any, index: number) => {
+          setTimeout(() => {
+            loadPDFPreview(item)
+          }, index * 100)
+        })
+        prevOrderIdRef.current = currentOrderId || null
+        return
+      }
+
+      // Check if we have cached data for this order (only if order ID didn't change and instant print URL didn't change)
+      if (currentOrderId && printItemsCache.current[currentOrderId] && !orderIdChanged && !instantPrintUrlChanged) {
         console.log('🖨️ Using cached print items for order:', currentOrderId)
         setPrintItems(printItemsCache.current[currentOrderId])
         // Restore PDF previews from cache
@@ -119,14 +226,17 @@ const PrintsTabContent: React.FC = () => {
         return
       }
 
-      // Only fetch if order ID actually changed
-      if (currentOrderId === prevOrderIdRef.current) {
-        console.log('🖨️ Order ID unchanged, skipping fetch')
+      // Only fetch if order ID actually changed OR instant print URL changed
+      if (currentOrderId === prevOrderIdRef.current && !instantPrintUrlChanged) {
+        console.log('🖨️ Order ID and instant print URL unchanged, skipping fetch')
         return
       }
 
-      // Update the ref
+      // Update the refs
       prevOrderIdRef.current = currentOrderId || null
+      if (currentInstantPrintUrl) {
+        prevInstantPrintUrlRef.current = currentInstantPrintUrl
+      }
 
       if (!currentOrderId) {
         console.log('🖨️ No orderId, setting empty array')
@@ -207,7 +317,7 @@ const PrintsTabContent: React.FC = () => {
 
     console.log('🖨️ Calling fetchPrintItems')
     fetchPrintItems()
-  }, [currentTab?.orderId])
+  }, [currentTab?.orderId, currentTab?.instantPrintUrl])
 
   // Keyboard navigation for print sub tabs (MUST be before any conditional returns)
   useEffect(() => {
@@ -279,6 +389,7 @@ const PrintsTabContent: React.FC = () => {
   console.log('🖨️ PrintsTabContent render - printItems is array:', Array.isArray(printItems))
   console.log('🖨️ PrintsTabContent render - printItems length:', printItems?.length)
 
+  const isInstantPrintActive = activePrintTab === 'instant-print'
   const selectedItem = printItems.find(
     (item) => `${item.report_title}-${item.url}` === activePrintTab
   )
@@ -290,10 +401,22 @@ const PrintsTabContent: React.FC = () => {
         <p className="text-sm text-gray-600">Order: {currentTab.orderId}</p>
       </div>
 
-      {Array.isArray(printItems) && printItems.length > 0 ? (
+      {currentTab?.orderId ? (
         <>
-          {/* Dynamic Tabs */}
+          {/* Tabs - Instant Print always first, then dynamic tabs from API */}
           <div className="flex border-b border-gray-200/60 mb-4 overflow-x-auto">
+            {/* Instant Print Tab - Always present as first tab */}
+            <button
+              className={`px-4 py-3 font-bold text-sm border-b-2 whitespace-nowrap transition-all ${
+                isInstantPrintActive
+                  ? 'border-blue-500 bg-blue-50 text-blue-700'
+                  : 'text-gray-500 hover:text-black hover:bg-white/40 border-transparent'
+              }`}
+              onClick={() => setActivePrintTab('instant-print')}
+            >
+              Instant Print
+            </button>
+            {/* Dynamic Tabs from API */}
             {printItems.map((item, index) => {
               const itemKey = `${item.report_title}-${item.url}`
               const isActive = activePrintTab === itemKey
@@ -314,15 +437,19 @@ const PrintsTabContent: React.FC = () => {
           </div>
 
           {/* Selected Tab Content */}
-          {selectedItem && (
+          {(isInstantPrintActive || selectedItem) && (
             <div className="flex-1 flex flex-col overflow-hidden">
               <div className="flex items-center justify-end mb-3">
                 <button
                   type="button"
                   onClick={async () => {
                     try {
+                      let pdfDataUrl = ''
+                      if (isInstantPrintActive) {
+                        pdfDataUrl = instantPrintPreview
+                      } else if (selectedItem) {
                       const itemKey = `${selectedItem.report_title}-${selectedItem.url}`
-                      const pdfDataUrl = pdfPreviews[itemKey]
+                        pdfDataUrl = pdfPreviews[itemKey]
 
                       if (!pdfDataUrl) {
                         console.log('⏳ PDF preview not loaded yet, checking cache...')
@@ -331,25 +458,28 @@ const PrintsTabContent: React.FC = () => {
                         if (cachedPdfUrl) {
                           console.log('📄 Found PDF in persistent cache, restoring...')
                           setPdfPreviews((prev) => ({ ...prev, [itemKey]: cachedPdfUrl }))
+                            pdfDataUrl = cachedPdfUrl
                         } else {
                           console.log('⏳ Loading PDF preview now...')
                           // Try to load the PDF preview immediately
                           await loadPDFPreview(selectedItem)
                           // Wait a moment for it to load
                           await new Promise((resolve) => setTimeout(resolve, 1000))
+                            pdfDataUrl = pdfPreviews[`${selectedItem.report_title}-${selectedItem.url}`]
+                          }
                         }
                       }
 
+                      if (pdfDataUrl) {
                       // Use the print function with silent error handling
-                      const result = await window.electronAPI?.print.printPDF(
-                        pdfDataUrl || pdfPreviews[`${selectedItem.report_title}-${selectedItem.url}`]
-                      )
+                        const result = await window.electronAPI?.print.printPDF(pdfDataUrl)
                       console.log('🖨️ Print result:', result)
 
                       if (result?.success) {
                         console.log('✅ Print dialog opened successfully')
                       } else {
                         console.log('ℹ️ Print dialog may not have opened, but this is normal')
+                        }
                       }
                     } catch (error: any) {
                       console.log('ℹ️ Print operation completed (errors are handled silently)')
@@ -364,7 +494,7 @@ const PrintsTabContent: React.FC = () => {
                   }}
                   className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center gap-2"
                   title="Print with Printer Selection"
-                  disabled={!pdfPreviews[`${selectedItem.report_title}-${selectedItem.url}`]}
+                  disabled={isInstantPrintActive ? !instantPrintPreview : !pdfPreviews[selectedItem ? `${selectedItem.report_title}-${selectedItem.url}` : '']}
                 >
                   <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                     <path
@@ -380,7 +510,54 @@ const PrintsTabContent: React.FC = () => {
               {/* PDF Preview */}
               <div className="bg-gray-50 rounded border p-3 flex-1 overflow-hidden flex flex-col">
                 <div className="bg-white rounded border overflow-hidden flex-1">
-                  {pdfPreviews[`${selectedItem.report_title}-${selectedItem.url}`] ? (
+                  {isInstantPrintActive ? (
+                    instantPrintPreview ? (
+                      <iframe
+                        src={instantPrintPreview}
+                        className="w-full h-full border-0"
+                        title="Instant Print"
+                        onLoad={() => console.log('📄 Instant Print PDF preview loaded')}
+                      />
+                    ) : currentTab?.instantPrintUrl ? (
+                      <div className="flex items-center justify-center h-full">
+                        <div className="text-center">
+                          <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                            <svg
+                              className="w-6 h-6 text-gray-400 animate-spin"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                            >
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                              ></circle>
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                              ></path>
+                            </svg>
+                          </div>
+                          <p className="text-sm text-gray-500">Loading preview...</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center h-full">
+                        <div className="text-center">
+                          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i className="fas fa-print text-2xl text-gray-400"></i>
+                          </div>
+                          <h3 className="text-lg font-semibold text-gray-600 mb-2">No Print Available</h3>
+                          <p className="text-sm text-gray-500">Print will be available after creating, updating, confirming, paying, or returning an order.</p>
+                        </div>
+                      </div>
+                    )
+                  ) : selectedItem ? (
+                    pdfPreviews[`${selectedItem.report_title}-${selectedItem.url}`] ? (
                     <iframe
                       src={pdfPreviews[`${selectedItem.report_title}-${selectedItem.url}`]}
                       className="w-full h-full border-0"
@@ -420,7 +597,8 @@ const PrintsTabContent: React.FC = () => {
                         </button>
                       </div>
                     </div>
-                  )}
+                    )
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -477,9 +655,11 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [currencySymbol, setCurrencySymbol] = useState('$')
   const { profile } = usePOSProfileStore()
   const hideCostAndMargin = profile?.custom_hide_cost_and_margin_info === 1
-  const { updateItemInTab } = usePOSTabStore()
+  const { updateItemInTab, getCurrentTab } = usePOSTabStore()
   const { openTab } = usePOSTabStore()
   const { tabs, setActiveTab } = usePOSTabStore()
+  const currentTab = getCurrentTab()
+  const [isOpeningOrder, setIsOpeningOrder] = useState(false)
 
   // Multi-warehouse popup state
   const [showWarehousePopup, setShowWarehousePopup] = useState(false)
@@ -494,7 +674,101 @@ const RightPanel: React.FC<RightPanelProps> = ({
       allocated: number
       selected: boolean
     }>
+    uom?: string
+    defaultWarehouse?: string
+    itemIndex?: number // Track the index of the item being edited (important for duplicates)
   } | null>(null)
+
+  // Handler function to open split warehouse popup
+  const handleOpenSplitWarehouse = () => {
+    if (!selectedItemId || warehouseStock.length === 0) {
+      toast.error('Please select an item with stock to use Split Wise')
+      return
+    }
+    
+    // Find all items with the selected item_code (for duplicate items)
+    const matchingItems = items.filter((item: any) => item.item_code === selectedItemId)
+    
+    if (matchingItems.length === 0) {
+      toast.error('Selected item not found')
+      return
+    }
+    
+    // If there are multiple items with the same code, we need to find the one that's currently selected
+    // Since we don't have row index, we'll use the first one that doesn't have warehouse allocations yet
+    // (assuming the user wants to add allocations to the one without them)
+    // Otherwise, use the first match
+    let selectedItemFromTable = matchingItems[0]
+    let selectedItemIndex = items.findIndex((item: any) => item === selectedItemFromTable)
+    
+    // If there are duplicates, try to find the one without warehouse allocations
+    if (matchingItems.length > 1) {
+      const itemWithoutAllocations = matchingItems.find((item: any) => 
+        !item.warehouseAllocations || 
+        !Array.isArray(item.warehouseAllocations) || 
+        item.warehouseAllocations.length === 0
+      )
+      if (itemWithoutAllocations) {
+        selectedItemFromTable = itemWithoutAllocations
+        selectedItemIndex = items.findIndex((item: any) => item === selectedItemFromTable)
+      } else {
+        // If all have allocations, use the last one (most recently added)
+        selectedItemFromTable = matchingItems[matchingItems.length - 1]
+        selectedItemIndex = items.findIndex((item: any) => item === selectedItemFromTable)
+      }
+    }
+
+    // Get current UOM from selected item
+    const currentUom = selectedItemFromTable.uom || 'Nos'
+    
+    // Transform warehouseStock to MultiWarehousePopup format
+    const warehouses = warehouseStock.map((warehouse) => {
+      // Find quantity for current UOM
+      const qtyForUom = warehouse.quantities.find(
+        (qtyItem) => qtyItem.uom.toLowerCase() === currentUom.toLowerCase()
+      )
+      const availableQty = qtyForUom ? Number(qtyForUom.qty) : 0
+
+      return {
+        name: warehouse.name,
+        available: availableQty,
+        allocated: 0,
+        selected: false
+      }
+    })
+
+    // Filter out warehouses with 0 available stock
+    const warehousesWithStock = warehouses.filter((w) => w.available > 0)
+
+    if (warehousesWithStock.length === 0) {
+      toast.error('No stock available in warehouses for the current UOM')
+      return
+    }
+
+    // Open the popup
+    setWarehousePopupData({
+      itemCode: selectedItemFromTable.item_code,
+      itemName: selectedItemFromTable.item_name || selectedItemFromTable.item_code,
+      requiredQty: Number(selectedItemFromTable.quantity || 0),
+      currentWarehouseQty: warehousesWithStock.reduce((sum, w) => sum + w.available, 0),
+      warehouses: warehousesWithStock,
+      uom: currentUom,
+      defaultWarehouse: profile?.warehouse,
+      itemIndex: selectedItemIndex >= 0 ? selectedItemIndex : undefined // Store the item index
+    })
+    setShowWarehousePopup(true)
+  }
+
+  // Ctrl+Shift+W shortcut for split warehouse button
+  useHotkeys(
+    'ctrl+shift+w',
+    (e) => {
+      e.preventDefault()
+      console.log('⌨️ Ctrl+Shift+W pressed - opening split warehouse popup')
+      handleOpenSplitWarehouse()
+    },
+    { enableOnFormTags: true }
+  )
 
   // Get logout function from useAuthStore
   const { logout } = useAuthStore()
@@ -631,19 +905,30 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const customerHistoryScrollRef = useRef<HTMLDivElement | null>(null)
   const purchaseHistoryScrollRef = useRef<HTMLDivElement | null>(null)
 
+  // Search states - declared early so they can be used in useEffects
+  const [salesHistorySearch, setSalesHistorySearch] = useState('')
+  const [customerHistorySearch, setCustomerHistorySearch] = useState('')
+  const [purchaseHistorySearch, setPurchaseHistorySearch] = useState('')
+  const [recentOrdersSearch, setRecentOrdersSearch] = useState('')
+  const [mostOrderedSearch, setMostOrderedSearch] = useState('')
+
   const PAGE_LEN = 3
   const SALES_PAGE_LEN = 4
 
-  const fetchSalesHistory = async (itemCode: string, page = salesHistoryPage) => {
+  const fetchSalesHistory = async (itemCode: string, page = salesHistoryPage, searchTerm: string = '') => {
     if (!itemCode) {
       console.log('🚫 Sales history fetch skipped - missing itemCode:', itemCode)
       return
     }
 
-    console.log('💰 ===== SALES HISTORY API CALL =====')
-    console.log('💰 Item Code:', itemCode)
-    console.log('💰 Page:', page)
-    console.log('💰 Current salesHistoryPage state:', salesHistoryPage)
+    console.log('📞 Sales History API called:', {
+      itemCode,
+      page,
+      searchTerm,
+      productSubTab,
+      selectedItemId,
+      timestamp: new Date().toISOString()
+    })
 
     if (isFetchingSalesRef.current) {
       console.log('⚠️ Sales history fetch already in progress, skipping...')
@@ -656,12 +941,11 @@ const RightPanel: React.FC<RightPanelProps> = ({
       const apiParams = {
         item_id: itemCode,
         limit_start: page,
-        limit_page_length: SALES_PAGE_LEN
+        limit_page_length: SALES_PAGE_LEN,
+        search_term: searchTerm || '' // Always include search_term
       }
 
-      console.log('💰 API URL:', apiUrl)
-      console.log('💰 API Params:', apiParams)
-      console.log('💰 Making API request...')
+      console.log('📞 Sales History API request params:', apiParams)
 
       const response = await window.electronAPI?.proxy?.request({
         method: 'GET',
@@ -669,54 +953,30 @@ const RightPanel: React.FC<RightPanelProps> = ({
         params: apiParams
       })
 
-      console.log('💰 ===== SALES HISTORY API RESPONSE =====')
-      console.log('💰 Full Response:', response)
-      console.log('💰 Response Success:', response?.success)
-      console.log('💰 Response Status:', response?.status)
-      console.log('💰 Response Data:', response?.data)
-      console.log('💰 Response Data Type:', typeof response?.data)
-      console.log('💰 Response Data.Data:', response?.data?.data)
-      console.log('💰 Is Response Data.Data Array?', Array.isArray(response?.data?.data))
-      console.log('💰 Response Headers:', response?.headers)
+      console.log('📦 Sales History API result:', response)
 
       // Handle nested data structure: response.data.data
       const salesData = response?.data?.data || response?.data
       const dataArray = Array.isArray(salesData) ? salesData : (Array.isArray(response?.data?.data) ? response.data.data : [])
 
       if (dataArray.length > 0) {
-        console.log('💰 Parsed sales history data:', dataArray)
-        console.log('💰 Number of items in response:', dataArray.length)
-        console.log('💰 Expected page length:', SALES_PAGE_LEN)
-        
         salesHasMoreRef.current = dataArray.length === SALES_PAGE_LEN
-        console.log('💰 Has more pages?', salesHasMoreRef.current)
-        
         setSalesHistory(dataArray)
-        console.log('✅ Sales history loaded successfully')
-        console.log('✅ Sales history items:', dataArray)
       } else {
-        console.log('❌ No sales history data found')
-        console.log('❌ Response data structure:', response?.data)
-        console.log('❌ Response data.data structure:', response?.data?.data)
-        console.log('❌ Response data type:', typeof response?.data)
         setSalesHistory([])
         salesHasMoreRef.current = false
       }
     } catch (error) {
-      console.error('❌ ===== SALES HISTORY API ERROR =====')
-      console.error('❌ Error details:', error)
-      console.error('❌ Error message:', (error as any)?.message)
-      console.error('❌ Error stack:', (error as any)?.stack)
+      console.error('❌ Error loading sales history:', error)
       setSalesHistory([])
       salesHasMoreRef.current = false
     } finally {
       setSalesHistoryLoading(false)
       isFetchingSalesRef.current = false
-      console.log('💰 Sales history loading completed')
     }
   }
 
-  const fetchCustomerHistory = async (itemCode: string, page = customerHistoryPage) => {
+  const fetchCustomerHistory = async (itemCode: string, page = customerHistoryPage, searchTerm: string = '') => {
     if (!itemCode || !selectedCustomer) {
       console.log('🚫 Customer history fetch skipped - missing itemCode or selectedCustomer:', {
         itemCode,
@@ -761,14 +1021,16 @@ const RightPanel: React.FC<RightPanelProps> = ({
       console.error('❌ Error fetching customer list for mapping:', error)
     }
 
-    console.log('📊 ===== CUSTOMER HISTORY API CALL =====')
-    console.log('📊 Item Code:', itemCode)
-    console.log('📊 Customer ID (final):', customerId)
-    console.log('📊 Selected Customer Object:', selectedCustomer)
-    console.log('📊 Selected Customer Keys:', Object.keys(selectedCustomer))
-    console.log('📊 Selected Customer customer_id:', selectedCustomer.customer_id)
-    console.log('📊 Selected Customer name:', selectedCustomer.name)
-    console.log('📊 Selected Customer id:', selectedCustomer.id)
+    console.log('📞 Customer History API called:', {
+      itemCode,
+      customerId,
+      page,
+      searchTerm,
+      productSubTab,
+      selectedItemId,
+      selectedCustomer: selectedCustomer?.name,
+      timestamp: new Date().toISOString()
+    })
 
     if (isFetchingCustomerRef.current) return
     isFetchingCustomerRef.current = true
@@ -779,12 +1041,11 @@ const RightPanel: React.FC<RightPanelProps> = ({
         item_id: itemCode,
         customer_id: customerId,
         limit_start: page,
-        limit_page_length: PAGE_LEN
+        limit_page_length: PAGE_LEN,
+        search_term: searchTerm || '' // Always include search_term
       }
 
-      console.log('📊 API URL:', apiUrl)
-      console.log('📊 API Params:', apiParams)
-      console.log('📊 Making API request...')
+      console.log('📞 Customer History API request params:', apiParams)
 
       const response = await window.electronAPI?.proxy?.request({
         method: 'GET',
@@ -792,48 +1053,40 @@ const RightPanel: React.FC<RightPanelProps> = ({
         params: apiParams
       })
 
-      console.log('📊 ===== CUSTOMER HISTORY API RESPONSE =====')
-      console.log('📊 Full Response:', response)
-      console.log('📊 Response Success:', response?.success)
-      console.log('📊 Response Data:', response?.data)
-      console.log('📊 Response Status:', response?.status)
-      console.log('📊 Response Headers:', response?.headers)
+      console.log('📦 Customer History API result:', response)
 
       if (response?.success && response?.data?.data) {
         const newData = response.data.data
         // hasMore: if returned fewer than PAGE_LEN, no next page
         customerHasMoreRef.current = Array.isArray(newData) && newData.length === PAGE_LEN
         setCustomerHistory(newData)
-        console.log('✅ Customer history loaded successfully:', response.data.data)
-        console.log('✅ Number of history items:', response.data.data.length)
       } else {
-        console.log('❌ No customer history data found')
-        console.log('❌ Response success:', response?.success)
-        console.log('❌ Response data:', response?.data)
         setCustomerHistory([])
       }
     } catch (error) {
-      console.error('❌ ===== CUSTOMER HISTORY API ERROR =====')
-      console.error('❌ Error details:', error)
-      console.error('❌ Error message:', (error as any)?.message)
-      console.error('❌ Error stack:', (error as any)?.stack)
+      console.error('❌ Error loading customer history:', error)
       setCustomerHistory([])
     } finally {
       setCustomerHistoryLoading(false)
       isFetchingCustomerRef.current = false
-      console.log('📊 Customer history loading completed')
     }
   }
 
   // Fetch purchase history for selected product
-  const fetchPurchaseHistory = async (itemCode: string, page = purchaseHistoryPage) => {
+  const fetchPurchaseHistory = async (itemCode: string, page = purchaseHistoryPage, searchTerm: string = '') => {
     if (!itemCode) {
       console.log('🚫 Purchase history fetch skipped - missing itemCode:', itemCode)
       return
     }
 
-    console.log('📦 ===== PURCHASE HISTORY API CALL =====')
-    console.log('📦 Item Code:', itemCode)
+    console.log('📞 Purchase History API called:', {
+      itemCode,
+      page,
+      searchTerm,
+      productSubTab,
+      selectedItemId,
+      timestamp: new Date().toISOString()
+    })
 
     if (isFetchingPurchaseRef.current) return
     isFetchingPurchaseRef.current = true
@@ -843,12 +1096,11 @@ const RightPanel: React.FC<RightPanelProps> = ({
       const apiParams = {
         item_id: itemCode,
         limit_start: page,
-        limit_page_length: PAGE_LEN
+        limit_page_length: PAGE_LEN,
+        search_term: searchTerm || '' // Always include search_term
       }
 
-      console.log('📦 API URL:', apiUrl)
-      console.log('📦 API Params:', apiParams)
-      console.log('📦 Making API request...')
+      console.log('📞 Purchase History API request params:', apiParams)
 
       const response = await window.electronAPI?.proxy?.request({
         method: 'GET',
@@ -856,35 +1108,21 @@ const RightPanel: React.FC<RightPanelProps> = ({
         params: apiParams
       })
 
-      console.log('📦 ===== PURCHASE HISTORY API RESPONSE =====')
-      console.log('📦 Full Response:', response)
-      console.log('📦 Response Success:', response?.success)
-      console.log('📦 Response Data:', response?.data)
-      console.log('📦 Response Status:', response?.status)
-      console.log('📦 Response Headers:', response?.headers)
+      console.log('📦 Purchase History API result:', response)
 
       if (response?.success && response?.data?.data) {
         const newData = response.data.data
         purchaseHasMoreRef.current = Array.isArray(newData) && newData.length === PAGE_LEN
         setPurchaseHistory(newData)
-        console.log('✅ Purchase history loaded successfully:', response.data.data)
-        console.log('✅ Number of purchase history items:', response.data.data.length)
       } else {
-        console.log('❌ No purchase history data found')
-        console.log('❌ Response success:', response?.success)
-        console.log('❌ Response data:', response?.data)
         setPurchaseHistory([])
       }
     } catch (error) {
-      console.error('❌ ===== PURCHASE HISTORY API ERROR =====')
-      console.error('❌ Error details:', error)
-      console.error('❌ Error message:', (error as any)?.message)
-      console.error('❌ Error stack:', (error as any)?.stack)
+      console.error('❌ Error loading purchase history:', error)
       setPurchaseHistory([])
     } finally {
       setPurchaseHistoryLoading(false)
       isFetchingPurchaseRef.current = false
-      console.log('📦 Purchase history loading completed')
     }
   }
 
@@ -903,9 +1141,9 @@ const RightPanel: React.FC<RightPanelProps> = ({
       console.log('🔄 Calling fetchSalesHistory with:', selectedItemId)
       console.log('🔄 Calling fetchCustomerHistory with:', selectedItemId)
       console.log('🔄 Calling fetchPurchaseHistory with:', selectedItemId)
-      fetchSalesHistory(selectedItemId)
-      fetchCustomerHistory(selectedItemId)
-      fetchPurchaseHistory(selectedItemId)
+      fetchSalesHistory(selectedItemId, salesHistoryPage, salesHistorySearch)
+      fetchCustomerHistory(selectedItemId, customerHistoryPage, customerHistorySearch)
+      fetchPurchaseHistory(selectedItemId, purchaseHistoryPage, purchaseHistorySearch)
     } else {
       console.log('🔄 No product selected, clearing history data...')
       // Clear history when no product is selected
@@ -940,16 +1178,16 @@ const RightPanel: React.FC<RightPanelProps> = ({
     if (selectedItemId) {
       if (productSubTab === 'sales-history') {
         console.log('🔄 Sales History tab active, fetching sales history...')
-        fetchSalesHistory(selectedItemId)
+        fetchSalesHistory(selectedItemId, salesHistoryPage, salesHistorySearch)
       } else if (productSubTab === 'customer-history') {
         console.log('🔄 Customer History tab active, fetching customer history...')
-        fetchCustomerHistory(selectedItemId)
+        fetchCustomerHistory(selectedItemId, customerHistoryPage, customerHistorySearch)
       } else if (productSubTab === 'purchase-history') {
         console.log('🔄 Purchase History tab active, fetching purchase history...')
-        fetchPurchaseHistory(selectedItemId)
+        fetchPurchaseHistory(selectedItemId, purchaseHistoryPage, purchaseHistorySearch)
       }
     }
-  }, [productSubTab])
+  }, [productSubTab, salesHistoryPage, salesHistorySearch, customerHistoryPage, customerHistorySearch, purchaseHistoryPage, purchaseHistorySearch, selectedItemId])
 
   // Live warehouse stock fetched from backend (for all UOMs)
   const [stockLoading, setStockLoading] = useState(false)
@@ -972,9 +1210,14 @@ const RightPanel: React.FC<RightPanelProps> = ({
       ? productListData.uom_details
       : []
     const rateFromApi = uomDetails.length > 0 ? Number(uomDetails[0]?.rate || 0) : undefined
-    const standardRate = Number(
-      rateFromApi ?? selectedItem?.standard_rate ?? 0
+    // Unit price is always from API (constant), not from item table
+    const standardRate = Number(rateFromApi ?? 0)
+    
+    // For margin calculation, use unit price from item table if manually changed, otherwise use API rate
+    const marginCalculationRate = Number(
+      selectedItem?.standard_rate ?? rateFromApi ?? 0
     )
+    
     // Calculate on-hand qty for the current UOM (selected item's UOM)
     const onHandQty = (() => {
       if (!uomDetails || uomDetails.length === 0) return 0
@@ -984,7 +1227,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
       return Number(match?.qty || 0)
     })()
     const costPrice = Number(productListData?.cost_price ?? selectedItem?.cost ?? 0)
-    const marginPct = standardRate > 0 ? ((standardRate - costPrice) / standardRate) * 100 : 0
+    // Calculate margin based on unit price from table (if manually changed) or API
+    const marginPct = marginCalculationRate > 0 ? ((marginCalculationRate - costPrice) / marginCalculationRate) * 100 : 0
     return {
       item_code: code,
       item_name: name,
@@ -1030,13 +1274,161 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [salesHistoryLoading, setSalesHistoryLoading] = useState(false)
   const [customerHistoryLoading, setCustomerHistoryLoading] = useState(false)
   const [purchaseHistoryLoading, setPurchaseHistoryLoading] = useState(false)
-  const [salesHistorySearch, setSalesHistorySearch] = useState('')
-  const [customerHistorySearch, setCustomerHistorySearch] = useState('')
-  const [purchaseHistorySearch, setPurchaseHistorySearch] = useState('')
 
-  // Customer tab search states
-  const [recentOrdersSearch, setRecentOrdersSearch] = useState('')
-  const [mostOrderedSearch, setMostOrderedSearch] = useState('')
+  // Debounced search effects for product history tabs
+  // Sales History search
+  const prevSalesSearchRef = useRef<string>('')
+  useEffect(() => {
+    if (productSubTab !== 'sales-history' || !selectedItemId) return
+    if (prevSalesSearchRef.current === salesHistorySearch) return
+    
+    const handler = setTimeout(() => {
+      setSalesHistory([])
+      setSalesHistoryPage(1)
+      prevSalesSearchRef.current = salesHistorySearch
+      fetchSalesHistory(selectedItemId, 1, salesHistorySearch)
+    }, 300)
+    return () => clearTimeout(handler)
+  }, [salesHistorySearch, productSubTab, selectedItemId])
+
+  // Customer History search
+  const prevCustomerSearchRef = useRef<string>('')
+  useEffect(() => {
+    if (productSubTab !== 'customer-history' || !selectedItemId) return
+    if (prevCustomerSearchRef.current === customerHistorySearch) return
+    
+    const handler = setTimeout(() => {
+      setCustomerHistory([])
+      setCustomerHistoryPage(1)
+      prevCustomerSearchRef.current = customerHistorySearch
+      fetchCustomerHistory(selectedItemId, 1, customerHistorySearch)
+    }, 300)
+    return () => clearTimeout(handler)
+  }, [customerHistorySearch, productSubTab, selectedItemId])
+
+  // Purchase History search
+  const prevPurchaseSearchRef = useRef<string>('')
+  useEffect(() => {
+    if (productSubTab !== 'purchase-history' || !selectedItemId) return
+    if (prevPurchaseSearchRef.current === purchaseHistorySearch) return
+    
+    const handler = setTimeout(() => {
+      setPurchaseHistory([])
+      setPurchaseHistoryPage(1)
+      prevPurchaseSearchRef.current = purchaseHistorySearch
+      fetchPurchaseHistory(selectedItemId, 1, purchaseHistorySearch)
+    }, 300)
+    return () => clearTimeout(handler)
+  }, [purchaseHistorySearch, productSubTab, selectedItemId])
+
+  // Debounced search effects for customer tab - matching Orders pattern
+  // Recent Orders search
+  const prevRecentOrdersSearchRef = useRef<string>('')
+  const isRecentOrdersInitialMount = useRef<boolean>(true)
+  const hasRecentOrdersSearchedRef = useRef<boolean>(false) // Track if user has ever searched
+  useEffect(() => {
+    if (activeTab !== 'customer' || customerSubTab !== 'recent') {
+      isRecentOrdersInitialMount.current = true // Reset on tab change
+      prevRecentOrdersSearchRef.current = ''
+      hasRecentOrdersSearchedRef.current = false // Reset search tracking
+      return
+    }
+
+    if (!selectedCustomer?.name && !selectedCustomer?.customer_id) {
+      isRecentOrdersInitialMount.current = true
+      prevRecentOrdersSearchRef.current = ''
+      hasRecentOrdersSearchedRef.current = false // Reset search tracking
+      return
+    }
+
+    // On initial mount or customer change, call API immediately without debounce
+    if (isRecentOrdersInitialMount.current) {
+      isRecentOrdersInitialMount.current = false
+      prevRecentOrdersSearchRef.current = recentOrdersSearch
+      setRecentPage(1) // Ensure we start at page 1
+      return // Let the main useEffect handle the API call
+    }
+
+    // Only debounce if search term actually changed
+    if (prevRecentOrdersSearchRef.current === recentOrdersSearch) return
+    
+    console.log('🔄 Recent Orders search changed, debouncing...', {
+      oldSearch: prevRecentOrdersSearchRef.current,
+      newSearch: recentOrdersSearch,
+      isEmpty: !recentOrdersSearch || recentOrdersSearch.trim() === '',
+      currentPage: recentPage
+    })
+    
+    const handler = setTimeout(() => {
+      console.log('⏰ Recent Orders debounce timeout, resetting page and clearing results', {
+        searchTerm: recentOrdersSearch,
+        isEmpty: !recentOrdersSearch || recentOrdersSearch.trim() === ''
+      })
+      // Mark that user has interacted with search (even if cleared)
+      if (prevRecentOrdersSearchRef.current !== recentOrdersSearch) {
+        hasRecentOrdersSearchedRef.current = true
+      }
+      setRecentOrders([]) // Clear previous results
+      setRecentPage(1) // Reset to first page
+      prevRecentOrdersSearchRef.current = recentOrdersSearch // Update ref after debounce
+      // The API call will be triggered by the useEffect above when recentPage or recentOrdersSearch changes
+    }, 300) // Debounce for 300ms
+    return () => clearTimeout(handler)
+  }, [recentOrdersSearch, activeTab, customerSubTab, selectedCustomer?.name, selectedCustomer?.customer_id])
+
+  // Most Ordered search
+  const prevMostOrderedSearchRef = useRef<string>('')
+  const isMostOrderedInitialMount = useRef<boolean>(true)
+  const hasMostOrderedSearchedRef = useRef<boolean>(false) // Track if user has ever searched
+  useEffect(() => {
+    if (activeTab !== 'customer' || customerSubTab !== 'most') {
+      isMostOrderedInitialMount.current = true // Reset on tab change
+      prevMostOrderedSearchRef.current = ''
+      hasMostOrderedSearchedRef.current = false // Reset search tracking
+      return
+    }
+
+    if (!selectedCustomer?.name && !selectedCustomer?.customer_id) {
+      isMostOrderedInitialMount.current = true
+      prevMostOrderedSearchRef.current = ''
+      hasMostOrderedSearchedRef.current = false // Reset search tracking
+      return
+    }
+
+    // On initial mount or customer change, call API immediately without debounce
+    if (isMostOrderedInitialMount.current) {
+      isMostOrderedInitialMount.current = false
+      prevMostOrderedSearchRef.current = mostOrderedSearch
+      setMostPage(1) // Ensure we start at page 1
+      return // Let the main useEffect handle the API call
+    }
+
+    // Only debounce if search term actually changed
+    if (prevMostOrderedSearchRef.current === mostOrderedSearch) return
+    
+    console.log('🔄 Most Ordered search changed, debouncing...', {
+      oldSearch: prevMostOrderedSearchRef.current,
+      newSearch: mostOrderedSearch,
+      isEmpty: !mostOrderedSearch || mostOrderedSearch.trim() === '',
+      currentPage: mostPage
+    })
+    
+    const handler = setTimeout(() => {
+      console.log('⏰ Most Ordered debounce timeout, resetting page and clearing results', {
+        searchTerm: mostOrderedSearch,
+        isEmpty: !mostOrderedSearch || mostOrderedSearch.trim() === ''
+      })
+      // Mark that user has interacted with search (even if cleared)
+      if (prevMostOrderedSearchRef.current !== mostOrderedSearch) {
+        hasMostOrderedSearchedRef.current = true
+      }
+      setMostOrdered([]) // Clear previous results
+      setMostPage(1) // Reset to first page
+      prevMostOrderedSearchRef.current = mostOrderedSearch // Update ref after debounce
+      // The API call will be triggered by the useEffect above when mostPage or mostOrderedSearch changes
+    }, 300) // Debounce for 300ms
+    return () => clearTimeout(handler)
+  }, [mostOrderedSearch, activeTab, customerSubTab, selectedCustomer?.name])
 
   // Orders tab search states
   const [ordersSearch, setOrdersSearch] = useState('')
@@ -1097,104 +1489,35 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [profileError, setProfileError] = useState<string | null>(null)
   const [showProfileDropdown, setShowProfileDropdown] = useState(false)
 
-  // Filter customer history based on search
+  // Use data directly - server handles all filtering via search_term parameter
+  // No client-side filtering needed since API already filters results
   const filteredCustomerHistory = useMemo(() => {
-    if (!customerHistorySearch.trim()) return customerHistory
+    return customerHistory
+  }, [customerHistory])
 
-    const searchTerm = customerHistorySearch.toLowerCase()
-    return customerHistory.filter(
-      (item: any) =>
-        item.sales_order_no?.toLowerCase().includes(searchTerm) ||
-        item.invoice_no?.toLowerCase().includes(searchTerm) ||
-        item.quantity?.toString().includes(searchTerm) ||
-        item.unit_price?.toString().includes(searchTerm) ||
-        item.total_amount?.toString().includes(searchTerm) ||
-        item.creation_datetime?.toLowerCase().includes(searchTerm)
-    )
-  }, [customerHistory, customerHistorySearch])
-
-  // Filter purchase history based on search
   const filteredPurchaseHistory = useMemo(() => {
-    if (!purchaseHistorySearch.trim()) return purchaseHistory
+    return purchaseHistory
+  }, [purchaseHistory])
 
-    const searchTerm = purchaseHistorySearch.toLowerCase()
-    return purchaseHistory.filter(
-      (item: any) =>
-        item.invoice_no?.toLowerCase().includes(searchTerm) ||
-        item.purchase_order_no?.toLowerCase().includes(searchTerm) ||
-        item.qty?.toString().includes(searchTerm) ||
-        item.unit_price?.toString().includes(searchTerm) ||
-        item.total_amount?.toString().includes(searchTerm) ||
-        item.creation_datetime?.toLowerCase().includes(searchTerm)
-    )
-  }, [purchaseHistory, purchaseHistorySearch])
-
-  // Filter recent orders based on search
   const filteredRecentOrders = useMemo(() => {
-    if (!recentOrdersSearch.trim()) return recentOrders
+    return recentOrders
+  }, [recentOrders])
 
-    const searchTerm = recentOrdersSearch.toLowerCase()
-    return recentOrders.filter(
-      (order: any) =>
-        order.invoice_no?.toLowerCase().includes(searchTerm) ||
-        order.sales_order_no?.toLowerCase().includes(searchTerm) ||
-        order.total_qty?.toString().includes(searchTerm) ||
-        order.total_amount?.toString().includes(searchTerm) ||
-        order.status?.toLowerCase().includes(searchTerm) ||
-        order.creation_datetime?.toLowerCase().includes(searchTerm)
-    )
-  }, [recentOrders, recentOrdersSearch])
-
-  // Filter most ordered based on search
   const filteredMostOrdered = useMemo(() => {
-    if (!mostOrderedSearch.trim()) return mostOrdered
+    return mostOrdered
+  }, [mostOrdered])
 
-    const searchTerm = mostOrderedSearch.toLowerCase()
-    return mostOrdered.filter(
-      (item: any) =>
-        item.item_name?.toLowerCase().includes(searchTerm) ||
-        item.item_code?.toLowerCase().includes(searchTerm) ||
-        item.total_qty?.toString().includes(searchTerm) ||
-        item.avg_price?.toString().includes(searchTerm) ||
-        item.total_price?.toString().includes(searchTerm)
-    )
-  }, [mostOrdered, mostOrderedSearch])
-
-  // Filter orders based on search (current page only)
+  // Use ordersList directly - server handles filtering via search_term parameter
+  // No client-side filtering needed since API already filters results
   const filteredOrders = useMemo(() => {
-    const orders = ordersList
-    if (!ordersSearch.trim()) return orders
+    return ordersList
+  }, [ordersList])
 
-    const searchTerm = ordersSearch.toLowerCase()
-    return orders.filter(
-      (order: any) =>
-        order.sales_order_id?.toLowerCase().includes(searchTerm) ||
-        order.customer_name?.toLowerCase().includes(searchTerm) ||
-        order.total_qty?.toString().includes(searchTerm) ||
-        order.grand_total?.toString().includes(searchTerm) ||
-        order.invoice_status?.toLowerCase().includes(searchTerm) ||
-        order.custom_reverse_status?.toLowerCase().includes(searchTerm) ||
-        order.creation?.toLowerCase().includes(searchTerm)
-    )
-  }, [ordersList, ordersSearch])
-
-  // Filter returns based on search (current page only)
+  // Use returnsList directly - server handles filtering via search_term parameter
+  // No client-side filtering needed since API already filters results
   const filteredReturns = useMemo(() => {
-    const returns = returnsList
-    if (!returnsSearch.trim()) return returns
-
-    const searchTerm = returnsSearch.toLowerCase()
-    return returns.filter(
-      (order: any) =>
-        order.sales_order_id?.toLowerCase().includes(searchTerm) ||
-        order.customer_name?.toLowerCase().includes(searchTerm) ||
-        order.total_qty?.toString().includes(searchTerm) ||
-        order.grand_total?.toString().includes(searchTerm) ||
-        order.invoice_status?.toLowerCase().includes(searchTerm) ||
-        order.custom_reverse_status?.toLowerCase().includes(searchTerm) ||
-        order.creation?.toLowerCase().includes(searchTerm)
-    )
-  }, [returnsList, returnsSearch])
+    return returnsList
+  }, [returnsList])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -1300,24 +1623,64 @@ const RightPanel: React.FC<RightPanelProps> = ({
     }
   }, [selectedItem?.item_code, productListData?.item_id])
 
-  // Fetch recent orders when customer is selected
+  // Fetch recent orders when customer is selected - matching Orders pattern
   useEffect(() => {
-    let cancelled = false
-    async function loadRecentOrders(page: number) {
-      console.log('🔍 loadRecentOrders called with selectedCustomer:', selectedCustomer)
+    console.log('🔄 Recent Orders useEffect triggered:', {
+      recentPage,
+      recentOrdersSearch,
+      activeTab,
+      customerSubTab,
+      selectedCustomer: selectedCustomer?.name || selectedCustomer?.customer_id,
+      selectedCustomerFull: selectedCustomer,
+      timestamp: new Date().toISOString()
+    });
+    let cancelled = false;
+    async function loadRecentOrders(page: number, searchTerm: string = '') {
+      console.log('📞 Recent Orders API called:', {
+        page,
+        searchTerm,
+        activeTab,
+        customerSubTab,
+        selectedCustomer: selectedCustomer?.name || selectedCustomer?.customer_id,
+        selectedCustomerFull: selectedCustomer,
+        timestamp: new Date().toISOString()
+      });
       if (!selectedCustomer) {
-        console.log('❌ No selected customer, clearing orders')
+        console.log('🚫 Recent Orders: No selected customer, skipping API call')
         setRecentOrders([])
         return
       }
+      
+      // Check if we have pre-fetched data from order opening (only for page 1, no search, and never searched)
+      // Skip pre-fetched data if user has ever searched (even if cleared) to ensure fresh API call
+      const shouldUsePreFetched = page === 1 && !searchTerm && recentOrdersSearch === '' && !hasRecentOrdersSearchedRef.current
+      if (shouldUsePreFetched) {
+        const preFetched = currentTab?.orderData?._relatedData
+        if (preFetched?.recentOrders) {
+          console.log('✅ Using pre-fetched recent orders from order')
+          if (!cancelled) {
+            const orders = Array.isArray(preFetched.recentOrders) ? preFetched.recentOrders : []
+            setRecentOrders(orders)
+            setRecentHasMore(orders.length === PAGE_LEN)
+            setOrdersLoading(false)
+          }
+          return
+        }
+      }
+      
+      // If search term is empty or was cleared, ensure we call API
+      if (!searchTerm || searchTerm.trim() === '') {
+        console.log('🔄 Calling API with empty search term (search cleared or no search)', {
+          hasSearchedBefore: hasRecentOrdersSearchedRef.current
+        })
+      }
+      
       try {
         setOrdersLoading(true)
         setOrdersError(null)
-        console.log('🔍 Loading recent orders for customer:', selectedCustomer)
-        console.log('🔍 Customer name from dropdown:', selectedCustomer.name)
 
-        // Step 1: Call customer list API to get the correct customer_id
-        console.log('🔍 Step 1: Fetching customer list to find correct customer_id...')
+        // Resolve customer_id via customer list API
+        console.log('📞 Recent Orders: Resolving customer_id via customer list API...')
         const customerListRes = await window.electronAPI?.proxy?.request({
           url: '/api/method/centro_pos_apis.api.customer.customer_list',
           params: {
@@ -1327,62 +1690,48 @@ const RightPanel: React.FC<RightPanelProps> = ({
           }
         })
 
-        console.log('🔍 Customer list API response:', customerListRes)
-
-        // Step 2: Find the customer where customer_name matches selectedCustomer.name
         const customers = customerListRes?.data?.data || []
-        console.log('🔍 Available customers:', customers)
-
         const matchingCustomer = customers.find(
           (c: any) => c.customer_name === selectedCustomer.name
         )
-        console.log('🔍 Matching customer found:', matchingCustomer)
 
         if (!matchingCustomer) {
-          console.log('❌ No matching customer found in customer list')
+          console.log('❌ Recent Orders: Customer not found in system')
           setOrdersError('Customer not found in system')
           return
         }
 
-        // Step 3: Use the 'name' field as customer_id
         const customerId = matchingCustomer.name
-        console.log('🔍 Selected Customer ID for recent orders API:', customerId)
-        console.log(
-          '🔍 API URL: /api/method/centro_pos_apis.api.customer.get_customer_recent_orders'
-        )
-        console.log('🔍 API Params:', {
+        const recentOrdersParams = {
           customer_id: customerId,
           limit_start: page,
-          limit_page_length: PAGE_LEN
-        })
+          limit_page_length: PAGE_LEN,
+          search_term: searchTerm || '' // Always include search_term
+        }
+        const apiUrl = '/api/method/centro_pos_apis.api.customer.get_customer_recent_orders'
+        console.log('📞 Recent Orders API Call:')
+        console.log('   URL:', apiUrl)
+        console.log('   Params:', JSON.stringify(recentOrdersParams, null, 2))
+        console.log('   Full Request:', { url: apiUrl, params: recentOrdersParams })
 
-        // Step 4: Call recent orders API with correct customer_id
         const res = await window.electronAPI?.proxy?.request({
-          url: '/api/method/centro_pos_apis.api.customer.get_customer_recent_orders',
-          params: {
-            customer_id: customerId,
-            limit_start: page,
-            limit_page_length: PAGE_LEN
-          }
+          url: apiUrl,
+          params: recentOrdersParams
         })
-        console.log('📦 Recent orders API response:', res)
-        console.log('📦 Response success:', res?.success)
-        console.log('📦 Response status:', res?.status)
-        console.log('📦 Response data:', res?.data)
-        console.log('📦 Response data.data:', res?.data?.data)
+        console.log('📦 Recent Orders API Response:')
+        console.log('   Status:', res?.status)
+        console.log('   Success:', res?.success)
+        console.log('   Data:', res?.data)
+        console.log('   Full Response:', res)
 
-        if (res?.success && res?.data?.data) {
-          const orders = Array.isArray(res.data.data) ? res.data.data : []
-          console.log('📋 Recent orders array:', orders)
-          console.log('📋 Recent orders length:', orders.length)
           if (!cancelled) {
+          const actualData = res?.data?.data || res?.data
+          const orders = Array.isArray(actualData) ? actualData : []
             if (orders.length === 0) {
               setRecentHasMore(false)
-              // Do not move to an empty page; revert page index
               if (page > 1) setRecentPage(page - 1)
               return
             }
-            // Optimistically assume possibly more if full page, then verify by probing next page
             setRecentHasMore(orders.length === PAGE_LEN)
             setRecentOrders(orders)
 
@@ -1390,19 +1739,18 @@ const RightPanel: React.FC<RightPanelProps> = ({
               try {
                 const probe = await window.electronAPI?.proxy?.request({
                   url: '/api/method/centro_pos_apis.api.customer.get_customer_recent_orders',
-                  params: { customer_id: customerId, limit_start: page + 1, limit_page_length: PAGE_LEN }
+                params: { 
+                  customer_id: customerId, 
+                  limit_start: page + 1, 
+                  limit_page_length: PAGE_LEN,
+                  search_term: searchTerm || '' // Always include search_term
+                }
                 })
                 const nextItems = Array.isArray(probe?.data?.data) ? probe.data.data : []
                 setRecentHasMore(nextItems.length > 0)
               } catch (_) {
                 // If probe fails, keep previous hasMore assumption
               }
-            }
-          }
-        } else {
-          console.log('❌ No orders found in response or API failed')
-          if (!cancelled) {
-            setRecentOrders([])
           }
         }
       } catch (err) {
@@ -1416,24 +1764,71 @@ const RightPanel: React.FC<RightPanelProps> = ({
         }
       }
     }
-    loadRecentOrders(recentPage)
-    return () => {
-      cancelled = true
+    if (activeTab === 'customer' && customerSubTab === 'recent' && (selectedCustomer?.name || selectedCustomer?.customer_id)) {
+      loadRecentOrders(recentPage, recentOrdersSearch);
     }
-  }, [selectedCustomer?.id, recentPage])
+    return () => {
+      cancelled = true;
+    };
+  }, [recentPage, activeTab, customerSubTab, recentOrdersSearch, selectedCustomer?.name, selectedCustomer?.customer_id, currentTab?.orderId])
 
-  // Fetch most ordered when customer is selected
+  // Fetch most ordered when customer is selected - matching Orders pattern
   useEffect(() => {
-    let cancelled = false
-    async function loadMostOrdered(page: number) {
+    console.log('🔄 Most Ordered useEffect triggered:', {
+      mostPage,
+      mostOrderedSearch,
+      activeTab,
+      customerSubTab,
+      selectedCustomer: selectedCustomer?.name || selectedCustomer?.customer_id,
+      selectedCustomerFull: selectedCustomer,
+      timestamp: new Date().toISOString()
+    });
+    let cancelled = false;
+    async function loadMostOrdered(page: number, searchTerm: string = '') {
+      console.log('📞 Most Ordered API called:', {
+        page,
+        searchTerm,
+        activeTab,
+        customerSubTab,
+        selectedCustomer: selectedCustomer?.name || selectedCustomer?.customer_id,
+        selectedCustomerFull: selectedCustomer,
+        timestamp: new Date().toISOString()
+      });
       if (!selectedCustomer) {
+        console.log('🚫 Most Ordered: No selected customer, skipping API call')
         setMostOrdered([])
         return
       }
+      
+      // Check if we have pre-fetched data from order opening (only for page 1, no search, and never searched)
+      // Skip pre-fetched data if user has ever searched (even if cleared) to ensure fresh API call
+      const shouldUsePreFetched = page === 1 && !searchTerm && mostOrderedSearch === '' && !hasMostOrderedSearchedRef.current
+      if (shouldUsePreFetched) {
+        const preFetched = currentTab?.orderData?._relatedData
+        if (preFetched?.mostOrdered) {
+          console.log('✅ Using pre-fetched most ordered from order')
+          if (!cancelled) {
+            const items = Array.isArray(preFetched.mostOrdered) ? preFetched.mostOrdered : []
+            setMostOrdered(items)
+            setMostHasMore(items.length === PAGE_LEN)
+            setMostLoading(false)
+          }
+          return
+        }
+      }
+      
+      // If search term is empty or was cleared, ensure we call API
+      if (!searchTerm || searchTerm.trim() === '') {
+        console.log('🔄 Calling API with empty search term (search cleared or no search)', {
+          hasSearchedBefore: hasMostOrderedSearchedRef.current
+        })
+      }
+      
       try {
         setMostLoading(true)
         setMostError(null)
-        // Resolve customer_id via list (same as recent orders strategy)
+        // Resolve customer_id via customer list API
+        console.log('📞 Most Ordered: Resolving customer_id via customer list API...')
         const listRes = await window.electronAPI?.proxy?.request({
           url: '/api/method/centro_pos_apis.api.customer.customer_list',
           params: { search_term: '', limit_start: 1, limit_page_length: 50 }
@@ -1442,15 +1837,34 @@ const RightPanel: React.FC<RightPanelProps> = ({
         const match = list.find((c: any) => c.customer_name === selectedCustomer.name)
         const customerId = match?.name
         if (!customerId) {
+          console.log('❌ Most Ordered: Customer not found in system')
           setMostOrdered([])
           return
         }
+        const mostOrderedParams = {
+          customer_id: customerId, 
+          limit_start: page, 
+          limit_page_length: PAGE_LEN,
+          search_term: searchTerm || '' // Always include search_term
+        }
+        const apiUrl = '/api/method/centro_pos_apis.api.customer.get_customer_most_ordered_products'
+        console.log('📞 Most Ordered API Call:')
+        console.log('   URL:', apiUrl)
+        console.log('   Params:', JSON.stringify(mostOrderedParams, null, 2))
+        console.log('   Full Request:', { url: apiUrl, params: mostOrderedParams })
+
         const res = await window.electronAPI?.proxy?.request({
-          url: '/api/method/centro_pos_apis.api.customer.get_customer_most_ordered_products',
-          params: { customer_id: customerId, limit_start: page, limit_page_length: PAGE_LEN }
+          url: apiUrl,
+          params: mostOrderedParams
         })
-        const items = Array.isArray(res?.data?.data) ? res.data.data : []
+        console.log('📦 Most Ordered API Response:')
+        console.log('   Status:', res?.status)
+        console.log('   Success:', res?.success)
+        console.log('   Data:', res?.data)
+        console.log('   Full Response:', res)
         if (!cancelled) {
+          const actualData = res?.data?.data || res?.data
+          const items = Array.isArray(actualData) ? actualData : []
           if (items.length === 0) {
             setMostHasMore(false)
             if (page > 1) setMostPage(page - 1)
@@ -1463,7 +1877,12 @@ const RightPanel: React.FC<RightPanelProps> = ({
             try {
               const probe = await window.electronAPI?.proxy?.request({
                 url: '/api/method/centro_pos_apis.api.customer.get_customer_most_ordered_products',
-                params: { customer_id: customerId, limit_start: page + 1, limit_page_length: PAGE_LEN }
+                params: { 
+                  customer_id: customerId, 
+                  limit_start: page + 1, 
+                  limit_page_length: PAGE_LEN,
+                  search_term: searchTerm || '' // Always include search_term
+                }
               })
               const nextItems = Array.isArray(probe?.data?.data) ? probe.data.data : []
               setMostHasMore(nextItems.length > 0)
@@ -1473,16 +1892,19 @@ const RightPanel: React.FC<RightPanelProps> = ({
           }
         }
       } catch (e: any) {
+        console.error('❌ Error loading most ordered:', e)
         if (!cancelled) setMostError(e?.message || 'Failed to load most ordered')
       } finally {
         if (!cancelled) setMostLoading(false)
       }
     }
-    loadMostOrdered(mostPage)
-    return () => {
-      cancelled = true
+    if (activeTab === 'customer' && customerSubTab === 'most' && (selectedCustomer?.name || selectedCustomer?.customer_id)) {
+      loadMostOrdered(mostPage, mostOrderedSearch);
     }
-  }, [selectedCustomer?.name, mostPage])
+    return () => {
+      cancelled = true;
+    };
+  }, [mostPage, activeTab, customerSubTab, mostOrderedSearch, selectedCustomer?.name, selectedCustomer?.customer_id, currentTab?.orderId])
 
   // Fetch customer details and insights when customer is selected
   useEffect(() => {
@@ -1493,6 +1915,19 @@ const RightPanel: React.FC<RightPanelProps> = ({
         setCustomerInsights(null)
         return
       }
+      
+      // Check if we have pre-fetched data from order opening
+      const preFetched = currentTab?.orderData?._relatedData
+      if (preFetched?.customerDetails || preFetched?.customerInsights) {
+        console.log('✅ Using pre-fetched customer data from order')
+        if (!cancelled) {
+          setCustomerDetails(preFetched.customerDetails || null)
+          setCustomerInsights(preFetched.customerInsights || null)
+          setCustomerDetailsLoading(false)
+        }
+        return
+      }
+      
       try {
         setCustomerDetailsLoading(true)
         setCustomerDetailsError(null)
@@ -1542,7 +1977,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
     return () => {
       cancelled = true
     }
-  }, [selectedCustomer?.name])
+  }, [selectedCustomer?.name, currentTab?.orderId])
 
   // PATCH 1: Add page size state
   const pageSizeOptions = [10, 25, 50];
@@ -1557,20 +1992,39 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
   // PATCH 3: Console.log API responses, use limit_start = page
   useEffect(() => {
+    console.log('🔄 Orders useEffect triggered:', {
+      ordersPage,
+      ordersSearch,
+      pageLength,
+      activeTab,
+      subTab,
+      timestamp: new Date().toISOString()
+    });
     let cancelled = false;
-    async function loadOrdersPaginated(page: number) {
+    async function loadOrdersPaginated(page: number, searchTerm: string = '') {
+      console.log('📞 Orders API called:', {
+        page,
+        searchTerm,
+        pageLength,
+        activeTab,
+        subTab,
+        timestamp: new Date().toISOString()
+      });
       try {
         setOrdersTabLoading(true);
         setOrdersTabError(null);
-            const res = await window.electronAPI?.proxy?.request({
-          url: '/api/method/centro_pos_apis.api.order.order_list',
-              params: {
+        const ordersParams = {
             is_returned: 0,
             limit_start: page,
-            limit_page_length: pageLength
-          },
+          limit_page_length: pageLength,
+          search_term: searchTerm || '' // Always include search_term
+        };
+        console.log('📞 Orders API request params:', ordersParams);
+        const res = await window.electronAPI?.proxy?.request({
+          url: '/api/method/centro_pos_apis.api.order.order_list',
+          params: ordersParams,
         });
-        console.log('Orders API result:', res);
+        console.log('📦 Orders API result:', res);
         if (!cancelled) {
           // Handle nested data structure: response.data.data or response.data
           const actualData = res?.data?.data || res?.data
@@ -1586,28 +2040,81 @@ const RightPanel: React.FC<RightPanelProps> = ({
         }
       }
     if (activeTab === 'orders' && subTab === 'orders') {
-      loadOrdersPaginated(ordersPage);
+      loadOrdersPaginated(ordersPage, ordersSearch);
     }
     return () => {
       cancelled = true;
     };
-  }, [ordersPage, pageLength, activeTab, subTab]);
+  }, [ordersPage, pageLength, activeTab, subTab, ordersSearch]); // Added ordersSearch to dependencies
+
+  // Debounced search effect - resets pagination and triggers API call when search changes
+  const prevSearchRef = useRef<string>('');
+  const isInitialMount = useRef<boolean>(true);
 
   useEffect(() => {
+    if (activeTab !== 'orders' || subTab !== 'orders') {
+      isInitialMount.current = true; // Reset on tab change
+      prevSearchRef.current = '';
+      return;
+    }
+
+    // On initial mount or tab switch, call API immediately without debounce
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      prevSearchRef.current = ordersSearch;
+      setOrdersPage(1); // Ensure we start at page 1
+      return; // Let the main useEffect handle the API call
+    }
+
+    // Only debounce if search term actually changed
+    if (prevSearchRef.current === ordersSearch) return;
+    
+    const handler = setTimeout(() => {
+      setOrdersList([]); // Clear previous results
+      setOrdersPage(1); // Reset to first page
+      prevSearchRef.current = ordersSearch; // Update ref after debounce
+      // The API call will be triggered by the useEffect above when ordersPage changes
+    }, 300); // Debounce for 300ms
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [ordersSearch, activeTab, subTab]); // Trigger when search term changes
+
+  useEffect(() => {
+    console.log('🔄 Returns useEffect triggered:', {
+      returnsPage,
+      returnsSearch,
+      pageLength,
+      activeTab,
+      subTab,
+      timestamp: new Date().toISOString()
+    });
     let cancelled = false;
-    async function loadReturnsPaginated(page: number) {
+    async function loadReturnsPaginated(page: number, searchTerm: string = '') {
+      console.log('📞 Returns API called:', {
+        page,
+        searchTerm,
+        pageLength,
+        activeTab,
+        subTab,
+        timestamp: new Date().toISOString()
+      });
       try {
         setOrdersTabLoading(true);
         setOrdersTabError(null);
-        const res = await window.electronAPI?.proxy?.request({
-          url: '/api/method/centro_pos_apis.api.order.order_list',
-          params: {
+        const returnsParams = {
             is_returned: 1,
             limit_start: page,
-            limit_page_length: pageLength
-          },
+          limit_page_length: pageLength,
+          search_term: searchTerm || '' // Always include search_term
+        };
+        console.log('📞 Returns API request params:', returnsParams);
+        const res = await window.electronAPI?.proxy?.request({
+          url: '/api/method/centro_pos_apis.api.order.order_list',
+          params: returnsParams,
         });
-        console.log('Returns API result:', res);
+        console.log('📦 Returns API result:', res);
         if (!cancelled) {
           // Handle nested data structure: response.data.data or response.data
           const actualData = res?.data?.data || res?.data
@@ -1622,12 +2129,46 @@ const RightPanel: React.FC<RightPanelProps> = ({
         }
       }
     if (activeTab === 'orders' && subTab === 'returns') {
-      loadReturnsPaginated(returnsPage);
+      loadReturnsPaginated(returnsPage, returnsSearch);
     }
     return () => {
       cancelled = true;
     };
-  }, [returnsPage, pageLength, activeTab, subTab]);
+  }, [returnsPage, pageLength, activeTab, subTab, returnsSearch]); // Added returnsSearch to dependencies
+
+  // Debounced search effect for Returns - resets pagination and triggers API call when search changes
+  const prevReturnsSearchRef = useRef<string>('');
+  const isReturnsInitialMount = useRef<boolean>(true);
+  
+  useEffect(() => {
+    if (activeTab !== 'orders' || subTab !== 'returns') {
+      isReturnsInitialMount.current = true; // Reset on tab change
+      prevReturnsSearchRef.current = '';
+      return;
+    }
+
+    // On initial mount or tab switch, call API immediately without debounce
+    if (isReturnsInitialMount.current) {
+      isReturnsInitialMount.current = false;
+      prevReturnsSearchRef.current = returnsSearch;
+      setReturnsPage(1); // Ensure we start at page 1
+      return; // Let the main useEffect handle the API call
+    }
+
+    // Only debounce if search term actually changed
+    if (prevReturnsSearchRef.current === returnsSearch) return;
+    
+    const handler = setTimeout(() => {
+      setReturnsList([]); // Clear previous results
+      setReturnsPage(1); // Reset to first page
+      prevReturnsSearchRef.current = returnsSearch; // Update ref after debounce
+      // The API call will be triggered by the useEffect above when returnsPage changes
+    }, 300); // Debounce for 300ms
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [returnsSearch, activeTab, subTab]); // Trigger when search term changes
 
   // PATCH 5: Show total state for orders/returns
   const [ordersTotal, setOrdersTotal] = useState(0);
@@ -1832,8 +2373,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     </div>
                   </div>
                   <div className="space-y-2 ml-4">
-                    <div className="font-bold text-lg text-primary">{productData.item_code}</div>
-                    <div className="font-semibold text-gray-800">{productData.item_name}</div>
+                    <div className="font-bold text-lg text-gray-500">{productData.item_code}</div>
+                    <div className="font-semibold text-sm text-gray-800">{productData.item_name}</div>
                     {productArabicName && (
                       <div className="text-xs text-gray-700">{productArabicName}</div>
                     )}
@@ -1886,54 +2427,12 @@ const RightPanel: React.FC<RightPanelProps> = ({
                   <h4 className="font-bold text-gray-800">Stock Details</h4>
                   <Button
                     type="button"
-                    onClick={() => {
-                      const selectedItemFromTable = items.find((item: any) => item.item_code === selectedItemId)
-                      if (!selectedItemFromTable || warehouseStock.length === 0) {
-                        toast.error('Please select an item with stock to use Split Wise')
-                        return
-                      }
-
-                      // Get current UOM from selected item
-                      const currentUom = selectedItemFromTable.uom || 'Nos'
-                      
-                      // Transform warehouseStock to MultiWarehousePopup format
-                      const warehouses = warehouseStock.map((warehouse) => {
-                        // Find quantity for current UOM
-                        const qtyForUom = warehouse.quantities.find(
-                          (qtyItem) => qtyItem.uom.toLowerCase() === currentUom.toLowerCase()
-                        )
-                        const availableQty = qtyForUom ? Number(qtyForUom.qty) : 0
-
-                        return {
-                          name: warehouse.name,
-                          available: availableQty,
-                          allocated: 0,
-                          selected: false
-                        }
-                      })
-
-                      // Filter out warehouses with 0 available stock
-                      const warehousesWithStock = warehouses.filter((w) => w.available > 0)
-
-                      if (warehousesWithStock.length === 0) {
-                        toast.error('No stock available in warehouses for the current UOM')
-                        return
-                      }
-
-                      // Open the popup
-                      setWarehousePopupData({
-                        itemCode: selectedItemFromTable.item_code,
-                        itemName: selectedItemFromTable.item_name || selectedItemFromTable.item_code,
-                        requiredQty: Number(selectedItemFromTable.quantity || 0),
-                        currentWarehouseQty: warehousesWithStock.reduce((sum, w) => sum + w.available, 0),
-                        warehouses: warehousesWithStock
-                      })
-                      setShowWarehousePopup(true)
-                    }}
-                    className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded"
+                    onClick={handleOpenSplitWarehouse}
+                    className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded flex items-center gap-2"
                     disabled={!selectedItemId || warehouseStock.length === 0}
                   >
                     Split Wise
+                    <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+Shift+W</span>
                   </Button>
                 </div>
                 <div className="space-y-2">
@@ -1941,25 +2440,84 @@ const RightPanel: React.FC<RightPanelProps> = ({
                   {stockError && <div className="text-xs text-red-600">{stockError}</div>}
                   {!stockLoading &&
                     !stockError &&
-                    warehouseStock.length > 0 &&
-                    warehouseStock.map((warehouse, index) => (
+                    warehouseStock.length > 0 && (() => {
+                      // Get all unique UOMs across all warehouses for column alignment
+                      const allUoms = new Set<string>()
+                      warehouseStock.forEach((warehouse) => {
+                        warehouse.quantities.forEach((qtyItem) => {
+                          if (qtyItem.uom) {
+                            allUoms.add(qtyItem.uom)
+                          }
+                        })
+                      })
+                      const uniqueUoms = Array.from(allUoms).sort()
+                      
+                      // Get selected item's UOM
+                      const selectedItemUom = selectedItem?.uom || ''
+                      
+                      return warehouseStock.map((warehouse, index) => {
+                        // Get current warehouse from profile
+                        const currentWarehouse = profile?.warehouse || ''
+                        const isCurrentWarehouse = warehouse.name === currentWarehouse
+                        
+                        return (
                       <div
                         key={index}
-                        className="p-2 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs"
+                            className={`p-2 rounded-lg text-xs ${
+                              isCurrentWarehouse 
+                                ? 'bg-gradient-to-r from-gray-100 to-gray-200 border-2 border-gray-400' 
+                                : 'bg-gradient-to-r from-gray-50 to-slate-50'
+                            }`}
                       >
                         <div className="flex justify-between items-center">
-                          <div className="font-semibold text-primary">{warehouse.name}</div>
-                          <div className="flex items-center gap-2 flex-wrap justify-end">
-                            {warehouse.quantities.map((qtyItem, qtyIndex) => (
-                              <span key={qtyIndex} className="text-green-600">
-                                <span className="font-semibold">Qty: {qtyItem.qty}</span>
-                                <span className="text-[10px] text-gray-500 font-normal ml-1">{qtyItem.uom}</span>
-                              </span>
-                            ))}
+                              <div className={`font-semibold ${isCurrentWarehouse ? 'text-gray-700' : 'text-primary'}`}>
+                                {warehouse.name}
                           </div>
+                              <div className="flex items-center gap-4 justify-end">
+                                {uniqueUoms.map((uom) => {
+                                  // Find quantity for this UOM in current warehouse
+                                  const qtyItem = warehouse.quantities.find(
+                                    (item) => (item.uom || '').trim().toLowerCase() === uom.trim().toLowerCase()
+                                  )
+                                  
+                                  if (!qtyItem) {
+                                    // If this UOM doesn't exist for this warehouse, show empty space for alignment
+                                    return (
+                                      <div key={uom} className="w-16 text-right">
+                                        <span className="text-transparent">-</span>
                         </div>
+                                    )
+                                  }
+                                  
+                                  // Normalize UOM strings for comparison
+                                  const qtyItemUom = (qtyItem.uom || '').trim().toLowerCase()
+                                  const selectedUomNormalized = (selectedItemUom || '').trim().toLowerCase()
+                                  const isSelectedUom = qtyItemUom === selectedUomNormalized
+                                  
+                                  // Highlight based on UOM match only
+                                  const isHighlighted = isSelectedUom && selectedItemUom !== ''
+                                  
+                                  return (
+                                    <div 
+                                      key={uom} 
+                                      className="text-right"
+                                      style={{ minWidth: '60px' }}
+                                    >
+                                      <div className={`font-semibold ${isHighlighted ? 'text-blue-700' : 'text-gray-700'}`}>
+                                        {qtyItem.qty}
                       </div>
-                    ))}
+                                      <div className={`text-[10px] ${isHighlighted ? 'font-bold text-blue-700' : 'text-gray-700 font-normal'}`}>
+                                        {qtyItem.uom}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })
+                    })()}
                   {!stockLoading && !stockError && warehouseStock.length === 0 && (
                     <div className="text-xs text-gray-500 text-center py-4">No stock available</div>
                   )}
@@ -2080,31 +2638,59 @@ const RightPanel: React.FC<RightPanelProps> = ({
                             })
                             .map((item: any, index: number) => {
                               const formatDate = (dateString: string) => {
-                                if (!dateString) return 'N/A'
+                                if (!dateString) return '—'
                                 const date = new Date(dateString)
                                 const day = String(date.getDate()).padStart(2, '0')
                                 const month = String(date.getMonth() + 1).padStart(2, '0')
                                 const year = date.getFullYear()
                                 return `${day}/${month}/${year}`
                               }
+                              const totalAmount = (Number(item.qty || 0) * Number(item.unit_price || 0)).toFixed(2)
+                              const unitPrice = Number(item.unit_price || 0).toFixed(2)
                               return (
                                 <div
                                   key={index}
-                                  className="p-3 bg-gradient-to-r from-blue-50 to-slate-50 rounded-lg border border-blue-100"
+                                  className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200"
                                 >
-                                  <div className="flex justify-between items-start mb-1">
-                                    <div className="font-semibold text-black text-xs">
-                                      {item.sales_order_no || 'N/A'}
+                                  {/* Order No and Date Row */}
+                                  <div className="flex justify-between items-center mb-2">
+                                    <div className="font-semibold text-black text-sm">
+                                      {item.sales_order_no || item.invoice_no || '—'}
                                     </div>
-                                    <div className="text-xs text-gray-500">
+                                    <div className="text-gray-600 text-xs">
                                       {item.creation_datetime
                                         ? formatDate(item.creation_datetime)
-                                        : 'N/A'}
+                                        : '—'}
                                     </div>
                                   </div>
-                                  <div className="text-xs text-gray-600">
-                                    Qty: {item.qty || 0} | Unit Price: {Number(item.unit_price || 0).toFixed(2)}{' '}
-                                    {currencySymbol}
+
+                                  {/* Customer Name and Amount Row */}
+                                  <div className="flex justify-between items-center mb-2">
+                                    <span className="text-gray-700 font-medium text-xs">
+                                      {item.customer_name || item.customer || '—'}
+                                    </span>
+                                    <span className="text-gray-600 font-medium text-xs">
+                                      Unit: <span className="font-bold text-green-600">{unitPrice} {currencySymbol}</span>
+                                    </span>
+                                  </div>
+
+                                  {/* Total Qty Row */}
+                                  <div className="mb-2">
+                                    <span className="text-gray-600 font-medium text-xs">
+                                      Qty: {item.qty || 0}
+                                    </span>
+                                  </div>
+
+                                  {/* Status Row */}
+                                  <div className="flex items-center gap-2">
+                                    {item.status && (
+                                      <span className="text-xs px-2 py-1 rounded-full font-medium bg-gray-100 text-gray-700">
+                                        {item.status}
+                                      </span>
+                                    )}
+                                    {!item.status && (
+                                      <span className="text-gray-400 text-xs">—</span>
+                                    )}
                                   </div>
                                 </div>
                               )
@@ -2123,7 +2709,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                         onClick={() => {
                           const prev = Math.max(1, salesHistoryPage - 1)
                           setSalesHistoryPage(prev)
-                          fetchSalesHistory(selectedItemId as string, prev)
+                          fetchSalesHistory(selectedItemId as string, prev, salesHistorySearch)
                           salesHistoryScrollRef.current?.scrollTo({ top: 0 })
                         }}
                       >
@@ -2138,7 +2724,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                         onClick={() => {
                           const next = salesHistoryPage + 1
                           setSalesHistoryPage(next)
-                          fetchSalesHistory(selectedItemId as string, next)
+                          fetchSalesHistory(selectedItemId as string, next, salesHistorySearch)
                           salesHistoryScrollRef.current?.scrollTo({ top: 0 })
                         }}
                       >
@@ -2199,31 +2785,58 @@ const RightPanel: React.FC<RightPanelProps> = ({
                         <div className="space-y-2">
                           {filteredCustomerHistory.map((item, index) => {
                             const formatDate = (dateString: string) => {
-                              if (!dateString) return 'N/A'
+                              if (!dateString) return '—'
                               const date = new Date(dateString)
                               const day = String(date.getDate()).padStart(2, '0')
                               const month = String(date.getMonth() + 1).padStart(2, '0')
                               const year = date.getFullYear()
                               return `${day}/${month}/${year}`
                             }
+                            const totalAmount = (Number(item.quantity || item.qty || 0) * Number(item.unit_price || 0)).toFixed(2)
                             return (
                               <div
                                 key={index}
-                                className="p-3 bg-gradient-to-r from-blue-50 to-slate-50 rounded-lg border border-blue-100"
+                                className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200"
                               >
-                                <div className="flex justify-between items-start mb-1">
-                                  <div className="font-semibold text-black text-xs">
-                                    {item.sales_order_no || 'N/A'}
+                                {/* Order No and Date Row */}
+                                <div className="flex justify-between items-center mb-2">
+                                  <div className="font-semibold text-black text-sm">
+                                    {item.sales_order_no || item.invoice_no || '—'}
                                   </div>
-                                  <div className="text-xs text-gray-500">
+                                  <div className="text-gray-600 text-xs">
                                     {item.creation_datetime
                                       ? formatDate(item.creation_datetime)
-                                      : 'N/A'}
+                                      : '—'}
                                   </div>
                                 </div>
-                                <div className="text-xs text-gray-600">
-                                  Qty: {item.quantity || item.qty || 0} | Unit Price: {Number(item.unit_price || 0).toFixed(2)}{' '}
-                                  {currencySymbol}
+
+                                {/* Customer Name and Amount Row */}
+                                <div className="flex justify-between items-center mb-2">
+                                  <span className="text-gray-700 font-medium text-xs">
+                                    {item.customer_name || item.customer || selectedCustomer?.name || '—'}
+                                  </span>
+                                  <span className="font-bold text-green-600 text-sm">
+                                    {totalAmount} {currencySymbol}
+                                  </span>
+                                </div>
+
+                                {/* Total Qty Row */}
+                                <div className="mb-2">
+                                  <span className="text-gray-600 font-medium text-xs">
+                                    Qty: {item.quantity || item.qty || 0}
+                                  </span>
+                                </div>
+
+                                {/* Status Row */}
+                                <div className="flex items-center gap-2">
+                                  {item.status && (
+                                    <span className="text-xs px-2 py-1 rounded-full font-medium bg-gray-100 text-gray-700">
+                                      {item.status}
+                                    </span>
+                                  )}
+                                  {!item.status && (
+                                    <span className="text-gray-400 text-xs">—</span>
+                                  )}
                                 </div>
                               </div>
                             )
@@ -2244,7 +2857,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                           if (customerHistoryPage <= 1) return
                           const prev = Math.max(1, customerHistoryPage - 1)
                           setCustomerHistoryPage(prev)
-                          fetchCustomerHistory(selectedItemId as string, prev)
+                          fetchCustomerHistory(selectedItemId as string, prev, customerHistorySearch)
                           customerHistoryScrollRef.current?.scrollTo({ top: 0 })
                         }}
                       >
@@ -2258,7 +2871,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                           if (!customerHasMoreRef.current) return
                           const next = customerHistoryPage + 1
                           setCustomerHistoryPage(next)
-                          fetchCustomerHistory(selectedItemId as string, next)
+                          fetchCustomerHistory(selectedItemId as string, next, customerHistorySearch)
                           customerHistoryScrollRef.current?.scrollTo({ top: 0 })
                         }}
                       >
@@ -2309,41 +2922,51 @@ const RightPanel: React.FC<RightPanelProps> = ({
                         </div>
                       ) : filteredPurchaseHistory.length > 0 ? (
                         <div className="space-y-2">
-                          {filteredPurchaseHistory.map((item, index) => (
-                            <div
-                              key={index}
-                              className="p-3 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-100"
-                            >
-                              <div className="grid grid-cols-2 gap-2 text-xs">
-                                <div>
-                                  <span className="font-semibold text-gray-600">Invoice:</span>
-                                  <div className="font-bold text-green-700">{item.invoice_no}</div>
-                                </div>
-                                <div>
-                                  <span className="font-semibold text-gray-600">Qty:</span>
-                                  <div className="font-bold text-green-600">{item.qty}</div>
-                                </div>
-                                <div>
-                                  <span className="font-semibold text-gray-600">Unit Price:</span>
-                                  <div className="font-bold text-orange-600">
-                                    {currencySymbol} {item.unit_price?.toFixed(2)}
+                          {filteredPurchaseHistory.map((item, index) => {
+                            const formatDate = (dateString: string) => {
+                              if (!dateString) return '—'
+                              const date = new Date(dateString)
+                              const day = String(date.getDate()).padStart(2, '0')
+                              const month = String(date.getMonth() + 1).padStart(2, '0')
+                              const year = date.getFullYear()
+                              return `${day}/${month}/${year}`
+                            }
+                            const totalAmount = item.total_amount ? Number(item.total_amount).toFixed(2) : (Number(item.qty || 0) * Number(item.unit_price || 0)).toFixed(2)
+                            const unitPrice = Number(item.unit_price || 0).toFixed(2)
+                            return (
+                              <div
+                                key={index}
+                                className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200"
+                              >
+                                {/* Invoice No and Date Row */}
+                                <div className="flex justify-between items-center mb-2">
+                                  <div className="font-semibold text-black text-sm">
+                                    {item.invoice_no || item.purchase_order_no || '—'}
+                                  </div>
+                                  <div className="text-gray-600 text-xs">
+                                    {item.creation_datetime
+                                      ? formatDate(item.creation_datetime)
+                                      : '—'}
                                   </div>
                                 </div>
-                                <div>
-                                  <span className="font-semibold text-gray-600">Total:</span>
-                                  <div className="font-bold text-purple-600">
-                                    {currencySymbol} {item.total_amount?.toFixed(2)}
-                                  </div>
-                                </div>
-                                <div className="col-span-2">
-                                  <span className="font-semibold text-gray-600">Date:</span>
-                                  <div className="text-gray-700">
-                                    {new Date(item.creation_datetime).toLocaleString()}
+
+                                {/* Amount Row */}
+                                <div className="flex justify-between items-center mb-2">
+                                  <span className="text-gray-600 font-medium text-xs">
+                                    Qty: {item.qty || 0}
+                                  </span>
+                                  <div className="flex flex-col items-end">
+                                    <span className="text-gray-600 font-medium text-xs">
+                                      Unit: <span className="font-bold text-green-600">{unitPrice} {currencySymbol}</span>
+                                    </span>
+                                    <span className="text-gray-600 font-medium text-xs mt-0.5">
+                                      Total: <span className="font-bold text-green-600">{totalAmount} {currencySymbol}</span>
+                                    </span>
                                   </div>
                                 </div>
                               </div>
-                            </div>
-                          ))}
+                            )
+                          })}
                         </div>
                       ) : (
                         <div className="text-center py-4">
@@ -2360,7 +2983,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                           if (purchaseHistoryPage <= 1) return
                           const prev = Math.max(1, purchaseHistoryPage - 1)
                           setPurchaseHistoryPage(prev)
-                          fetchPurchaseHistory(selectedItemId as string, prev)
+                          fetchPurchaseHistory(selectedItemId as string, prev, purchaseHistorySearch)
                           purchaseHistoryScrollRef.current?.scrollTo({ top: 0 })
                         }}
                       >
@@ -2374,7 +2997,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                           if (!purchaseHasMoreRef.current) return
                           const next = purchaseHistoryPage + 1
                           setPurchaseHistoryPage(next)
-                          fetchPurchaseHistory(selectedItemId as string, next)
+                          fetchPurchaseHistory(selectedItemId as string, next, purchaseHistorySearch)
                           purchaseHistoryScrollRef.current?.scrollTo({ top: 0 })
                         }}
                       >
@@ -2413,7 +3036,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                   </div>
                   <div>
                     <h3 className="font-bold text-lg">
-                      {customerDetails.customer_name || 'Walking Customer'}
+                      {customerDetails.customer_name || ''}
                     </h3>
                     <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">VAT: {customerDetails.tax_id || 'Not Applicable'}</p>
                     <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">Type: {customerDetails.customer_type || '—'}</p>
@@ -2573,80 +3196,193 @@ const RightPanel: React.FC<RightPanelProps> = ({
               <DialogHeader>
                 <DialogTitle>Edit Customer</DialogTitle>
               </DialogHeader>
-              <div className="grid grid-cols-2 gap-3 mt-2">
-                <div className="col-span-2">
-                  <label className="text-xs text-gray-600">Customer ID</label>
-                  <input className="w-full border rounded px-2 py-1 text-sm" disabled value={editForm.customer_id} />
+              <div className="space-y-3 p-2">
+                {/* Customer ID - Keep as is */}
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Customer ID</label>
+                  <Input disabled value={editForm.customer_id} />
                 </div>
-                {/* Row 1: Name and Arabic Name */}
-                <div>
-                  <label className="text-xs text-gray-600">Name *</label>
-                  <input className="w-full border rounded px-2 py-1 text-sm" value={editForm.customer_name} onChange={e=>setEditForm({...editForm, customer_name:e.target.value})} />
+
+                {/* Row 1: Customer Name and Name in Arabic */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Customer Name *</label>
+                    <Input
+                      value={editForm.customer_name}
+                      onChange={(e) => setEditForm({ ...editForm, customer_name: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === ' ') {
+                          e.stopPropagation()
+                        }
+                      }}
+                      placeholder="Enter customer name"
+                    />
                 </div>
-                <div>
-                  <label className="text-xs text-gray-600">Arabic Name</label>
-                  <input className="w-full border rounded px-2 py-1 text-sm" value={editForm.customer_name_arabic} onChange={e=>setEditForm({...editForm, customer_name_arabic:e.target.value})} />
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Name in Arabic</label>
+                    <Input
+                      value={editForm.customer_name_arabic}
+                      onChange={(e) => setEditForm({ ...editForm, customer_name_arabic: e.target.value })}
+                      placeholder="اكتب الاسم بالعربية"
+                    />
                 </div>
-                {/* Row 1b: Type */}
-                <div>
-                  <label className="text-xs text-gray-600">Type *</label>
-                  <select className="w-full border rounded px-2 py-1 text-sm" value={editForm.customer_type} onChange={e=>setEditForm({...editForm, customer_type:e.target.value})}>
-                    <option value="Company">Company</option>
-                    <option value="Individual">Individual</option>
-                  </select>
                 </div>
-                <div></div>
+
+                {/* Row 1b: Customer Type */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Customer Type *</label>
+                    <Select
+                      value={editForm.customer_type}
+                      onValueChange={(value) => setEditForm({ ...editForm, customer_type: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select customer type" />
+                      </SelectTrigger>
+                      <SelectContent className="z-[9999] bg-white border border-gray-200 shadow-xl">
+                        <SelectItem value="Individual">Individual</SelectItem>
+                        <SelectItem value="Company">Company</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
                 {/* Row 2: Email and Mobile */}
-                <div>
-                  <label className="text-xs text-gray-600">Email</label>
-                  <input className="w-full border rounded px-2 py-1 text-sm" value={editForm.email} onChange={e=>setEditForm({...editForm, email:e.target.value})} />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Email</label>
+                    <Input
+                      type="email"
+                      value={editForm.email}
+                      onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                      placeholder="email@example.com"
+                    />
                 </div>
-                <div>
-                  <label className="text-xs text-gray-600">Mobile{editForm.customer_type==='Company' ? ' *' : ''}</label>
-                  <input className="w-full border rounded px-2 py-1 text-sm" value={editForm.mobile} onChange={e=>setEditForm({...editForm, mobile:e.target.value})} />
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Mobile{editForm.customer_type === 'Company' ? ' *' : ''}</label>
+                    <Input
+                      value={editForm.mobile}
+                      onChange={(e) => setEditForm({ ...editForm, mobile: e.target.value })}
+                      placeholder="+966509876543"
+                    />
                 </div>
-                {/* Row 3: Tax and ZATCA Type */}
-                <div>
-                  <label className="text-xs text-gray-600">Tax ID {editForm.customer_type==='Company' ? '*' : ''}</label>
-                  <input className="w-full border rounded px-2 py-1 text-sm" value={editForm.tax_id} onChange={e=>setEditForm({...editForm, tax_id:e.target.value})} />
                 </div>
-                <div>
-                  <label className="text-xs text-gray-600">Customer ID Type for ZATCA{editForm.customer_type==='Company' ? ' *' : ''}</label>
-                  <select className="w-full border rounded px-2 py-1 text-sm" value={editForm.customer_id_type_for_zatca} onChange={e=>setEditForm({...editForm, customer_id_type_for_zatca:e.target.value})}>
-                    <option value="">Select ID type</option>
-                    <option value="CRN">CRN</option>
-                    <option value="NIN">NIN</option>
-                    <option value="TIN">TIN</option>
-                    <option value="MOMRA">MOMRA</option>
-                  </select>
+
+                {/* Separator */}
+                <div className="border-t border-gray-300 my-2"></div>
+
+                {/* Row 3: Tax ID and ZATCA fields */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Tax ID{editForm.customer_type === 'Company' ? ' *' : ''}</label>
+                    <Input
+                      value={editForm.tax_id}
+                      onChange={(e) => setEditForm({ ...editForm, tax_id: e.target.value })}
+                      placeholder="310123456700003"
+                    />
                 </div>
-                {/* Row 4: ZATCA Number */}
-                <div className="col-span-2">
-                  <label className="text-xs text-gray-600">Customer ID Number for ZATCA{editForm.customer_type==='Company' ? ' *' : ''}</label>
-                  <input className="w-full border rounded px-2 py-1 text-sm" value={editForm.customer_id_number_for_zatca} onChange={e=>setEditForm({...editForm, customer_id_number_for_zatca:e.target.value})} />
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Customer ID Type for ZATCA{editForm.customer_type === 'Company' ? ' *' : ''}</label>
+                    <Select
+                      value={editForm.customer_id_type_for_zatca}
+                      onValueChange={(value) => setEditForm({ ...editForm, customer_id_type_for_zatca: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select ID type" />
+                      </SelectTrigger>
+                      <SelectContent className="z-[9999] bg-white border border-gray-200 shadow-xl">
+                        <SelectItem value="CRN">CRN</SelectItem>
+                        <SelectItem value="TIN">TIN</SelectItem>
+                        <SelectItem value="VAT">VAT</SelectItem>
+                      </SelectContent>
+                    </Select>
                 </div>
-                <div className="col-span-2">
-                  <label className="text-xs text-gray-600">Address Line 1 *</label>
-                  <input className="w-full border rounded px-2 py-1 text-sm" value={editForm.address_line1} onChange={e=>setEditForm({...editForm, address_line1:e.target.value})} />
                 </div>
-                <div className="col-span-2">
-                  <label className="text-xs text-gray-600">Address Line 2</label>
-                  <input className="w-full border rounded px-2 py-1 text-sm" value={editForm.address_line2} onChange={e=>setEditForm({...editForm, address_line2:e.target.value})} />
+
+                {/* Row 4: ZATCA ID Number */}
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Customer ID Number for ZATCA{editForm.customer_type === 'Company' ? ' *' : ''}</label>
+                  <Input
+                    value={editForm.customer_id_number_for_zatca}
+                    onChange={(e) => setEditForm({ ...editForm, customer_id_number_for_zatca: e.target.value })}
+                    onKeyDown={(e) => {
+                      if (e.key === ' ') {
+                        e.stopPropagation()
+                      }
+                    }}
+                    placeholder="1010123456"
+                  />
                 </div>
-                <div>
-                  <label className="text-xs text-gray-600">City *</label>
-                  <input className="w-full border rounded px-2 py-1 text-sm" value={editForm.city} onChange={e=>setEditForm({...editForm, city:e.target.value})} />
+
+                {/* Row 5: Address Line 1 and 2 */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Address Line 1{editForm.customer_type === 'Company' ? ' *' : ''}</label>
+                    <Input
+                      value={editForm.address_line1}
+                      onChange={(e) => setEditForm({ ...editForm, address_line1: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === ' ') {
+                          e.stopPropagation()
+                        }
+                      }}
+                      placeholder="789 King Abdullah Road"
+                    />
                 </div>
-                <div>
-                  <label className="text-xs text-gray-600">Province *</label>
-                  <input className="w-full border rounded px-2 py-1 text-sm" value={editForm.state} onChange={e=>setEditForm({...editForm, state:e.target.value})} />
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Address Line 2</label>
+                    <Input
+                      value={editForm.address_line2}
+                      onChange={(e) => setEditForm({ ...editForm, address_line2: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === ' ') {
+                          e.stopPropagation()
+                        }
+                      }}
+                      placeholder="Building 8221"
+                    />
                 </div>
-                <div>
-                  <label className="text-xs text-gray-600">Pincode *</label>
-                  <input className="w-full border rounded px-2 py-1 text-sm" value={editForm.pincode} onChange={e=>setEditForm({...editForm, pincode:e.target.value})} />
+                </div>
+
+                {/* Row 6: City/Town, Building No., Pincode */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">City/Town{editForm.customer_type === 'Company' ? ' *' : ''}</label>
+                    <Input
+                      value={editForm.city}
+                      onChange={(e) => setEditForm({ ...editForm, city: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === ' ') {
+                          e.stopPropagation()
+                        }
+                      }}
+                      placeholder="Riyadh"
+                    />
+              </div>
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Building No.{editForm.customer_type === 'Company' ? ' *' : ''}</label>
+                    <Input
+                      value={editForm.state}
+                      onChange={(e) => setEditForm({ ...editForm, state: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === ' ') {
+                          e.stopPropagation()
+                        }
+                      }}
+                      placeholder="Building number"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Pincode{editForm.customer_type === 'Company' ? ' *' : ''}</label>
+                    <Input
+                      value={editForm.pincode}
+                      onChange={(e) => setEditForm({ ...editForm, pincode: e.target.value })}
+                      placeholder="11564"
+                    />
+                  </div>
                 </div>
               </div>
-              <DialogFooter>
+              <DialogFooter className="gap-2 mt-4">
                 <Button variant="outline" onClick={()=>setEditOpen(false)}>Cancel</Button>
                 <Button disabled={editSubmitting} onClick={async()=>{
                   try{
@@ -2654,16 +3390,16 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     console.log('📝 Editing customer - request body:', editForm)
                     // validation
                     if(!editForm.customer_name){ toast.error('Customer name is required'); setEditSubmitting(false); return }
-                    if(editForm.customer_type==='Company' && !editForm.mobile){ toast.error('Mobile is required for Company'); setEditSubmitting(false); return }
-                    if(!editForm.address_line1){ toast.error('Address Line 1 is required'); setEditSubmitting(false); return }
-                    if(!editForm.city){ toast.error('City is required'); setEditSubmitting(false); return }
-                    if(!editForm.state){ toast.error('Province is required'); setEditSubmitting(false); return }
-                    if(!editForm.pincode){ toast.error('Pincode is required'); setEditSubmitting(false); return }
                     if(editForm.customer_type==='Company'){
+                      if(!editForm.mobile){ toast.error('Mobile is required for Company'); setEditSubmitting(false); return }
                       if(!editForm.tax_id){ toast.error('Tax ID is required for Company'); setEditSubmitting(false); return }
                       if(!editForm.customer_id_type_for_zatca || !editForm.customer_id_number_for_zatca){
                         toast.error('ZATCA ID Type and Number are required for Company'); setEditSubmitting(false); return
                       }
+                      if(!editForm.address_line1){ toast.error('Address Line 1 is required for Company'); setEditSubmitting(false); return }
+                      if(!editForm.city){ toast.error('City/Town is required for Company'); setEditSubmitting(false); return }
+                      if(!editForm.state){ toast.error('Building No. is required for Company'); setEditSubmitting(false); return }
+                      if(!editForm.pincode){ toast.error('Pincode is required for Company'); setEditSubmitting(false); return }
                     }
                     const res = await (window as any).electronAPI?.proxy?.request({
                       method:'POST',
@@ -3028,10 +3764,23 @@ const RightPanel: React.FC<RightPanelProps> = ({
             // Get the current tab and update the item
             const currentTab = usePOSTabStore.getState().getCurrentTab()
             if (currentTab) {
-              updateItemInTab(currentTab.id, warehousePopupData.itemCode, {
-                quantity: totalAllocated,
-                warehouseAllocations: allocations
-              })
+              // Use itemIndex if available (for duplicate items), otherwise fall back to item_code
+              if (warehousePopupData.itemIndex !== undefined && warehousePopupData.itemIndex >= 0) {
+                // Update by index to ensure we update the correct duplicate item
+                const { updateItemInTabByIndex } = usePOSTabStore.getState()
+                updateItemInTabByIndex(currentTab.id, warehousePopupData.itemIndex, {
+                  quantity: totalAllocated,
+                  warehouseAllocations: allocations
+                })
+                console.log('📦 Updated warehouse allocation for item at index:', warehousePopupData.itemIndex)
+              } else {
+                // Fallback to item_code update (updates first match)
+                updateItemInTab(currentTab.id, warehousePopupData.itemCode, {
+                  quantity: totalAllocated,
+                  warehouseAllocations: allocations
+                })
+                console.log('📦 Updated warehouse allocation for item by code:', warehousePopupData.itemCode)
+              }
               toast.success('Warehouse allocation updated successfully')
             }
 
@@ -3043,6 +3792,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
           requiredQty={warehousePopupData.requiredQty}
           currentWarehouseQty={warehousePopupData.currentWarehouseQty}
           warehouses={warehousePopupData.warehouses}
+          uom={warehousePopupData.uom}
+          defaultWarehouse={warehousePopupData.defaultWarehouse}
         />
       )}
 
@@ -3143,23 +3894,180 @@ const RightPanel: React.FC<RightPanelProps> = ({
                             if (existing) {
                               setActiveTab(existing.id)
                             } else {
+                              setIsOpeningOrder(true)
                               try {
+                                console.log('📦 Opening order:', orderId)
+                                // Fetch order details using the new API endpoint
                                 const res = await window.electronAPI?.proxy.request({
-                                  url: `/api/resource/Sales Order/${String(orderId)}`
+                                  url: '/api/method/centro_pos_apis.api.order.get_sales_order_details',
+                                  params: {
+                                    sales_order_id: String(orderId)
+                                  }
                                 })
                                 const orderData = res?.data?.data || null
-                                openTab(String(orderId), orderData)
+                                
+                                console.log('📋 [RightPanel] Order data fetched for tab opening:', JSON.stringify(orderData, null, 2))
+                                console.log('📋 [RightPanel] Linked invoices in fetched order data:', JSON.stringify(orderData?.linked_invoices, null, 2))
+                                console.log('📋 [RightPanel] Full API response:', JSON.stringify(res, null, 2))
+                                
+                                if (orderData) {
+                                  // Extract customer info from order
+                                  const customerName = orderData.customer_name || orderData.customer
+                                  const customerId = orderData.customer || null
+                                  
+                                  // Fetch all related data in parallel
+                                  const [customerDetailsRes, customerInsightsRes, recentOrdersRes, mostOrderedRes] = await Promise.allSettled([
+                                    customerId ? window.electronAPI?.proxy?.request({
+                                      url: `/api/resource/Customer/${customerId}`,
+                                      params: {}
+                                    }) : Promise.resolve(null),
+                                    customerId ? window.electronAPI?.proxy?.request({
+                                      url: '/api/method/centro_pos_apis.api.customer.customer_amount_insights',
+                                      params: { customer_id: customerId, limit_start: 1, limit_page_length: 4 }
+                                    }) : Promise.resolve(null),
+                                    customerId ? window.electronAPI?.proxy?.request({
+                                      url: '/api/method/centro_pos_apis.api.customer.get_customer_recent_orders',
+                                      params: { customer_id: customerId, limit_start: 1, limit_page_length: 3 }
+                                    }) : Promise.resolve(null),
+                                    customerId ? window.electronAPI?.proxy?.request({
+                                      url: '/api/method/centro_pos_apis.api.customer.get_customer_most_ordered_products',
+                                      params: { customer_id: customerId, limit_start: 1, limit_page_length: 3 }
+                                    }) : Promise.resolve(null)
+                                  ])
+                                  
+                                  // Fetch sales/purchase history for each item in the order
+                                  const itemHistories = await Promise.allSettled(
+                                    (orderData.items || []).map(async (item: any) => {
+                                      const itemCode = item.item_code || item.item_id
+                                      if (!itemCode) return null
+                                      
+                                      const [salesHistoryRes, purchaseHistoryRes] = await Promise.allSettled([
+                                        window.electronAPI?.proxy?.request({
+                                          url: '/api/method/centro_pos_apis.api.product.get_product_sales_history',
+                                          params: { item_id: itemCode, limit_start: 1, limit_page_length: 4 }
+                                        }),
+                                        window.electronAPI?.proxy?.request({
+                                          url: '/api/method/centro_pos_apis.api.product.get_product_purchase_history',
+                                          params: { item_id: itemCode, limit_start: 1, limit_page_length: 4 }
+                                        })
+                                      ])
+                                      
+                                      return {
+                                        item_code: itemCode,
+                                        sales_history: salesHistoryRes.status === 'fulfilled' ? salesHistoryRes.value?.data?.data : null,
+                                        purchase_history: purchaseHistoryRes.status === 'fulfilled' ? purchaseHistoryRes.value?.data?.data : null
+                                      }
+                                    })
+                                  )
+                                  
+                                  // Fetch print items list for the order
+                                  let printItemsData = null
+                                  try {
+                                    const printRes = await window.electronAPI?.proxy?.request({
+                                      url: '/api/method/centro_pos_apis.api.print.print_items_list',
+                                      params: { order_id: String(orderId) }
+                                    })
+                                    printItemsData = printRes?.data?.data || null
+                                    console.log('🖨️ Fetched print items for order:', printItemsData)
+                                  } catch (printErr) {
+                                    console.warn('⚠️ Failed to fetch print items:', printErr)
+                                  }
+                                  
+                                  // Check docstatus - if 1, order is confirmed
+                                  const isConfirmed = Number(orderData.docstatus) === 1
+                                  const orderStatus = isConfirmed ? 'confirmed' : 'draft'
+                                  
+                                  // Extract invoice number, status, and custom_reverse_status from linked_invoices if available
+                                  let invoiceNumber = null
+                                  let invoiceStatus = null
+                                  let invoiceCustomReverseStatus = null
+                                  const linkedInvoices = orderData.linked_invoices
+                                  
+                                  console.log('📋 [RightPanel] Processing linked_invoices when opening order tab:', JSON.stringify(linkedInvoices, null, 2))
+                                  
+                                  if (linkedInvoices) {
+                                    if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
+                                      const firstInvoice = linkedInvoices[0]
+                                      invoiceNumber = firstInvoice?.name || null
+                                      invoiceStatus = firstInvoice?.status || null
+                                      invoiceCustomReverseStatus = firstInvoice?.custom_reverse_status || null
+                                      console.log('📋 [RightPanel] Invoice number extracted from array:', invoiceNumber)
+                                      console.log('📋 [RightPanel] Invoice status:', invoiceStatus)
+                                      console.log('📋 [RightPanel] Invoice custom_reverse_status:', invoiceCustomReverseStatus)
+                                    } else if (linkedInvoices && typeof linkedInvoices === 'object' && !Array.isArray(linkedInvoices)) {
+                                      invoiceNumber = linkedInvoices.name || null
+                                      invoiceStatus = linkedInvoices.status || null
+                                      invoiceCustomReverseStatus = linkedInvoices.custom_reverse_status || null
+                                      console.log('📋 [RightPanel] Invoice number extracted from object:', invoiceNumber)
+                                      console.log('📋 [RightPanel] Invoice status:', invoiceStatus)
+                                      console.log('📋 [RightPanel] Invoice custom_reverse_status:', invoiceCustomReverseStatus)
+                                    }
+                                  } else {
+                                    console.log('⚠️ [RightPanel] No linked_invoices found in order data when opening tab')
+                                  }
+                                  
+                                  // Attach all fetched data to orderData
+                                  const enrichedOrderData = {
+                                    ...orderData,
+                                    _relatedData: {
+                                      customerDetails: customerDetailsRes.status === 'fulfilled' ? customerDetailsRes.value?.data?.data : null,
+                                      customerInsights: customerInsightsRes.status === 'fulfilled' ? customerInsightsRes.value?.data?.data : null,
+                                      recentOrders: recentOrdersRes.status === 'fulfilled' ? recentOrdersRes.value?.data?.data : null,
+                                      mostOrdered: mostOrderedRes.status === 'fulfilled' ? mostOrderedRes.value?.data?.data : null,
+                                      itemHistories: itemHistories
+                                        .filter((h: any) => h.status === 'fulfilled' && h.value)
+                                        .map((h: any) => h.value),
+                                      printItems: printItemsData
+                                    }
+                                  }
+                                  
+                                  console.log('✅ Order data enriched with all related APIs, status:', orderStatus)
+                                  console.log('📋 Invoice number to be stored:', invoiceNumber)
+                                  openTab(String(orderId), enrichedOrderData, orderStatus)
+                                  
+                                  // If invoice number was extracted, update it in the tab
+                                  if (invoiceNumber) {
+                                    console.log('📋 [RightPanel] Invoice number extracted when opening order tab:', invoiceNumber)
+                                    const { updateTabInvoiceNumber } = usePOSTabStore.getState()
+                                    const openedTab = usePOSTabStore.getState().tabs.find(tab => tab.orderId === String(orderId))
+                                    if (openedTab) {
+                                      console.log('📋 [RightPanel] ✅ Updating invoice number in opened tab:', {
+                                        tabId: openedTab.id,
+                                        orderId: openedTab.orderId,
+                                        invoiceNumber: invoiceNumber,
+                                        invoiceStatus: invoiceStatus,
+                                        invoiceCustomReverseStatus: invoiceCustomReverseStatus
+                                      })
+                                      updateTabInvoiceNumber(openedTab.id, invoiceNumber, invoiceStatus, invoiceCustomReverseStatus)
+                                    } else {
+                                      console.log('📋 [RightPanel] ⚠️ Could not find opened tab to update invoice number')
+                                    }
+                                  } else {
+                                    console.log('📋 [RightPanel] ⚠️ No invoice number extracted when opening order tab')
+                                  }
+                                } else {
+                                  openTab(String(orderId))
+                                }
                               } catch (e) {
                                 console.error('Failed to fetch order details:', e)
                                 openTab(String(orderId))
+                              } finally {
+                                setIsOpeningOrder(false)
                               }
                             }
                           }}
                         >
                           {/* Order No and Date Row */}
                           <div className="flex justify-between items-center mb-2">
+                            <div className="flex flex-col">
                             <div className="font-semibold text-black text-sm">
                               {order.sales_order_id || '—'}
+                              </div>
+                              {order.sales_invoice_id && (
+                                <div className="text-gray-700 text-[10px] mt-0.5">
+                                  {order.sales_invoice_id}
+                                </div>
+                              )}
                             </div>
                             <div className="text-gray-600 text-xs">
                               {formatDate(creationDate)}
@@ -3202,12 +4110,12 @@ const RightPanel: React.FC<RightPanelProps> = ({
                                 {order.invoice_status}
                               </span>
                             )}
-                            {order.custom_reverse_status && (
+                            {order.custom_reverse_status && order.custom_reverse_status !== 'No' && (
                               <span className="text-xs px-2 py-1 rounded-full font-medium bg-purple-100 text-purple-700">
                                 {order.custom_reverse_status}
                               </span>
                             )}
-                            {!order.invoice_status && !order.custom_reverse_status && (
+                            {!order.invoice_status && (!order.custom_reverse_status || order.custom_reverse_status === 'No') && (
                               <span className="text-gray-400 text-xs">—</span>
                             )}
                           </div>
@@ -3314,8 +4222,15 @@ const RightPanel: React.FC<RightPanelProps> = ({
                         >
                           {/* Order No and Date Row */}
                           <div className="flex justify-between items-center mb-2">
+                            <div className="flex flex-col">
                             <div className="font-semibold text-black text-sm">
                               {order.sales_order_id || '—'}
+                              </div>
+                              {order.sales_invoice_id && (
+                                <div className="text-gray-700 text-[10px] mt-0.5">
+                                  {order.sales_invoice_id}
+                                </div>
+                              )}
                             </div>
                             <div className="text-gray-600 text-xs">
                               {formatDate(creationDate)}
@@ -3358,12 +4273,12 @@ const RightPanel: React.FC<RightPanelProps> = ({
                                 {order.invoice_status}
                               </span>
                             )}
-                            {order.custom_reverse_status && (
+                            {order.custom_reverse_status && order.custom_reverse_status !== 'No' && (
                               <span className="text-xs px-2 py-1 rounded-full font-medium bg-purple-100 text-purple-700">
                                 {order.custom_reverse_status}
                               </span>
                             )}
-                            {!order.invoice_status && !order.custom_reverse_status && (
+                            {!order.invoice_status && (!order.custom_reverse_status || order.custom_reverse_status === 'No') && (
                               <span className="text-gray-400 text-xs">—</span>
                             )}
                           </div>
@@ -3411,6 +4326,17 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
       {/* Placeholder only for tabs not yet implemented */}
       {activeTab === 'payments' && <PaymentTab />}
+      
+      {/* Loading overlay when opening order */}
+      {isOpeningOrder && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="glass-effect rounded-2xl p-8 text-center">
+            <div className="w-12 h-12 border-4 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-gray-700 font-medium">Loading order data...</p>
+            <p className="text-sm text-gray-500 mt-2">Fetching order details, customer history, and related information</p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

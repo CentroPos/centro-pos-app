@@ -192,37 +192,87 @@ export function showStackedErrorPopups(errors: ParsedError[]) {
 }
 
 /**
- * Handle server error messages - either show as stacked popups or single popup
+ * Handle server error messages - display in a single formatted toast in right bottom corner
  */
 export function handleServerErrorMessages(
   serverMessagesString: string | undefined,
-  fallbackMessage: string = 'An error occurred'
+  fallbackMessage: string = ''
 ): void {
   if (!serverMessagesString) {
-    toast.error(fallbackMessage)
-    throw new Error(fallbackMessage) // Throw error to prevent further execution
+    // Only show fallback if provided, otherwise do nothing
+    if (fallbackMessage) {
+      toast.error(fallbackMessage)
+      throw new Error(fallbackMessage) // Throw error to prevent further execution
+    }
+    return
   }
 
   console.log('🔍 Raw server messages string:', serverMessagesString)
-  const errors = parseServerMessages(serverMessagesString)
-  console.log('🔍 Parsed errors count:', errors.length)
-  console.log(
-    '🔍 Individual errors:',
-    errors.map((e) => e.message)
-  )
+  
+  try {
+    // Parse the server messages array
+    const serverMessages = JSON.parse(serverMessagesString)
+    if (!Array.isArray(serverMessages) || serverMessages.length === 0) {
+      if (fallbackMessage) {
+        toast.error(fallbackMessage)
+        throw new Error(fallbackMessage)
+      }
+      return
+    }
 
-  if (errors.length === 0) {
-    toast.error(fallbackMessage)
-    throw new Error(fallbackMessage) // Throw error to prevent further execution
-  }
+    // Extract all messages and format them
+    const formattedMessages: string[] = []
+    
+    serverMessages.forEach((messageItem: any) => {
+      try {
+        // Check if messageItem is already an object or a string that needs parsing
+        let messageObj: any
+        if (typeof messageItem === 'string') {
+          // If it's a string, parse it
+          messageObj = JSON.parse(messageItem)
+        } else {
+          // If it's already an object, use it directly
+          messageObj = messageItem
+        }
+        const message = messageObj.message || 'Unknown error'
+        formattedMessages.push(message)
+      } catch (parseError) {
+        // If parsing fails, try to use the item as a string or its string representation
+        if (typeof messageItem === 'string') {
+          formattedMessages.push(messageItem)
+        } else if (messageItem && typeof messageItem === 'object' && messageItem.message) {
+          formattedMessages.push(messageItem.message)
+        } else {
+          formattedMessages.push(String(messageItem))
+        }
+      }
+    })
 
-  if (errors.length === 1) {
-    // Single error - show immediately
-    const error = errors[0]
-    console.log('🔍 Showing single error:', error.message)
-    toast.error(error.message, {
-      duration: 5000,
-      description: error.title !== 'Error' ? error.title : undefined,
+    // Combine all messages into a single formatted string
+    const combinedMessage = formattedMessages.join('\n')
+    
+    // Get title from first message if available
+    let title = 'Error'
+    try {
+      const firstMessageItem = serverMessages[0]
+      let firstMessage: any
+      if (typeof firstMessageItem === 'string') {
+        firstMessage = JSON.parse(firstMessageItem)
+      } else {
+        firstMessage = firstMessageItem
+      }
+      title = firstMessage.title || 'Error'
+    } catch {
+      // Use default title
+    }
+
+    console.log('🔍 Formatted server message:', combinedMessage)
+    console.log('🔍 Message title:', title)
+
+    // Display in a single toast popup
+    toast.error(combinedMessage, {
+      duration: 8000,
+      description: title !== 'Error' ? title : undefined,
       position: 'bottom-right',
       style: {
         position: 'fixed',
@@ -231,18 +281,22 @@ export function handleServerErrorMessages(
         opacity: '1',
         visibility: 'visible',
         pointerEvents: 'auto',
-        maxWidth: '400px',
-        minWidth: '300px',
+        maxWidth: '500px',
+        minWidth: '350px',
         boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
         border: '1px solid #ef4444',
-        borderRadius: '8px'
+        borderRadius: '8px',
+        whiteSpace: 'pre-line' // Allow line breaks in the message
       }
     })
-    throw new Error(error.message) // Throw error to prevent further execution
-  } else {
-    // Multiple errors - show as stacked popups
-    console.log('🔍 Showing multiple errors as stacked popups')
-    showStackedErrorPopups(errors)
-    throw new Error(`Multiple validation errors: ${errors.length} errors found`) // Throw error to prevent further execution
+    
+    throw new Error(combinedMessage) // Throw error to prevent further execution
+  } catch (error) {
+    console.error('Error parsing server messages:', error)
+    // If parsing fails, show the raw string or fallback
+    if (fallbackMessage) {
+      toast.error(fallbackMessage)
+      throw new Error(fallbackMessage)
+    }
   }
 }

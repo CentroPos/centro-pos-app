@@ -168,10 +168,19 @@ const ActionButtons: React.FC<Props> = ({
   isItemTableEditing = false,
   onInsufficientStockErrors
 }) => {
+  // Get current date in local timezone (YYYY-MM-DD format)
+  const getCurrentDate = () => {
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = String(now.getMonth() + 1).padStart(2, '0')
+    const day = String(now.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
   const [open, setOpen] = useState<false | 'confirm' | 'pay'>(false)
   const [orderAmount, setOrderAmount] = useState('0.00')
   const [amountDue, setAmountDue] = useState('0.00')
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(() => getCurrentDate())
   const [mode, setMode] = useState('Cash')
   const [amount, setAmount] = useState('')
   const [isSaving, setIsSaving] = useState(false)
@@ -188,7 +197,13 @@ const ActionButtons: React.FC<Props> = ({
     setTabStatus,
     getCurrentTabCustomer,
     getCurrentTabGlobalDiscount,
-    setTabEdited
+    setTabEdited,
+    updateTabInstantPrintUrl,
+    getCurrentTabRoundingEnabled,
+    updateTabInvoiceNumber,
+    getCurrentTabInvoiceNumber,
+    updateTabOrderData,
+    getCurrentTabPostingDate
   } = usePOSTabStore()
   const { currentUserPrivileges, profile } = usePOSProfileStore()
   const items = getCurrentTabItems()
@@ -288,21 +303,98 @@ const ActionButtons: React.FC<Props> = ({
   //   })
   // }, [currentUserPrivileges, profile])
 
-  // Calculate order total from items
-  const calculateOrderTotal = useCallback(() => {
-    return items
-      .reduce((total, item) => {
-        const quantity = parseFloat(item.quantity || '0') || 0
-        const rate = parseFloat(item.standard_rate || '0') || 0
-        const discount = parseFloat(item.discount_percentage || '0') || 0
-        const itemTotal = quantity * rate
-        const discountAmount = (itemTotal * discount) / 100
-        return total + (itemTotal - discountAmount)
-      }, 0)
-      .toFixed(2)
-  }, [items])
+  // Get VAT percentage from profile (same as DiscountSection)
+  const [vatPercentage, setVatPercentage] = useState(15) // Default to 15%
+  const isRoundingEnabled = getCurrentTabRoundingEnabled()
 
-  // Update order amount when items change
+  // Load VAT percentage from profile
+  useEffect(() => {
+    if (profile?.custom_tax_rate !== null && profile?.custom_tax_rate !== undefined) {
+      const vatValue = Number(profile.custom_tax_rate)
+      if (!isNaN(vatValue) && vatValue >= 0) {
+        setVatPercentage(vatValue)
+      }
+    }
+  }, [profile?.custom_tax_rate])
+
+  // Helper function to round to nearest (same as DiscountSection)
+  const roundToNearest = (value: number, step = 0.05) => {
+    const rounded = Math.round(value / step) * step
+    return Number(rounded.toFixed(2))
+  }
+
+  // Calculate order total - use rounded_total from order detail API if available
+  const calculateOrderTotal = useCallback(() => {
+    // First, check if we have rounded_total from order detail API
+    const roundedTotal = currentTab?.orderData?.rounded_total
+    
+    if (roundedTotal !== null && roundedTotal !== undefined) {
+      const roundedTotalNum = Number(roundedTotal)
+      if (!isNaN(roundedTotalNum)) {
+        console.log('📋 Using rounded_total from order detail API:', roundedTotalNum)
+        return roundedTotalNum.toFixed(2)
+      }
+    }
+
+    // Fallback: Check if order is confirmed (docstatus = 1) and has linked_invoices
+    const isConfirmed = currentTab?.orderData && Number(currentTab.orderData.docstatus) === 1
+    const linkedInvoices = currentTab?.orderData?.linked_invoices
+    
+    // If confirmed and has linked_invoices, use grand_total from linked_invoices
+    if (isConfirmed && linkedInvoices) {
+      let grandTotal = null
+      
+      if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
+        grandTotal = linkedInvoices[0]?.grand_total
+      } else if (linkedInvoices && typeof linkedInvoices === 'object') {
+        grandTotal = linkedInvoices.grand_total
+      }
+      
+      if (grandTotal !== null && grandTotal !== undefined) {
+        const grandTotalNum = Number(grandTotal)
+        if (!isNaN(grandTotalNum)) {
+          console.log('📋 Using grand_total from linked_invoices:', grandTotalNum)
+          return grandTotalNum.toFixed(2)
+        }
+      }
+    }
+
+    // Default calculation (same as DiscountSection)
+    console.log('📋 Using calculated total (rounded_total not available)')
+    const untaxedSum = items.reduce((sum: number, it: any) => {
+      const qty = Number(it.quantity || 0)
+      const rate = Number(it.standard_rate || 0)
+      return sum + qty * rate
+    }, 0)
+
+    const individualDiscountSum = items.reduce((sum: number, it: any) => {
+      const qty = Number(it.quantity || 0)
+      const rate = Number(it.standard_rate || 0)
+      const disc = Number(it.discount_percentage || 0)
+      return sum + (qty * rate * disc) / 100
+    }, 0)
+
+    // Net amount after individual discounts (before VAT)
+    const netAfterIndividualDiscount = untaxedSum - individualDiscountSum
+
+    // Apply global discount to net amount (before VAT)
+    const globalDiscountAmount = (netAfterIndividualDiscount * globalDiscountPercent) / 100
+    const netAfterGlobalDiscount = netAfterIndividualDiscount - globalDiscountAmount
+
+    // Calculate VAT on the globally discounted net amount
+    const vatCalc = netAfterGlobalDiscount * (vatPercentage / 100)
+
+    // Final total = discounted net amount + VAT
+    const totalRaw = netAfterGlobalDiscount + vatCalc
+    const totalRoundedCandidate = roundToNearest(totalRaw, 0.05)
+
+    const useRounding = isRoundingEnabled
+    const totalFinal = useRounding ? totalRoundedCandidate : Number(totalRaw.toFixed(2))
+
+    return totalFinal.toFixed(2)
+  }, [items, globalDiscountPercent, vatPercentage, isRoundingEnabled, currentTab?.orderData])
+
+  // Update order amount when items, discount, or VAT changes
   useEffect(() => {
     const total = calculateOrderTotal()
     setOrderAmount(total)
@@ -314,14 +406,14 @@ const ActionButtons: React.FC<Props> = ({
     return (a + b).toFixed(2)
   })()
 
-  // Calculate payment status based on amount entered
+  // Calculate payment status based on amount entered (compared to order amount only)
   const getPaymentStatus = () => {
     const enteredAmount = parseFloat(amount || '0') || 0
-    const total = parseFloat(totalPending || '0') || 0
+    const orderAmt = parseFloat(orderAmount || '0') || 0
 
     if (enteredAmount === 0) {
       return { text: 'Credit Sale', color: 'bg-orange-100 text-orange-800' }
-    } else if (enteredAmount >= total) {
+    } else if (enteredAmount >= orderAmt) {
       return { text: 'Fully Paid', color: 'bg-green-100 text-green-800' }
     } else {
       return { text: 'Partially Paid', color: 'bg-yellow-100 text-yellow-800' }
@@ -431,7 +523,7 @@ const ActionButtons: React.FC<Props> = ({
       // If customer_id is already stored, use it directly
       if (customerId) {
         console.log('✅ Using stored customer ID:', customerId)
-      } else if (selectedCustomer?.name && selectedCustomer.name !== 'Walking Customer') {
+      } else if (selectedCustomer?.name) {
         console.log('🔍 Customer ID not found, fetching from customer list API...')
 
         try {
@@ -477,8 +569,12 @@ const ActionButtons: React.FC<Props> = ({
         }
       }
 
-      // Use resolved customer_id or fallback to name or "Walking Customer"
-      const finalCustomerId = customerId || selectedCustomer?.name || 'Walking Customer'
+      // Use resolved customer_id or fallback to name.
+      // If still missing, block and ask user to select a customer.
+      const finalCustomerId = customerId || selectedCustomer?.name
+      if (!finalCustomerId) {
+        throw new Error('Please select a customer before proceeding')
+      }
       console.log('🔍 Final customer ID for order:', finalCustomerId)
 
       // Map items for API - let backend handle calculations
@@ -574,15 +670,36 @@ const ActionButtons: React.FC<Props> = ({
         })
       }
 
+      // Get Other Details from current tab (use the already defined currentTab variable)
+      const po_no = currentTab?.po_no?.trim() || null
+      const po_date = currentTab?.po_date?.trim() || null
+      const internal_note = currentTab?.internal_note?.trim() || null
+
+      // Get posting date from store (selected date from order details)
+      const selectedPostingDate = getCurrentTabPostingDate()
+      const postingDate = selectedPostingDate || getCurrentDate() // Use selected date or fallback to system date
+      console.log('📅 Using posting date:', postingDate, 'from store:', selectedPostingDate)
+
       // Prepare order data
-      const orderData = {
+      const orderData: any = {
         customer: finalCustomerId,
-        posting_date: new Date().toISOString().split('T')[0], // Today's date in YYYY-MM-DD format
+        posting_date: postingDate, // Use the date selected in the order details box
         selling_price_list: selectedPriceList,
         taxes_and_charges: 'VAT 15% - NAB', // Default tax, can be made configurable
         additional_discount_percentage: globalDiscountPercent, // Global discount from bottom section
         items: mappedItems,
         custom_stock_adjustment_sources: customStockAdjustmentSources
+      }
+
+      // Add Other Details fields if present
+      if (po_no) {
+        orderData.po_no = po_no
+      }
+      if (po_date) {
+        orderData.po_date = po_date // Already in YYYY-MM-DD format from date input
+      }
+      if (internal_note) {
+        orderData.internal_note = internal_note
       }
 
       console.log('📦 Order data:', orderData)
@@ -606,6 +723,11 @@ const ActionButtons: React.FC<Props> = ({
         }
 
         console.log('📝 Edit order data:', editData)
+        console.log('📝 ===== UPDATE ORDER API CALL =====')
+        console.log('📝 API URL: /api/method/centro_pos_apis.api.order.edit_order')
+        console.log('📝 Request Method: POST')
+        console.log('📝 Request Body:', JSON.stringify(editData, null, 2))
+        console.log('📝 Full Request Body Structure:', editData)
 
         response = await window.electronAPI?.proxy?.request({
           method: 'POST',
@@ -613,11 +735,19 @@ const ActionButtons: React.FC<Props> = ({
           data: editData
         })
 
-        console.log('📝 Edit order response:', response)
-        console.log('📝 Edit order response data:', JSON.stringify(response.data, null, 2))
+        console.log('📝 ===== UPDATE ORDER API RESPONSE =====')
+        console.log('📝 Full Response:', response)
+        console.log('📝 Response Data:', JSON.stringify(response.data, null, 2))
+        console.log('📝 Response Success:', response?.success)
+        console.log('📝 ===== END UPDATE ORDER API RESPONSE =====')
 
         if (response?.success) {
           console.log('✅ Order updated successfully!')
+          // Extract pdf_download_url from response
+          const pdfUrl = response.data?.data?.pdf_download_url || response.data?.pdf_download_url
+          if (pdfUrl) {
+            updateTabInstantPrintUrl(currentTab.id, pdfUrl)
+          }
           // Mark tab as not edited after successful save
           setTabEdited(currentTab.id, false)
           // Trigger save completed callback
@@ -628,15 +758,36 @@ const ActionButtons: React.FC<Props> = ({
             duration: 2000
           })
         } else {
-          // Check for insufficient stock errors first
+          // Parse item_error array if present
+          const itemErrors: Array<{ message: string; title: string; indicator: string; itemCode: string }> = []
+          if (response?.data?.item_error && Array.isArray(response.data.item_error)) {
+            response.data.item_error.forEach((itemErr: any) => {
+              if (itemErr.item_code && itemErr.error) {
+                itemErrors.push({
+                  message: itemErr.error,
+                  title: 'Item Validation Error',
+                  indicator: 'red',
+                  itemCode: itemErr.item_code
+                })
+              }
+            })
+            console.log('📦 Found item errors:', itemErrors)
+          }
+
+          // Check for insufficient stock errors in server messages
           if (response?.data?._server_messages) {
             try {
               const serverMessages = JSON.parse(response.data._server_messages)
               const stockErrors = parseInsufficientStockErrors(serverMessages)
               if (stockErrors.length > 0) {
                 console.log('📝 Found insufficient stock errors:', stockErrors)
-                onInsufficientStockErrors?.(stockErrors)
-                // Don't show toast for stock errors, they'll be shown in the bottom error box
+                // Combine item errors with stock errors
+                const allErrors = [...itemErrors, ...stockErrors]
+                if (allErrors.length > 0) {
+                  onInsufficientStockErrors?.(allErrors)
+                }
+                // Show server messages in toast popup
+                handleServerErrorMessages(response.data._server_messages, '')
                 return
               }
             } catch (parseError) {
@@ -644,12 +795,26 @@ const ActionButtons: React.FC<Props> = ({
             }
           }
 
-          // Handle other server error messages
-          handleServerErrorMessages(response?.data?._server_messages, 'Failed to update order')
+          // If we have item errors, show them in bottom error box
+          if (itemErrors.length > 0) {
+            onInsufficientStockErrors?.(itemErrors)
+          }
+
+          // Handle server error messages in toast popup (only if present)
+          if (response?.data?._server_messages) {
+            handleServerErrorMessages(response.data._server_messages, '')
+          }
         }
       } else {
         // Create new order
         console.log('📦 Creating new order')
+        console.log('📦 ===== CREATE ORDER API CALL =====')
+        console.log('📦 API URL: /api/method/centro_pos_apis.api.order.create_order')
+        console.log('📦 Request Method: POST')
+        console.log('📦 Request Body:', JSON.stringify(orderData, null, 2))
+        console.log('📦 Full Request Body Structure:', orderData)
+        console.log('📦 Items Count:', orderData.items?.length || 0)
+        console.log('📦 Custom Stock Adjustment Sources Count:', orderData.custom_stock_adjustment_sources?.length || 0)
 
         response = await window.electronAPI?.proxy?.request({
           method: 'POST',
@@ -657,9 +822,12 @@ const ActionButtons: React.FC<Props> = ({
           data: orderData
         })
 
-        console.log('📦 Create order response:', response)
-        console.log('📦 Response data structure:', JSON.stringify(response.data, null, 2))
-        console.log('📦 Response keys:', Object.keys(response.data || {}))
+        console.log('📦 ===== CREATE ORDER API RESPONSE =====')
+        console.log('📦 Full Response:', response)
+        console.log('📦 Response Data:', JSON.stringify(response.data, null, 2))
+        console.log('📦 Response Success:', response?.success)
+        console.log('📦 Response Keys:', Object.keys(response.data || {}))
+        console.log('📦 ===== END CREATE ORDER API RESPONSE =====')
 
         if (response?.success) {
           // Update tab with order ID
@@ -676,6 +844,11 @@ const ActionButtons: React.FC<Props> = ({
 
           if (orderId) {
             updateTabOrderId(currentTab.id, orderId)
+            // Extract pdf_download_url from response
+            const pdfUrl = response.data?.data?.pdf_download_url || response.data?.pdf_download_url
+            if (pdfUrl) {
+              updateTabInstantPrintUrl(currentTab.id, pdfUrl)
+            }
             // Mark tab as not edited after successful save
             setTabEdited(currentTab.id, false)
             // Trigger save completed callback
@@ -699,15 +872,36 @@ const ActionButtons: React.FC<Props> = ({
           // Navigate to prints tab
           onNavigateToPrints?.()
         } else {
-          // Check for insufficient stock errors first
+          // Parse item_error array if present
+          const itemErrors: Array<{ message: string; title: string; indicator: string; itemCode: string }> = []
+          if (response?.data?.item_error && Array.isArray(response.data.item_error)) {
+            response.data.item_error.forEach((itemErr: any) => {
+              if (itemErr.item_code && itemErr.error) {
+                itemErrors.push({
+                  message: itemErr.error,
+                  title: 'Item Validation Error',
+                  indicator: 'red',
+                  itemCode: itemErr.item_code
+                })
+              }
+            })
+            console.log('📦 Found item errors:', itemErrors)
+          }
+
+          // Check for insufficient stock errors in server messages
           if (response?.data?._server_messages) {
             try {
               const serverMessages = JSON.parse(response.data._server_messages)
               const stockErrors = parseInsufficientStockErrors(serverMessages)
               if (stockErrors.length > 0) {
                 console.log('📦 Found insufficient stock errors:', stockErrors)
-                onInsufficientStockErrors?.(stockErrors)
-                // Don't show toast for stock errors, they'll be shown in the bottom error box
+                // Combine item errors with stock errors
+                const allErrors = [...itemErrors, ...stockErrors]
+                if (allErrors.length > 0) {
+                  onInsufficientStockErrors?.(allErrors)
+                }
+                // Show server messages in toast popup
+                handleServerErrorMessages(response.data._server_messages, '')
                 return
               }
             } catch (parseError) {
@@ -715,8 +909,15 @@ const ActionButtons: React.FC<Props> = ({
             }
           }
 
-          // Handle other server error messages
-          handleServerErrorMessages(response?.data?._server_messages, 'Failed to create order')
+          // If we have item errors, show them in bottom error box
+          if (itemErrors.length > 0) {
+            onInsufficientStockErrors?.(itemErrors)
+          }
+
+          // Handle server error messages in toast popup (only if present)
+          if (response?.data?._server_messages) {
+            handleServerErrorMessages(response.data._server_messages, '')
+          }
         }
       }
     } catch (error) {
@@ -790,14 +991,199 @@ const ActionButtons: React.FC<Props> = ({
       return
     }
 
+    // Check if order is already confirmed (docstatus = 1)
+    const isAlreadyConfirmed = currentTab?.orderData && Number(currentTab.orderData.docstatus) === 1
+    
+    // If order is already confirmed and payment amount > 0, directly call payment entry API
+    if (isAlreadyConfirmed && paymentAmount > 0) {
+      try {
+        console.log('💳 ===== ORDER ALREADY CONFIRMED, CALLING PAYMENT ENTRY DIRECTLY =====')
+        
+        // Get invoice number from current tab or orderData
+        let invoiceNumber = getCurrentTabInvoiceNumber()
+        if (!invoiceNumber && currentTab?.orderData?.linked_invoices) {
+          const linkedInvoices = currentTab.orderData.linked_invoices
+          if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
+            invoiceNumber = linkedInvoices[0]?.name || null
+          } else if (linkedInvoices && typeof linkedInvoices === 'object') {
+            invoiceNumber = linkedInvoices.name || null
+          }
+        }
+        
+        if (!invoiceNumber) {
+          console.log('⚠️ No invoice number found, fetching order details...')
+          // Fetch order details to get invoice number
+          const orderDetailsResponse = await window.electronAPI?.proxy?.request({
+            url: '/api/method/centro_pos_apis.api.order.get_sales_order_details',
+            params: {
+              sales_order_id: currentTab.orderId
+            }
+          })
+          
+          if (orderDetailsResponse?.data?.data) {
+            const orderData = orderDetailsResponse.data.data
+            const linkedInvoices = orderData.linked_invoices
+            if (linkedInvoices) {
+              if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
+                invoiceNumber = linkedInvoices[0]?.name || null
+              } else if (linkedInvoices && typeof linkedInvoices === 'object') {
+                invoiceNumber = linkedInvoices.name || null
+              }
+            }
+          }
+        }
+        
+        if (!invoiceNumber) {
+          toast.error('Invoice number not found. Cannot process payment.', {
+            duration: 5000
+          })
+          setIsProcessingPayment(false)
+          return
+        }
+        
+        // Get customer ID from current tab
+        const customerId = currentTab?.customer?.customer_id || null
+        if (!customerId) {
+          toast.error('Customer not found. Cannot process payment.', {
+            duration: 5000
+          })
+          setIsProcessingPayment(false)
+          return
+        }
+        
+        // Get posting date from store (selected date from order details) or use payment date
+        const selectedPostingDate = getCurrentTabPostingDate()
+        const formattedDate = selectedPostingDate || date || getCurrentDate()
+        console.log('📅 Using posting date for payment entry:', formattedDate, 'from store:', selectedPostingDate)
+        
+        const paymentEntryData = {
+          payment_type: 'Receive',
+          party_type: 'Customer',
+          party: customerId,
+          posting_date: formattedDate,
+          paid_amount: paymentAmount,
+          mode_of_payment: mode,
+          references: [
+            {
+              reference_doctype: 'Sales Invoice',
+              reference_name: invoiceNumber,
+              allocated_amount: paymentAmount
+            }
+          ]
+        }
+        
+        console.log('💳 Payment Entry Request Data:', JSON.stringify(paymentEntryData, null, 2))
+        
+        const paymentEntryResponse = await window.electronAPI?.proxy?.request({
+          method: 'POST',
+          url: '/api/method/centro_pos_apis.api.order.create_payment_entry',
+          data: paymentEntryData
+        })
+        
+        console.log('💳 ===== PAYMENT ENTRY API RESPONSE =====')
+        console.log('💳 Full Response Object:', paymentEntryResponse)
+        console.log('💳 Response Status:', paymentEntryResponse?.status)
+        console.log('💳 Response Success:', paymentEntryResponse?.success)
+        console.log('💳 Response Data:', JSON.stringify(paymentEntryResponse?.data, null, 2))
+        console.log('💳 ===== END PAYMENT ENTRY API RESPONSE =====')
+        
+        if (paymentEntryResponse?.success) {
+          console.log('✅ Payment entry created successfully!')
+          toast.success(`Payment processed successfully! Order ID: ${currentTab.orderId}`, {
+            duration: 2000
+          })
+          
+          // Extract pdf_download_url if available
+          const pdfUrl = paymentEntryResponse.data?.data?.pdf_download_url || paymentEntryResponse.data?.pdf_download_url
+          if (pdfUrl) {
+            updateTabInstantPrintUrl(currentTab.id, pdfUrl)
+          }
+          
+          // Update tab status to paid
+          setTabStatus(currentTab.id, 'paid')
+          
+          // Close dialog and navigate to prints
+          setOpen(false)
+          onNavigateToPrints?.()
+        } else {
+          handleServerErrorMessages(paymentEntryResponse?.data?._server_messages, '')
+        }
+        
+        setIsProcessingPayment(false)
+        return
+      } catch (paymentError) {
+        console.error('❌ ===== ERROR CREATING PAYMENT ENTRY =====')
+        console.error('❌ Error:', paymentError)
+        handleServerErrorMessages((paymentError as any)?.response?.data?._server_messages, '')
+        setIsProcessingPayment(false)
+        return
+      }
+    }
+
     setIsProcessingPayment(true)
     try {
       console.log('🔄 ===== ORDER CONFIRMATION API CALL START =====')
       console.log('🔄 API Endpoint: /api/method/centro_pos_apis.api.order.order_confirmation')
-      console.log('🔄 Payment Amount:', paymentAmount)
-      console.log('🔄 Payment Mode:', mode)
-      console.log('🔄 Order ID:', currentTab.orderId)
-      console.log('🔄 POS Profile:', profile.name)
+      
+      // Context Information
+      console.log('📋 ===== CONTEXT INFORMATION =====')
+      console.log('📋 Current Tab ID:', currentTab.id)
+      console.log('📋 Order ID:', currentTab.orderId)
+      console.log('📋 Tab Status:', currentTab.status)
+      console.log('📋 Tab Type:', currentTab.type)
+      console.log('📋 Tab Display Name:', currentTab.displayName)
+      console.log('📋 Tab Is Edited:', currentTab.isEdited)
+      
+      // Customer Information
+      const customer = getCurrentTabCustomer()
+      console.log('👤 Customer Information:', {
+        name: customer?.name || 'No customer',
+        customer_id: customer?.customer_id || 'N/A',
+        gst: customer?.gst || 'N/A'
+      })
+      
+      // Order Items
+      const tabItems = getCurrentTabItems()
+      console.log('📦 Order Items Count:', tabItems.length)
+      console.log('📦 Order Items:', tabItems.map(item => ({
+        item_code: item.item_code,
+        item_name: item.item_name,
+        quantity: item.quantity,
+        rate: item.standard_rate,
+        discount_percentage: item.discount_percentage
+      })))
+      
+      // Price List
+      console.log('💰 Selected Price List:', selectedPriceList)
+      
+      // Order Amounts
+      console.log('💵 Order Amount:', orderAmount)
+      console.log('💵 Amount Due:', amountDue)
+      console.log('💵 Total Pending:', totalPending)
+      
+      // Payment Information
+      console.log('💳 Payment Amount:', paymentAmount)
+      console.log('💳 Payment Mode:', mode)
+      console.log('💳 Payment Date:', date)
+      
+      // POS Profile
+      console.log('🏪 POS Profile:', {
+        name: profile.name,
+        company: profile.company || 'N/A',
+        warehouse: profile.warehouse || 'N/A'
+      })
+      
+      // Other Details
+      console.log('📝 Other Details:', {
+        po_no: currentTab.po_no || null,
+        po_date: currentTab.po_date || null,
+        internal_note: currentTab.internal_note || null
+      })
+      
+      // Rounding
+      console.log('🔢 Rounding Enabled:', getCurrentTabRoundingEnabled())
+      
+      console.log('📋 ===== END CONTEXT INFORMATION =====')
 
       const confirmationData = {
         sales_order_id: currentTab.orderId,
@@ -833,10 +1219,188 @@ const ActionButtons: React.FC<Props> = ({
       console.log('✅ Payment Mode:', mode)
         console.log('✅ Order ID:', currentTab.orderId)
 
+        // Extract pdf_download_url from response
+        const pdfUrl = response.data?.data?.pdf_download_url || response.data?.pdf_download_url
+        if (pdfUrl) {
+          console.log('📄 PDF Download URL extracted:', pdfUrl)
+          updateTabInstantPrintUrl(currentTab.id, pdfUrl)
+        } else {
+          console.log('⚠️ No PDF download URL found in response')
+        }
+
+        // Fetch order details to get linked_invoices and invoice number
+        try {
+          console.log('📋 ===== FETCHING ORDER DETAILS AFTER CONFIRMATION =====')
+          console.log('📋 Fetching order details to get invoice number...')
+          console.log('📋 Order ID:', currentTab.orderId)
+          
+          const orderDetailsResponse = await window.electronAPI?.proxy?.request({
+            url: '/api/method/centro_pos_apis.api.order.get_sales_order_details',
+            params: {
+              sales_order_id: currentTab.orderId
+            }
+          })
+          
+          console.log('📋 Order Details API Response:', orderDetailsResponse)
+          
+          if (orderDetailsResponse?.data?.data) {
+            const orderData = orderDetailsResponse.data.data
+            console.log('📋 ===== ORDER DETAILS FETCHED =====')
+            console.log('📋 Order Data:', JSON.stringify(orderData, null, 2))
+            console.log('📋 Order Docstatus:', orderData.docstatus)
+            console.log('📋 Order Status:', orderData.status)
+            console.log('📋 Order Grand Total:', orderData.grand_total)
+            console.log('📋 Linked Invoices:', orderData.linked_invoices)
+            
+            // Update orderData in the tab
+            updateTabOrderData(currentTab.id, orderData)
+            console.log('✅ Order data updated in tab')
+            
+            // Extract invoice number, status, and custom_reverse_status from linked_invoices
+            const linkedInvoices = orderData.linked_invoices
+            let invoiceNumber = null
+            let invoiceStatus = null
+            let invoiceCustomReverseStatus = null
+            
+            console.log('📋 ===== EXTRACTING INVOICE NUMBER =====')
+            console.log('📋 Linked invoices raw data:', JSON.stringify(linkedInvoices, null, 2))
+            console.log('📋 Linked invoices type:', typeof linkedInvoices)
+            console.log('📋 Is array:', Array.isArray(linkedInvoices))
+            
+            if (linkedInvoices) {
+              if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
+                console.log('📋 Linked invoices is an array with length:', linkedInvoices.length)
+                const firstInvoice = linkedInvoices[0]
+                console.log('📋 First invoice object:', JSON.stringify(firstInvoice, null, 2))
+                invoiceNumber = firstInvoice?.name || null
+                invoiceStatus = firstInvoice?.status || null
+                invoiceCustomReverseStatus = firstInvoice?.custom_reverse_status || null
+                console.log('📋 First invoice name field:', invoiceNumber)
+                console.log('📋 First invoice status field:', invoiceStatus)
+                console.log('📋 First invoice custom_reverse_status field:', invoiceCustomReverseStatus)
+              } else if (linkedInvoices && typeof linkedInvoices === 'object' && !Array.isArray(linkedInvoices)) {
+                console.log('📋 Linked invoices is an object:', JSON.stringify(linkedInvoices, null, 2))
+                invoiceNumber = linkedInvoices.name || null
+                invoiceStatus = linkedInvoices.status || null
+                invoiceCustomReverseStatus = linkedInvoices.custom_reverse_status || null
+                console.log('📋 Linked invoices name field:', invoiceNumber)
+                console.log('📋 Linked invoices status field:', invoiceStatus)
+                console.log('📋 Linked invoices custom_reverse_status field:', invoiceCustomReverseStatus)
+              } else {
+                console.log('⚠️ Linked invoices is neither array nor object:', linkedInvoices)
+              }
+              
+              if (invoiceNumber) {
+                console.log('✅ Invoice number successfully extracted:', invoiceNumber)
+                console.log('✅ Invoice status:', invoiceStatus)
+                console.log('✅ Invoice custom_reverse_status:', invoiceCustomReverseStatus)
+                updateTabInvoiceNumber(currentTab.id, invoiceNumber, invoiceStatus, invoiceCustomReverseStatus)
+                console.log('✅ Invoice number, status, and custom_reverse_status stored in tab with ID:', currentTab.id)
+              } else {
+                console.log('⚠️ No invoice number found in linked_invoices')
+                console.log('⚠️ Full linked_invoices structure:', JSON.stringify(linkedInvoices, null, 2))
+              }
+            } else {
+              console.log('⚠️ No linked_invoices found in order data')
+              console.log('⚠️ Order data keys:', orderData ? Object.keys(orderData) : 'No order data')
+            }
+            
+            console.log('📋 ===== END EXTRACTING INVOICE NUMBER =====')
+            
+            // If order is confirmed (docstatus = 1) and payment amount > 0, call create_payment_entry API
+            const isOrderConfirmed = Number(orderData.docstatus) === 1
+            if (isOrderConfirmed && paymentAmount > 0 && invoiceNumber) {
+              try {
+                console.log('💳 ===== CREATING PAYMENT ENTRY FOR CONFIRMED ORDER =====')
+                console.log('💳 Order is confirmed, calling create_payment_entry API...')
+                
+                // Get customer ID from current tab
+                const customerId = currentTab?.customer?.customer_id || null
+                if (!customerId) {
+                  console.log('⚠️ No customer ID found, cannot create payment entry')
+                } else {
+                  // Get posting date from store (selected date from order details) or use payment date
+                  const selectedPostingDate = getCurrentTabPostingDate()
+                  const formattedDate = selectedPostingDate || date || getCurrentDate()
+                  console.log('📅 Using posting date for payment entry (confirmed order):', formattedDate, 'from store:', selectedPostingDate)
+                  
+                  const paymentEntryData = {
+                    payment_type: 'Receive',
+                    party_type: 'Customer',
+                    party: customerId,
+                    posting_date: formattedDate,
+                    paid_amount: paymentAmount,
+                    mode_of_payment: mode,
+                    references: [
+                      {
+                        reference_doctype: 'Sales Invoice',
+                        reference_name: invoiceNumber,
+                        allocated_amount: paymentAmount
+                      }
+                    ]
+                  }
+                  
+                  console.log('💳 Payment Entry Request Data:', JSON.stringify(paymentEntryData, null, 2))
+                  
+                  const paymentEntryResponse = await window.electronAPI?.proxy?.request({
+                    method: 'POST',
+                    url: '/api/method/centro_pos_apis.api.order.create_payment_entry',
+                    data: paymentEntryData
+                  })
+                  
+                  console.log('💳 ===== PAYMENT ENTRY API RESPONSE =====')
+                  console.log('💳 Full Response Object:', paymentEntryResponse)
+                  console.log('💳 Response Status:', paymentEntryResponse?.status)
+                  console.log('💳 Response Success:', paymentEntryResponse?.success)
+                  console.log('💳 Response Data:', JSON.stringify(paymentEntryResponse?.data, null, 2))
+                  console.log('💳 ===== END PAYMENT ENTRY API RESPONSE =====')
+                  
+                  if (paymentEntryResponse?.success) {
+                    console.log('✅ Payment entry created successfully!')
+                  } else {
+                    console.log('⚠️ Payment entry API call failed or returned success: false')
+                    // Don't show error toast as order confirmation already succeeded
+                  }
+                }
+              } catch (paymentError) {
+                console.error('❌ ===== ERROR CREATING PAYMENT ENTRY =====')
+                console.error('❌ Error:', paymentError)
+                console.error('❌ Error message:', (paymentError as any)?.message)
+                console.error('❌ Error stack:', (paymentError as any)?.stack)
+                console.error('❌ ===== END PAYMENT ENTRY ERROR =====')
+                // Don't block the flow if payment entry fails - order is already confirmed
+              }
+            } else {
+              if (!isOrderConfirmed) {
+                console.log('📋 Order is not confirmed (docstatus != 1), skipping payment entry API call')
+              } else if (paymentAmount <= 0) {
+                console.log('📋 Payment amount is 0, skipping payment entry API call')
+              } else if (!invoiceNumber) {
+                console.log('📋 No invoice number available, skipping payment entry API call')
+              }
+            }
+            
+            console.log('📋 ===== END ORDER DETAILS =====')
+          } else {
+            console.log('⚠️ No order data in response')
+          }
+        } catch (error) {
+          console.error('❌ ===== ERROR FETCHING ORDER DETAILS =====')
+          console.error('❌ Error:', error)
+          console.error('❌ Error message:', (error as any)?.message)
+          console.error('❌ Error stack:', (error as any)?.stack)
+          console.error('❌ ===== END ERROR =====')
+          // Don't block the flow if this fails
+        }
+
         // Update tab status based on payment amount
         const newStatus = paymentAmount > 0 ? 'paid' : 'confirmed'
-        console.log('✅ Setting tab status to:', newStatus)
+        console.log('✅ ===== UPDATING TAB STATUS =====')
+        console.log('✅ New Status:', newStatus)
+        console.log('✅ Previous Status:', currentTab.status)
+        console.log('✅ Payment Amount:', paymentAmount)
         setTabStatus(currentTab.id, newStatus)
+        console.log('✅ Tab status updated')
 
         const action = paymentAmount > 0 ? 'paid' : 'confirmed'
         console.log('✅ Showing success toast for action:', action)
@@ -844,9 +1408,23 @@ const ActionButtons: React.FC<Props> = ({
           duration: 2000
         })
 
+        console.log('✅ ===== POST-CONFIRMATION ACTIONS =====')
         console.log('✅ Closing dialog and resetting form')
         // Close the dialog
         setOpen(false)
+        // Navigate to prints tab
+        console.log('✅ Navigating to prints tab')
+        onNavigateToPrints?.()
+        
+        // Final context summary
+        console.log('📋 ===== FINAL CONTEXT SUMMARY =====')
+        const updatedTab = getCurrentTab()
+        console.log('📋 Updated Tab Status:', updatedTab?.status)
+        console.log('📋 Updated Tab Invoice Number:', getCurrentTabInvoiceNumber())
+        console.log('📋 Updated Tab Instant Print URL:', updatedTab?.instantPrintUrl)
+        console.log('📋 Updated Tab Order Data Docstatus:', updatedTab?.orderData?.docstatus)
+        console.log('📋 ===== END FINAL CONTEXT SUMMARY =====')
+        
         console.log('✅ ===== ORDER CONFIRMATION SUCCESS END =====')
       } else {
         console.log('❌ ===== ORDER CONFIRMATION FAILED =====')
@@ -854,7 +1432,7 @@ const ActionButtons: React.FC<Props> = ({
         console.log('❌ Response:', response)
 
         // Handle server error messages
-        handleServerErrorMessages(response?.data?._server_messages, 'Failed to confirm order')
+        handleServerErrorMessages(response?.data?._server_messages, '')
         return
       }
     } catch (error) {
@@ -919,7 +1497,10 @@ const ActionButtons: React.FC<Props> = ({
         const latestOrderId = currentTab?.orderId
         if (latestOrderId) {
           const res = await window.electronAPI?.proxy?.request({
-            url: `/api/resource/Sales Order/${latestOrderId}`,
+            url: '/api/method/centro_pos_apis.api.order.get_sales_order_details',
+            params: {
+              sales_order_id: latestOrderId
+            },
             method: 'GET'
           })
           const doc = res?.data?.data
@@ -1155,7 +1736,7 @@ const ActionButtons: React.FC<Props> = ({
             <div>
               <div className="text-sm font-medium text-gray-700 mb-2">Payment Mode</div>
               <Select value={mode} onValueChange={setMode}>
-                <SelectTrigger className="w-full text-base py-2.5">
+                <SelectTrigger className="w-full text-lg py-3">
                   <SelectValue placeholder="Select mode" />
                 </SelectTrigger>
                 <SelectContent className="bg-white border-gray-200 shadow-lg">
@@ -1173,8 +1754,10 @@ const ActionButtons: React.FC<Props> = ({
                 type="number"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                readOnly={isConfirming}
-                className={`text-lg py-3 ${isConfirming ? 'bg-gray-100' : ''}`}
+                className="text-lg py-3"
+                placeholder="Enter amount"
+                min="0"
+                step="0.01"
               />
             </div>
           </div>
@@ -1202,7 +1785,7 @@ const ActionButtons: React.FC<Props> = ({
                 setOpen(false)
                 setAmount('')
                 setMode('Cash')
-                setDate(new Date().toISOString().slice(0, 10))
+                setDate(getCurrentDate())
                 setIsConfirming(false)
               }}
               disabled={isProcessingPayment}
@@ -1256,8 +1839,7 @@ const ActionButtons: React.FC<Props> = ({
         isOpen={isReturnModalOpen}
         onClose={() => setIsReturnModalOpen(false)}
         onReturnSuccess={() => {
-          // Optionally refresh data or show success message
-          toast.success('Return order processed successfully!', { duration: 2000 })
+          onNavigateToPrints?.()
         }}
       />
     </>

@@ -13,7 +13,7 @@ import {
   TableRow
 } from '@renderer/components/ui/table'
 import { Plus, X } from 'lucide-react'
-import { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { useHotkeys } from 'react-hotkeys-hook'
 import MultiWarehousePopup from './multi-warehouse-popup'
@@ -40,7 +40,7 @@ type Props = {
 type EditField = 'quantity' | 'standard_rate' | 'uom' | 'discount_percentage' | 'item_name' | 'item_description'
 
 const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem, shouldStartEditing = false, onEditingStarted, onAddItemClick, onSaveCompleted, isProductModalOpen = false, isCustomerModalOpen = false, isErrorBoxFocused = false, onEditingStateChange, errorItems = [] }) => {
-  const { getCurrentTabItems, activeTabId, updateItemInTab, updateItemInTabByIndex, getCurrentTab, setTabEdited } = usePOSTabStore();
+  const { getCurrentTabItems, activeTabId, updateItemInTab, updateItemInTabByIndex, getCurrentTab, setTabEdited, removeItemFromTabByIndex, updateTabOtherDetails } = usePOSTabStore();
   const items = getCurrentTabItems();
   const hasBottomErrors = Array.isArray(errorItems) && errorItems.length > 0;
   const [tableSearch, setTableSearch] = useState('')
@@ -58,6 +58,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   const isReadOnly = currentTab?.status === 'confirmed' || currentTab?.status === 'paid';
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteCandidate, setDeleteCandidate] = useState<string | null>(null)
+  const [deleteCandidateIndex, setDeleteCandidateIndex] = useState<number | null>(null)
   const confirmBtnRef = useRef<HTMLButtonElement>(null)
   const cancelBtnRef = useRef<HTMLButtonElement>(null)
 
@@ -261,6 +262,9 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     requiredQty: number
     currentWarehouseQty: number
     warehouses: any[]
+    uom?: string
+    defaultWarehouse?: string
+    itemIndex?: number // Track the index of the item being edited (important for duplicates)
   } | null>(null)
 
   // Function to scroll selected item into view (aware of sticky footer)
@@ -486,12 +490,18 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
           }
         })
 
+        // Find the index of this item in the items array (important for duplicate items)
+        const itemIndex = items.findIndex((i: any) => i === item)
+        
         setWarehousePopupData({
           itemCode: item.item_code,
           itemName: item.item_name || item.label || 'Unknown Product',
           requiredQty,
           currentWarehouseQty: currentWarehouseQty,
-          warehouses
+          warehouses,
+          uom: item.uom || 'Nos',
+          defaultWarehouse: profile?.warehouse,
+          itemIndex: itemIndex >= 0 ? itemIndex : undefined // Store the item index
         })
         setShowWarehousePopup(true)
         return true // Indicates popup was shown
@@ -622,74 +632,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       }
     }
 
-    // Check for quantity shortage against current warehouse stock
-    const shouldCheckQuantity = activeField === 'quantity' || activeField === 'uom' || activeField === 'standard_rate'
-    
-    if (shouldCheckQuantity) {
-      // Get the current quantity (either from edit or existing item)
-      const currentQuantity = activeField === 'quantity' ? finalValue : item.quantity
-      const requiredQty = typeof currentQuantity === 'number' ? currentQuantity : parseFloat(String(currentQuantity)) || 0
-      
-      // Get the current UOM (either from edit or existing item)
-      const currentUom = activeField === 'uom' ? finalValue : item.uom
-      const uomToCheck = String(currentUom || 'Nos').toLowerCase()
-      
-      try {
-        // Get current warehouse from POS profile first
-        const profileResponse = await (window as any).electronAPI?.proxy?.request({
-          method: 'GET',
-          url: '/api/method/centro_pos_apis.api.profile.get_pos_profile'
-        })
-        const currentWarehouse = profileResponse?.data?.data?.warehouse || 'Stores - NAB'
-        
-        // Fetch warehouse stock for this item
-        const res = await (window as any).electronAPI?.proxy?.request({
-          url: '/api/method/centro_pos_apis.api.product.item_stock_warehouse_list',
-          params: {
-            item_id: item.item_code,
-            search_text: '',
-            limit_start: 0,
-            limit_page_length: 20
-          }
-        })
-        const list = Array.isArray(res?.data?.data) ? res.data.data : []
-        
-        // Find current warehouse stock for the selected UOM
-        const currentWarehouseData = list.find((w: any) => w.warehouse === currentWarehouse)
-        const currentWarehouseQty = currentWarehouseData ? (() => {
-          const q = Array.isArray(currentWarehouseData.quantities) ? currentWarehouseData.quantities : []
-          const match = q.find((qq: any) => String(qq.uom).toLowerCase() === uomToCheck)
-          return Number(match?.qty || 0)
-        })() : 0
-
-        // Check if required quantity exceeds current warehouse stock
-        if (requiredQty > currentWarehouseQty) {
-          // Prepare all warehouses for popup
-        const warehouses = list.map((w: any) => {
-          const q = Array.isArray(w.quantities) ? w.quantities : []
-            const match = q.find((qq: any) => String(qq.uom).toLowerCase() === uomToCheck)
-            return { 
-              name: w.warehouse, 
-              available: Number(match?.qty || 0),
-              selected: w.warehouse === currentWarehouse // Pre-select current warehouse
-            }
-          })
-
-          setWarehousePopupData({
-            itemCode: item.item_code,
-            itemName: item.item_name || item.label || 'Unknown Product',
-            requiredQty,
-            currentWarehouseQty: currentWarehouseQty,
-            warehouses
-          })
-          setShowWarehousePopup(true)
-          return // Don't save yet, wait for warehouse allocation
-        }
-      } catch (err) {
-        console.error('Error checking warehouse quantities:', err)
-      }
-    }
-
+    // Warehouse popup is now only triggered manually via Ctrl+Shift+W
+    // Removed automatic popup trigger on quantity change
 
     updateItemAndMarkEdited(selectedItemId, { [activeField]: finalValue })
 
@@ -808,11 +752,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     { preventDefault: true }
   )
 
-  // Shift key to show product list popup immediately
+  // Ctrl+I key to show product list popup immediately
   useHotkeys(
-    'shift',
+    'ctrl+i',
     async () => {
-      console.log('⌨️ Shift key pressed - showing product list popup')
+      console.log('⌨️ Ctrl+I key pressed - showing product list popup')
       if (onAddItemClick && !isProductModalOpen && !isCustomerModalOpen) {
         // If currently editing, save the current value first
         if (isEditing && selectedItemId && activeTabId) {
@@ -870,12 +814,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
           if (!isNaN(numValue) && numValue >= 0) {
             updateItemAndMarkEdited(selectedItemId, { quantity: numValue })
             
-            // Check for quantity validation and show warehouse popup if needed
-            const popupShown = await validateQuantityAndShowPopup(item, numValue, item.uom || 'Nos')
-            if (popupShown) {
-              // Don't navigate if popup is shown - wait for user to handle allocation
-              return
-            }
+            // Warehouse popup is now only triggered manually via Ctrl+Shift+W
+            // Removed automatic popup trigger on quantity change
           }
           // Navigate to unit price and keep editing
           setActiveField('standard_rate')
@@ -996,10 +936,23 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     }, 0)
 
     // Update the item with the total allocated quantity
-    updateItemAndMarkEdited(warehousePopupData.itemCode, { 
-      quantity: totalAllocated,
-      warehouseAllocations: allocations 
-    })
+    // Use itemIndex if available (for duplicate items), otherwise use item_code
+    if (warehousePopupData.itemIndex !== undefined && warehousePopupData.itemIndex >= 0) {
+      // Update by index to ensure we update the correct duplicate item
+      updateItemInTabByIndex(activeTabId, warehousePopupData.itemIndex, {
+        quantity: totalAllocated,
+        warehouseAllocations: allocations
+      })
+      setTabEdited(activeTabId, true)
+      console.log('📦 Updated warehouse allocation for item at index:', warehousePopupData.itemIndex)
+    } else {
+      // Fallback to item_code update (updates first match)
+      updateItemAndMarkEdited(warehousePopupData.itemCode, { 
+        quantity: totalAllocated,
+        warehouseAllocations: allocations 
+      })
+      console.log('📦 Updated warehouse allocation for item by code:', warehousePopupData.itemCode)
+    }
 
     // Mark this item as warehouse-allocated to prevent future popups
     setWarehouseAllocatedItems(prev => new Set([...prev, warehousePopupData.itemCode]))
@@ -1023,10 +976,88 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   const { profile } = usePOSProfileStore();
   const allowDuplicateItems = Boolean(profile?.custom_allow_duplicate_items_in_cart === 1);
 
-  // Other Details fields
-  const [poRef, setPoRef] = useState<string>('')
-  const [poRefDate, setPoRefDate] = useState<string>(() => new Date().toISOString().slice(0, 10))
-  const [internalNote, setInternalNote] = useState<string>('')
+  // Get current date in local timezone (YYYY-MM-DD format)
+  const getCurrentDate = () => {
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = String(now.getMonth() + 1).padStart(2, '0')
+    const day = String(now.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  // Other Details fields - sync with store
+  const [poRef, setPoRef] = useState<string>(currentTab?.po_no || '')
+  const [poRefDate, setPoRefDate] = useState<string>(currentTab?.po_date || getCurrentDate())
+  const [internalNote, setInternalNote] = useState<string>(currentTab?.internal_note || '')
+  
+  // Use ref to track if we're syncing from store to prevent infinite loop
+  const isSyncingFromStoreRef = React.useRef(false)
+
+  // Sync local state with store when tab changes
+  React.useEffect(() => {
+    if (currentTab && activeTabId) {
+      const storePoNo = currentTab.po_no || ''
+      const currentDate = getCurrentDate()
+      const storePoDate = currentTab.po_date || currentDate // Default to current date if not set
+      const storeInternalNote = currentTab.internal_note || ''
+      
+      // If PO date is not set in store, initialize it with current date
+      if (!currentTab.po_date) {
+        updateTabOtherDetails(activeTabId, {
+          po_no: currentTab.po_no || null,
+          po_date: currentDate,
+          internal_note: currentTab.internal_note || null
+        })
+      }
+      
+      // Only update if values are different to prevent unnecessary updates
+      if (poRef !== storePoNo || poRefDate !== storePoDate || internalNote !== storeInternalNote) {
+        isSyncingFromStoreRef.current = true
+        setPoRef(storePoNo)
+        setPoRefDate(storePoDate)
+        setInternalNote(storeInternalNote)
+        // Reset flag after state updates
+        setTimeout(() => {
+          isSyncingFromStoreRef.current = false
+        }, 0)
+      }
+    } else if (activeTabId && !currentTab?.po_date) {
+      // If tab exists but PO date is not set, initialize it
+      const currentDate = getCurrentDate()
+      updateTabOtherDetails(activeTabId, {
+        po_no: null,
+        po_date: currentDate,
+        internal_note: null
+      })
+    }
+  }, [activeTabId, currentTab?.po_no, currentTab?.po_date, currentTab?.internal_note])
+
+  // Update store when local state changes (only if not syncing from store)
+  React.useEffect(() => {
+    if (activeTabId && !isSyncingFromStoreRef.current) {
+      const storePoNo = currentTab?.po_no || ''
+      const currentDate = getCurrentDate()
+      const storePoDate = currentTab?.po_date || currentDate
+      const storeInternalNote = currentTab?.internal_note || ''
+      
+      const newPoNo = poRef.trim() || null
+      const newPoDate = poRefDate || currentDate // Default to current date if empty
+      const newInternalNote = internalNote.trim() || null
+      
+      // Only update store if values actually changed
+      if (
+        newPoNo !== storePoNo ||
+        newPoDate !== storePoDate ||
+        newInternalNote !== storeInternalNote
+      ) {
+        updateTabOtherDetails(activeTabId, {
+          po_no: newPoNo,
+          po_date: newPoDate,
+          internal_note: newInternalNote
+        })
+      }
+    }
+  }, [poRef, poRefDate, internalNote, activeTabId])
 
   return (
     <div className="px-4 pt-4 pb-0 bg-white h-full flex flex-col min-h-0">
@@ -1113,6 +1144,14 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                   setTimeout(() => {
                     localKeyHandlingRef.current = false
                   }, 30)
+                } else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && selectedItemId && !isEditing) {
+                  // When item is selected but not editing, left/right arrows focus quantity field
+                  e.preventDefault()
+                  e.stopPropagation()
+                  const selectedItem = filteredItems[selectedRowIndex]
+                  if (selectedItem) {
+                    moveToField(selectedItem.item_code, 'quantity')
+                  }
                 }
               }}
               onClick={(e) => {
@@ -1136,10 +1175,15 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                     isSelected && isEditing && activeField === 'discount_percentage'
                   const isEditingItemName = isSelected && isEditing && activeField === 'item_description'
                   const hasError = hasItemError(item.item_code)
+                  const hasSplitWarehouse = item.warehouseAllocations && Array.isArray(item.warehouseAllocations) && item.warehouseAllocations.length > 0
 
+                  // Create unique key for each row (even for duplicate items)
+                  // Include tab ID and index to ensure uniqueness across tab switches
+                  const uniqueKey = `${activeTabId || 'no-tab'}-item-${index}-${item.item_code}`
+                  
                   return (
                     <TableRow
-                      key={item.item_code}
+                      key={uniqueKey}
                       data-item-code={item.item_code}
                       data-row-index={index}
                       onClick={(e) => {
@@ -1162,13 +1206,27 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                         <TableCell className="w-[50px] text-center font-bold">{index + 1}</TableCell>
                       <TableCell className={`w-[110px]`}>
                         <div className="flex flex-col">
-                          <span className={`${hasError ? 'text-red-600 font-semibold' : isSelected ? 'font-semibold text-blue-900' : 'text-gray-800'} text-[11px] leading-4 truncate`}>{item.item_code}</span>
-                          <span className={`text-[11px] leading-4 ${isSelected ? 'text-blue-700' : 'text-gray-500'} truncate`}>{item.item_name}</span>
+                          {(() => {
+                            let textColor = 'text-gray-800'
+                            if (hasError) {
+                              textColor = 'text-red-600 font-semibold'
+                            } else if (hasSplitWarehouse) {
+                              textColor = 'text-yellow-600 font-semibold'
+                            } else if (isSelected) {
+                              textColor = 'font-semibold text-blue-900'
+                            }
+                            return (
+                              <span className={`${textColor} text-[11px] leading-4 truncate`}>{item.item_code}</span>
+                            )
+                          })()}
+                          <span className={`text-[11px] leading-4 ${
+                            hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : isSelected ? 'text-blue-700' : 'text-gray-500'
+                          } truncate`}>{item.item_name}</span>
                         </div>
                       </TableCell>
                       {/* Label Cell (uses item_description as label; item_name remains static) */}
                       <TableCell
-                        className={`${hasError ? 'text-red-600 font-medium' : isSelected ? 'font-medium' : ''} w-[300px]`}
+                        className={`${hasError ? 'text-red-600 font-medium' : hasSplitWarehouse ? 'text-yellow-600 font-medium' : isSelected ? 'font-medium' : ''} w-[300px]`}
                         data-item-code={item.item_code}
                         data-field="item_description"
                         onClick={(e) => {
@@ -1234,7 +1292,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                           />
                         ) : (
                           <span
-                            className="block truncate"
+                            className={`block truncate ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}
                             title={(item.item_description || item.item_name || '')}
                           >
                             {item.item_description || item.item_name || ''}
@@ -1244,7 +1302,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
                       {/* Quantity Cell */}
                       <TableCell
-                        className={`${hasError ? 'text-red-600 font-medium' : isSelected ? 'font-medium' : ''} w-[70px] text-center`}
+                        className={`${hasError ? 'text-red-600 font-medium' : hasSplitWarehouse ? 'text-yellow-600 font-medium' : isSelected ? 'font-medium' : ''} w-[70px] text-center`}
                         data-item-code={item.item_code}
                         data-field="quantity"
                         onClick={(e) => {
@@ -1312,12 +1370,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                 if (!isNaN(numValue) && numValue >= 0 && activeTabId && selectedItemId) {
                                   updateItemAndMarkEdited(selectedItemId, { quantity: numValue })
                                   
-                                  // Check for quantity validation and show warehouse popup if needed
-                                  const popupShown = await validateQuantityAndShowPopup(item, numValue, item.uom || 'Nos')
-                                  if (popupShown) {
-                                    // Don't navigate if popup is shown - wait for user to handle allocation
-                                    return
-                                  }
+                                  // Warehouse popup is now only triggered manually via Ctrl+Shift+W
+                                  // Removed automatic popup trigger on quantity change
                                 }
                                 // Navigate to unit price and keep editing
                                   moveToField(item.item_code, 'standard_rate')
@@ -1338,13 +1392,13 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             step="0.01"
                           />
                         ) : (
-                          <div className="px-2 py-1">{item.quantity}</div>
+                          <div className={`px-2 py-1 ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>{item.quantity}</div>
                         )}
                       </TableCell>
 
                       {/* UOM Cell - Not clickable, only editable via spacebar */}
                       <TableCell
-                        className={`${hasError ? 'text-red-600 font-medium' : isSelected ? 'font-medium' : ''} w-[80px] text-center`}
+                        className={`${hasError ? 'text-red-600 font-medium' : hasSplitWarehouse ? 'text-yellow-600 font-medium' : isSelected ? 'font-medium' : ''} w-[80px] text-center`}
                       >
                         {isEditingUom ? (
                           <input
@@ -1386,13 +1440,13 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                               readOnly
                           />
                         ) : (
-                          <div className="px-2 py-1">{item.uom || 'Nos'}</div>
+                          <div className={`px-2 py-1 ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>{item.uom || 'Nos'}</div>
                         )}
                       </TableCell>
 
                       {/* Discount Cell */}
                       <TableCell
-                        className={`${hasError ? 'text-red-600 font-medium' : isSelected ? 'font-medium' : ''} w-[80px] text-center`}
+                        className={`${hasError ? 'text-red-600 font-medium' : hasSplitWarehouse ? 'text-yellow-600 font-medium' : isSelected ? 'font-medium' : ''} w-[80px] text-center`}
                         onClick={(e) => {
                           e.stopPropagation()
                           if (!isReadOnly) {
@@ -1440,13 +1494,13 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             step="0.01"
                           />
                         ) : (
-                          <div className="px-2 py-1">{item.discount_percentage ?? 0}</div>
+                          <div className={`px-2 py-1 ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>{item.discount_percentage ?? 0}</div>
                         )}
                       </TableCell>
 
                       {/* Unit Price (editable) */}
                       <TableCell
-                        className={`${hasError ? 'text-red-600 font-medium' : isSelected ? 'font-medium' : ''} w-[100px] text-center`}
+                        className={`${hasError ? 'text-red-600 font-medium' : hasSplitWarehouse ? 'text-yellow-600 font-medium' : isSelected ? 'font-medium' : ''} w-[100px] text-center`}
                         onClick={(e) => {
                           e.stopPropagation()
                           if (!isReadOnly) {
@@ -1506,10 +1560,10 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             className="w-[80px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
                           />
                         ) : (
-                          <span className="font-bold">{Number(item.standard_rate || 0).toFixed(2)}</span>
+                          <span className={`font-bold ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>{Number(item.standard_rate || 0).toFixed(2)}</span>
                         )}
                       </TableCell>
-                      <TableCell className={`font-semibold ${hasError ? 'text-red-600' : isSelected ? 'text-blue-900' : ''} w-[100px] text-left pl-8`}>
+                      <TableCell className={`font-semibold ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : isSelected ? 'text-blue-900' : ''} w-[100px] text-left pl-8`}>
                         {(
                           Number(item.standard_rate || 0) *
                           Number(item.quantity || 0) *
@@ -1528,14 +1582,65 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                           onClick={(e) => {
                             e.stopPropagation()
                               if (isReadOnly) return
+                              // Find the actual index in the items array
+                              // Since filteredItems preserves order from items, we can map the filtered index to original index
+                              // Count how many items before this one in filteredItems match the filter
+                              const filteredBefore = filteredItems.slice(0, index)
+                              let itemsBeforeCount = 0
+                              let actualIndex = -1
+                              
+                              for (let i = 0; i < items.length; i++) {
+                                // Check if this item would be in the filtered list
+                                const term = tableSearch.trim().toLowerCase()
+                                const matchesFilter = !term || 
+                                  String(items[i].item_code || '').toLowerCase().includes(term) ||
+                                  String(items[i].item_name || '').toLowerCase().includes(term)
+                                
+                                if (matchesFilter) {
+                                  // This item appears in filteredItems
+                                  if (itemsBeforeCount === filteredBefore.length) {
+                                    // This is the item at filteredItems[index]
+                                    actualIndex = i
+                                    break
+                                  }
+                                  itemsBeforeCount++
+                                }
+                              }
+                              
                               setDeleteCandidate(item.item_code)
+                              setDeleteCandidateIndex(actualIndex >= 0 ? actualIndex : null)
                               setShowDeleteConfirm(true)
                             }}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
                                 e.preventDefault()
                                 if (!isReadOnly) {
+                                  // Find the actual index in the items array
+                                  // Since filteredItems preserves order from items, we can map the filtered index to original index
+                                  const filteredBefore = filteredItems.slice(0, index)
+                                  let itemsBeforeCount = 0
+                                  let actualIndex = -1
+                                  
+                                  for (let i = 0; i < items.length; i++) {
+                                    // Check if this item would be in the filtered list
+                                    const term = tableSearch.trim().toLowerCase()
+                                    const matchesFilter = !term || 
+                                      String(items[i].item_code || '').toLowerCase().includes(term) ||
+                                      String(items[i].item_name || '').toLowerCase().includes(term)
+                                    
+                                    if (matchesFilter) {
+                                      // This item appears in filteredItems
+                                      if (itemsBeforeCount === filteredBefore.length) {
+                                        // This is the item at filteredItems[index]
+                                        actualIndex = i
+                                        break
+                                      }
+                                      itemsBeforeCount++
+                                    }
+                                  }
+                                  
                                   setDeleteCandidate(item.item_code)
+                                  setDeleteCandidateIndex(actualIndex >= 0 ? actualIndex : null)
                                   setShowDeleteConfirm(true)
                                 }
                               } else if (e.key === 'ArrowLeft') {
@@ -1568,7 +1673,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                 }}
               >
                 <Plus className="w-4 h-4 mr-2" />
-                Click or press &apos;Shift&apos; to add item • Space to switch UOM • ← → to navigate fields • ↑ ↓ to navigate rows
+                Click or press &apos;Ctrl+I&apos; to add item • Space to switch UOM • ← → to navigate fields • ↑ ↓ to navigate rows
               </Button>
             </div>
             {/* Invalid UOM Message (not sticky, stays above add button) */}
@@ -1629,9 +1734,22 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
             <Button
               ref={confirmBtnRef}
               onClick={() => {
-                if (deleteCandidate) onRemoveItem(deleteCandidate)
+                if (deleteCandidateIndex !== null && activeTabId) {
+                  // Use index-based removal to handle duplicates correctly
+                  // This removes only the specific item at this index, not all duplicates
+                  removeItemFromTabByIndex(activeTabId, deleteCandidateIndex)
+                  // Clear selection if the deleted item was selected
+                  if (deleteCandidate && selectedItemId === deleteCandidate) {
+                    selectItem('') // Clear selection
+                  }
+                } else if (deleteCandidate) {
+                  // Fallback to item_code based removal if index not found (shouldn't happen)
+                  // Note: This will remove ALL items with the same code, but it's a fallback
+                  onRemoveItem(deleteCandidate)
+                }
                 setShowDeleteConfirm(false)
                 setDeleteCandidate(null)
+                setDeleteCandidateIndex(null)
               }}
               autoFocus
               className="flex items-center gap-2"
@@ -1673,6 +1791,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
           requiredQty={warehousePopupData.requiredQty}
           currentWarehouseQty={warehousePopupData.currentWarehouseQty}
           warehouses={warehousePopupData.warehouses}
+          uom={warehousePopupData.uom}
+          defaultWarehouse={warehousePopupData.defaultWarehouse}
         />
       )}
     </div>

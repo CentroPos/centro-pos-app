@@ -92,7 +92,8 @@ const ProductSearch: React.FC<{
   onSelect: (product: Product) => void
   onCreateNew: () => void
   selectedPriceList?: string
-}> = ({ onSelect, onCreateNew, selectedPriceList = 'Standard Selling' }) => {
+  isOpen?: boolean
+}> = ({ onSelect, onCreateNew, selectedPriceList = 'Standard Selling', isOpen = true }) => {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(-1)
   const { profile } = usePOSProfileStore()
@@ -105,7 +106,7 @@ const ProductSearch: React.FC<{
   const [isLoading, setIsLoading] = useState(false)
   const [isFetchingMore, setIsFetchingMore] = useState(false)
   const [page, setPage] = useState(1)
-  const perPage = 10
+  const perPage = 15
   const [hasMore, setHasMore] = useState(true)
   const latestRequestId = useRef(0)
 
@@ -116,13 +117,13 @@ const ProductSearch: React.FC<{
     else setIsLoading(true)
     try {
       const limit_start = 1
-      const limit_page_length = pageToLoad * perPage
+      const limit_page_length = perPage
       console.log('[ProductModal] Fetching', { term, price_list: selectedPriceList, limit_start, limit_page_length })
       const res = await window.electronAPI?.proxy?.request({
         url: '/api/method/centro_pos_apis.api.product.product_list',
         params: {
           price_list: selectedPriceList,
-          item: term,
+          item: term || '',  // Send empty string when no search term
           limit_start,
           limit_page_length
         }
@@ -131,7 +132,7 @@ const ProductSearch: React.FC<{
       if (requestId !== latestRequestId.current) return
       const rows = Array.isArray(res?.data?.data) ? res.data.data : []
       console.log('[ProductModal] Received', rows.length, 'rows (cumulative)')
-      setHasMore(rows.length === limit_page_length)
+      setHasMore(false)
       setPage(pageToLoad)
       setProducts(rows)
     } catch (e) {
@@ -142,34 +143,30 @@ const ProductSearch: React.FC<{
     }
   }
 
-  // Initial load and when price list changes
+  // Unified debounced loader: runs on open, price list, or search changes.
+  // Prevents double fetch on first open.
   useEffect(() => {
-    if (!selectedPriceList) return
-    setProducts([])
-    setPage(1)
-    setHasMore(true)
-    fetchProducts(searchTerm, 1)
-  }, [selectedPriceList])
-
-  // Debounced server-side search
-  useEffect(() => {
+    if (!isOpen || !selectedPriceList) return
     const handle = setTimeout(() => {
       setProducts([])
       setPage(1)
       setHasMore(true)
+      setSelectedIndex(-1) // Reset selection when search changes
       fetchProducts(searchTerm, 1)
     }, 300)
     return () => clearTimeout(handle)
-  }, [searchTerm])
+  }, [isOpen, selectedPriceList, searchTerm])
 
   const productList = useMemo(() => products || [], [products])
 
-  // Auto-focus first item when modal opens
+  // Reset selection to top when new results are loaded
   useEffect(() => {
-    if (productList.length > 0 && selectedIndex === -1) {
-      setSelectedIndex(0)
+    if (productList.length > 0) {
+      setSelectedIndex(0) // Always start from top when results change
+    } else {
+      setSelectedIndex(-1) // Reset if no results
     }
-  }, [productList.length])
+  }, [productList.length, searchTerm])
 
   useEffect(() => {
     if (selectedIndex >= 0 && itemRefs.current[selectedIndex]) {
@@ -190,11 +187,19 @@ const ProductSearch: React.FC<{
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault()
-        setSelectedIndex((prev) => Math.min(prev + 1, productList.length - 1))
+        if (selectedIndex === -1) {
+          setSelectedIndex(0) // Start from top if no selection
+        } else if (selectedIndex < productList.length - 1) {
+          setSelectedIndex((prev) => prev + 1) // Move down if not at bottom
+        }
+        // Do nothing if already at bottom
         break
       case 'ArrowUp':
         e.preventDefault()
-        setSelectedIndex((prev) => Math.max(prev - 1, 0))
+        if (selectedIndex > 0) {
+          setSelectedIndex((prev) => prev - 1) // Move up if not at top
+        }
+        // Do nothing if already at top
         break
       case 'Enter':
         e.preventDefault()
@@ -255,7 +260,7 @@ const ProductSearch: React.FC<{
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           onKeyDown={handleKeyDown}
-          className="pl-10 pr-4"
+          className="pl-10 pr-28"
           autoFocus
         />
         <Button
@@ -662,6 +667,7 @@ const ProductSearchModal: React.FC<ProductSearchModalProps> = ({
               onSelect={handleProductSelect} 
               onCreateNew={() => setView('create')} 
               selectedPriceList={selectedPriceList}
+              isOpen={open}
             />
             <DialogFooter>
               <Button variant="outline" onClick={handleClose}>
