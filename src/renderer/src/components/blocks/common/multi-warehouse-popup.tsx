@@ -25,6 +25,8 @@ type MultiWarehousePopupProps = {
   requiredQty: number
   currentWarehouseQty: number
   warehouses: Warehouse[]
+  uom?: string
+  defaultWarehouse?: string
 }
 
 const MultiWarehousePopup: React.FC<MultiWarehousePopupProps> = ({
@@ -35,26 +37,52 @@ const MultiWarehousePopup: React.FC<MultiWarehousePopupProps> = ({
   itemName,
   requiredQty,
   currentWarehouseQty,
-  warehouses
+  warehouses,
+  uom = 'Nos',
+  defaultWarehouse
 }) => {
   const [warehouseData, setWarehouseData] = useState<Warehouse[]>([])
   const shortage = requiredQty - currentWarehouseQty
   const firstInputRef = useRef<HTMLInputElement | null>(null)
   const assignBtnRef = useRef<HTMLButtonElement | null>(null)
+  const showShortageMessage = requiredQty > currentWarehouseQty
 
   useEffect(() => {
     if (open) {
       // Initialize warehouse data with pre-selected warehouses from props
+      // If defaultWarehouse is provided, mark it as selected and pre-fill allocation
       setWarehouseData(
-        warehouses.map((warehouse) => ({
-          ...warehouse,
-          allocated: 0,
-          selected: warehouse.selected || false // Use the selected property from props
-        }))
+        warehouses.map((warehouse) => {
+          const isDefaultWarehouse = defaultWarehouse && warehouse.name === defaultWarehouse
+          const isSelected = warehouse.selected || isDefaultWarehouse || false
+          
+          // Pre-fill allocation for default/current warehouse
+          let initialAllocated = 0
+          if (isSelected && isDefaultWarehouse) {
+            // If required < available, use required; otherwise use available
+            if (requiredQty < warehouse.available) {
+              initialAllocated = requiredQty
+            } else {
+              initialAllocated = warehouse.available
+            }
+          }
+          
+          return {
+            ...warehouse,
+            allocated: initialAllocated,
+            selected: isSelected
+          }
+        })
       )
-      // Focus the first selected input after render
+    }
+  }, [open, warehouses, defaultWarehouse, requiredQty])
+
+  // Focus the first selected input after warehouseData is set
+  useEffect(() => {
+    if (open && warehouseData.length > 0) {
       setTimeout(() => {
-        const firstSelectedIndex = warehouses.findIndex((w) => w.selected)
+        // First try to find a warehouse that was pre-selected
+        const firstSelectedIndex = warehouseData.findIndex((w) => w.selected)
         if (firstSelectedIndex >= 0) {
           const inputElement = document.querySelector(
             `input[data-warehouse-index="${firstSelectedIndex}"]`
@@ -67,9 +95,9 @@ const MultiWarehousePopup: React.FC<MultiWarehousePopupProps> = ({
           firstInputRef.current.focus()
           firstInputRef.current.select()
         }
-      }, 0)
+      }, 100)
     }
-  }, [open, warehouses])
+  }, [open, warehouseData])
 
   const handleWarehouseToggle = (index: number, checked: boolean) => {
     setWarehouseData((prev) =>
@@ -131,15 +159,17 @@ const MultiWarehousePopup: React.FC<MultiWarehousePopupProps> = ({
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Shortage Message */}
-          <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-            <div className="text-sm text-gray-700 mb-1">
-              <strong>Item:</strong> {itemCode} - {itemName}
+          {/* Shortage Message - Only show if required qty > current warehouse stock */}
+          {showShortageMessage && (
+            <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+              <div className="text-sm text-gray-700 mb-1">
+                <strong>Item:</strong> {itemCode} - {itemName}
+              </div>
+              <div className="text-sm text-red-700">
+                <strong>Enough qty not available in current warehouse</strong>
+              </div>
             </div>
-            <div className="text-sm text-red-700">
-              <strong>Enough qty not available in current warehouse</strong>
-            </div>
-          </div>
+          )}
 
           {/* Warehouse Allocation Table */}
           <div className="border rounded-lg overflow-hidden">
@@ -170,7 +200,7 @@ const MultiWarehousePopup: React.FC<MultiWarehousePopupProps> = ({
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-sm text-gray-600">{warehouse.available}</span>
+                      <span className="text-sm text-gray-600">{warehouse.available} {uom}</span>
                     </td>
                     <td className="px-4 py-3">
                       <Input
@@ -201,10 +231,10 @@ const MultiWarehousePopup: React.FC<MultiWarehousePopupProps> = ({
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <div className="flex justify-between items-center">
               <div className="text-sm text-gray-700">
-                <strong>Total Allocated:</strong> {totalAllocated} units
+                <strong>Total Allocated:</strong> {totalAllocated} {uom}
               </div>
               <div className="text-sm text-gray-700">
-                <strong>Required:</strong> {requiredQty} units
+                <strong>Required:</strong> {requiredQty} {uom}
               </div>
               <div
                 className={`text-sm font-semibold ${totalAllocated >= requiredQty ? 'text-green-600' : 'text-red-600'}`}

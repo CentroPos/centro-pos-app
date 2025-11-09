@@ -37,7 +37,9 @@ const DiscountSection: React.FC<Props> = ({
     updateTabGlobalDiscount,
     getCurrentTab,
     setTabEdited,
-    duplicateCurrentTab
+    duplicateCurrentTab,
+    updateTabRoundingEnabled,
+    getCurrentTabRoundingEnabled
   } = usePOSTabStore()
   const items = getCurrentTabItems()
   const currentTab = getCurrentTab()
@@ -48,7 +50,21 @@ const DiscountSection: React.FC<Props> = ({
   const globalDiscountRef = useRef<HTMLInputElement>(null)
   const [currencySymbol, setCurrencySymbol] = useState('$')
   const [vatPercentage, setVatPercentage] = useState(10)
-  const [isRoundingEnabled, setIsRoundingEnabled] = useState(true)
+  const isRoundingEnabledFromStore = getCurrentTabRoundingEnabled()
+  const [isRoundingEnabled, setIsRoundingEnabled] = useState(isRoundingEnabledFromStore)
+  
+  // Sync local state with store
+  useEffect(() => {
+    setIsRoundingEnabled(isRoundingEnabledFromStore)
+  }, [isRoundingEnabledFromStore])
+  
+  // Update store when rounding changes
+  const handleRoundingChange = (enabled: boolean) => {
+    setIsRoundingEnabled(enabled)
+    if (currentTab) {
+      updateTabRoundingEnabled(currentTab.id, enabled)
+    }
+  }
 
   // Focus input when editing starts
   useEffect(() => {
@@ -80,12 +96,11 @@ const DiscountSection: React.FC<Props> = ({
           setCurrencySymbol(profileData.custom_currency_symbol)
         }
 
-        // Extract VAT percentage from taxes_and_charges
-        if (profileData.taxes_and_charges) {
-          const vatMatch = profileData.taxes_and_charges.match(/(\d+)%/)
-          if (vatMatch) {
-            const vatValue = parseInt(vatMatch[1])
-            console.log('📊 VAT percentage from profile in DiscountSection:', vatValue)
+        // Extract VAT percentage from custom_tax_rate
+        if (profileData.custom_tax_rate !== null && profileData.custom_tax_rate !== undefined) {
+          const vatValue = Number(profileData.custom_tax_rate)
+          if (!isNaN(vatValue) && vatValue >= 0) {
+            console.log('📊 VAT percentage from custom_tax_rate in DiscountSection:', vatValue)
             setVatPercentage(vatValue)
           }
         }
@@ -107,7 +122,88 @@ const DiscountSection: React.FC<Props> = ({
     setGlobalDiscountValue(globalDiscountPercent.toString())
   }, [globalDiscountPercent])
 
+  // Extract paid_amount and outstanding_amount from linked_invoices when docstatus is 1
+  const { paidAmount, outstandingAmount } = useMemo(() => {
+    const isConfirmed = currentTab?.orderData && Number(currentTab.orderData.docstatus) === 1
+    const linkedInvoices = currentTab?.orderData?.linked_invoices
+    
+    if (isConfirmed && linkedInvoices) {
+      let paid = null
+      let outstanding = null
+      
+      // Handle linked_invoices as array or object
+      if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
+        paid = linkedInvoices[0]?.paid_amount
+        outstanding = linkedInvoices[0]?.outstanding_amount
+      } else if (linkedInvoices && typeof linkedInvoices === 'object') {
+        paid = linkedInvoices.paid_amount
+        outstanding = linkedInvoices.outstanding_amount
+      }
+      
+      return {
+        paidAmount: paid !== null && paid !== undefined ? Number(paid) : null,
+        outstandingAmount: outstanding !== null && outstanding !== undefined ? Number(outstanding) : null
+      }
+    }
+    
+    return { paidAmount: null, outstandingAmount: null }
+  }, [currentTab?.orderData])
+
   const { untaxed, globalDiscount, vat, rounding, total } = useMemo(() => {
+    // Check if order is confirmed (docstatus = 1) and has linked_invoices
+    const isConfirmed = currentTab?.orderData && Number(currentTab.orderData.docstatus) === 1
+    const linkedInvoices = currentTab?.orderData?.linked_invoices
+    
+    // If confirmed and has linked_invoices, use grand_total from linked_invoices
+    if (isConfirmed && linkedInvoices) {
+      let grandTotal = null
+      
+      // Handle linked_invoices as array or object
+      if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
+        // Get grand_total from first invoice
+        grandTotal = linkedInvoices[0]?.grand_total
+      } else if (linkedInvoices && typeof linkedInvoices === 'object') {
+        // Handle as single object
+        grandTotal = linkedInvoices.grand_total
+      }
+      
+      // If grand_total is found, use it as the total
+      if (grandTotal !== null && grandTotal !== undefined) {
+        const grandTotalNum = Number(grandTotal)
+        if (!isNaN(grandTotalNum)) {
+          // Return calculated values with grand_total as total
+          // For confirmed orders, we still calculate other values for display
+          const untaxedSum = items.reduce((sum: number, it: any) => {
+            const qty = Number(it.quantity || 0)
+            const rate = Number(it.standard_rate || 0)
+            return sum + qty * rate
+          }, 0)
+
+          const individualDiscountSum = items.reduce((sum: number, it: any) => {
+            const qty = Number(it.quantity || 0)
+            const rate = Number(it.standard_rate || 0)
+            const disc = Number(it.discount_percentage || 0)
+            return sum + (qty * rate * disc) / 100
+          }, 0)
+
+          const netAfterIndividualDiscount = untaxedSum - individualDiscountSum
+          const globalDiscountAmount = (netAfterIndividualDiscount * globalDiscountPercent) / 100
+          const netAfterGlobalDiscount = netAfterIndividualDiscount - globalDiscountAmount
+          const vatCalc = netAfterGlobalDiscount * (vatPercentage / 100)
+
+          return {
+            untaxed: Number(untaxedSum.toFixed(2)),
+            individualDiscount: Number(individualDiscountSum.toFixed(2)),
+            globalDiscount: Number(globalDiscountAmount.toFixed(2)),
+            vat: Number(vatCalc.toFixed(2)),
+            rounding: 0, // No rounding adjustment when using grand_total
+            total: grandTotalNum // Use grand_total from linked_invoices
+          }
+        }
+      }
+    }
+
+    // Default calculation for non-confirmed orders or when grand_total is not available
     const untaxedSum = items.reduce((sum: number, it: any) => {
       const qty = Number(it.quantity || 0)
       const rate = Number(it.standard_rate || 0)
@@ -148,7 +244,7 @@ const DiscountSection: React.FC<Props> = ({
       rounding: roundingAdj,
       total: totalFinal
     }
-  }, [items, globalDiscountPercent, isRoundingEnabled])
+  }, [items, globalDiscountPercent, isRoundingEnabled, currentTab?.orderData, vatPercentage])
 
   const handleGlobalDiscountClick = () => {
     if (currentTab) {
@@ -224,6 +320,27 @@ const DiscountSection: React.FC<Props> = ({
           Duplicate
           <span className="text-xs bg-gray-200 px-1 rounded">Ctrl+Shift+2</span>
         </Button>
+        {/* Paid and Outstanding amounts for confirmed orders */}
+        {currentTab?.orderData && Number(currentTab.orderData.docstatus) === 1 && (paidAmount !== null || outstandingAmount !== null) && (
+          <>
+            {paidAmount !== null && (
+              <div className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md bg-green-50">
+                <span className="text-xs text-gray-600 font-medium">Paid:</span>
+                <span className="text-sm font-semibold text-green-700">
+                  {currencySymbol} {paidAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
+            {outstandingAmount !== null && (
+              <div className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md bg-orange-50">
+                <span className="text-xs text-gray-600 font-medium">Outstanding:</span>
+                <span className="text-sm font-semibold text-orange-700">
+                  {currencySymbol} {outstandingAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       <div className="grid grid-cols-5 gap-3 items-end text-sm">
@@ -272,7 +389,7 @@ const DiscountSection: React.FC<Props> = ({
           <div className="text-xs text-gray-600 flex items-center justify-center gap-2">
             <span>Rounding</span>
             <label className="flex items-center gap-1 text-[11px] cursor-pointer select-none">
-              <Checkbox checked={isRoundingEnabled} onCheckedChange={(v) => setIsRoundingEnabled(Boolean(v))} />
+              <Checkbox checked={isRoundingEnabled} onCheckedChange={(v) => handleRoundingChange(Boolean(v))} />
               <span>{isRoundingEnabled ? 'On' : 'Off'}</span>
             </label>
           </div>

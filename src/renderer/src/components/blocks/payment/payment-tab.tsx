@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
@@ -47,6 +47,7 @@ interface PaymentVoucher {
   paid_amount: number
   status: string
   mode_of_payment: string
+  payment_type?: string
 }
 
 const PaymentTab: React.FC = () => {
@@ -59,11 +60,18 @@ const PaymentTab: React.FC = () => {
   const [customerHasMore, setCustomerHasMore] = useState(true)
   const [isFetchingMoreCustomers, setIsFetchingMoreCustomers] = useState(false)
   const latestCustomerReq = React.useRef(0)
+  // Get current date in local timezone (YYYY-MM-DD format)
+  const getCurrentDate = () => {
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = String(now.getMonth() + 1).padStart(2, '0')
+    const day = String(now.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
   const [dueInvoices, setDueInvoices] = useState<DueInvoice[]>([])
   const [modeOfPayment, setModeOfPayment] = useState<string>('Cash')
-  const [paymentDate, setPaymentDate] = useState<string>(() =>
-    new Date().toISOString().slice(0, 10)
-  )
+  const [paymentDate, setPaymentDate] = useState<string>(() => getCurrentDate())
   const [loading, setLoading] = useState(false)
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState<string>('')
@@ -71,6 +79,13 @@ const PaymentTab: React.FC = () => {
   const [paymentVouchers, setPaymentVouchers] = useState<PaymentVoucher[]>([])
   const [filteredVouchers, setFilteredVouchers] = useState<PaymentVoucher[]>([])
   const [voucherSearchTerm, setVoucherSearchTerm] = useState<string>('')
+  const [voucherPage, setVoucherPage] = useState(1)
+  const [voucherPageLength, setVoucherPageLength] = useState(10)
+  const [voucherTotal, setVoucherTotal] = useState(0)
+  const [voucherLoading, setVoucherLoading] = useState(false)
+  const [voucherError, setVoucherError] = useState<string | null>(null)
+  const [paymentTypeFilter, setPaymentTypeFilter] = useState<string>('All')
+  const pageSizeOptions = [10, 20, 30, 50]
   const [paymentModes, setPaymentModes] = useState<string[]>([
     'Cash',
     'Card',
@@ -118,11 +133,10 @@ const PaymentTab: React.FC = () => {
           setCurrencySymbol(profileData.custom_currency_symbol)
         }
 
-        // Extract VAT percentage from taxes_and_charges
-        if (profileData.taxes_and_charges) {
-          const vatMatch = profileData.taxes_and_charges.match(/(\d+)%/)
-          if (vatMatch) {
-            const vatValue = parseInt(vatMatch[1])
+        // Extract VAT percentage from custom_tax_rate
+        if (profileData.custom_tax_rate !== null && profileData.custom_tax_rate !== undefined) {
+          const vatValue = Number(profileData.custom_tax_rate)
+          if (!isNaN(vatValue) && vatValue >= 0) {
             console.log('📊 VAT percentage from profile:', vatValue)
             setVatPercentage(vatValue)
           }
@@ -135,27 +149,64 @@ const PaymentTab: React.FC = () => {
     }
   }
 
-  // Load payment vouchers on component mount
+  // Load POS profile on component mount
   useEffect(() => {
     loadPOSProfile()
-    loadPaymentVouchers()
   }, [])
 
-  // Filter payment vouchers based on search term
+  // Debounced search effect - resets pagination and triggers API call when search changes
+  const prevVoucherSearchRef = useRef<string>('')
+  const isVoucherInitialMount = useRef<boolean>(true)
+
+  // Load payment vouchers on component mount and when filters change
   useEffect(() => {
-    if (voucherSearchTerm.trim() === '') {
-      setFilteredVouchers(paymentVouchers)
-    } else {
-      const filtered = paymentVouchers.filter(
-        (voucher) =>
-          voucher.name.toLowerCase().includes(voucherSearchTerm.toLowerCase()) ||
-          voucher.party.toLowerCase().includes(voucherSearchTerm.toLowerCase()) ||
-          voucher.status.toLowerCase().includes(voucherSearchTerm.toLowerCase()) ||
-          voucher.mode_of_payment.toLowerCase().includes(voucherSearchTerm.toLowerCase())
-      )
-      setFilteredVouchers(filtered)
+    let cancelled = false
+    async function load() {
+      if (!cancelled) {
+        await loadPaymentVouchers(voucherPage, voucherSearchTerm, paymentTypeFilter)
+      }
     }
-  }, [voucherSearchTerm, paymentVouchers])
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [voucherPage, voucherPageLength, paymentTypeFilter, voucherSearchTerm])
+
+  useEffect(() => {
+    // On initial mount, call API immediately without debounce
+    if (isVoucherInitialMount.current) {
+      isVoucherInitialMount.current = false
+      prevVoucherSearchRef.current = voucherSearchTerm
+      setVoucherPage(1)
+      return
+    }
+
+    // Only debounce if search term actually changed
+    if (prevVoucherSearchRef.current === voucherSearchTerm) return
+    
+    const handler = setTimeout(() => {
+      setPaymentVouchers([]) // Clear previous results
+      setVoucherPage(1) // Reset to first page
+      prevVoucherSearchRef.current = voucherSearchTerm
+    }, 300) // Debounce for 300ms
+
+    return () => {
+      clearTimeout(handler)
+    }
+  }, [voucherSearchTerm]) // Trigger when search term changes
+
+  // Reset page when page length changes
+  useEffect(() => {
+    setVoucherPage(1)
+  }, [voucherPageLength])
+
+  // Reset page when payment type filter changes
+  useEffect(() => {
+    setVoucherPage(1)
+  }, [paymentTypeFilter])
+
+  // Use paymentVouchers directly - server handles all filtering via search_term and payment_type parameters
+  // No client-side filtering needed since API already filters results
 
   // Debounced server-side customer search
   useEffect(() => {
@@ -245,18 +296,40 @@ const PaymentTab: React.FC = () => {
     }
   }
 
-  // Load payment vouchers from API
-  const loadPaymentVouchers = async () => {
+  // Load payment vouchers from API with pagination and filters
+  const loadPaymentVouchers = async (page: number, searchTerm: string = '', paymentType: string = 'All') => {
     try {
-      console.log('📄 Loading payment vouchers...')
+      setVoucherLoading(true)
+      setVoucherError(null)
+      
+      console.log('📄 Loading payment vouchers...', {
+        page,
+        searchTerm,
+        paymentType,
+        pageLength: voucherPageLength,
+        timestamp: new Date().toISOString()
+      })
+
+      const params: any = {
+        limit_start: page,
+        limit_page_length: voucherPageLength,
+        search_term: searchTerm || ''
+      }
+
+      // Add payment_type only if not "All"
+      if (paymentType !== 'All') {
+        params.payment_type = paymentType
+      }
+
+      console.log('📄 Payment vouchers API request params:', params)
+
       const response = await window.electronAPI.proxy.request({
-        url: '/api/method/centro_pos_apis.api.order.list_payment_vouchers'
+        url: '/api/method/centro_pos_apis.api.order.list_payment_vouchers',
+        params
       })
 
       console.log('📄 Payment vouchers API response:', response)
       console.log('📄 Payment vouchers response data:', response?.data)
-      console.log('📄 Payment vouchers response status:', response?.status)
-      console.log('📄 Raw voucher data:', response?.data?.data)
 
       if (response?.data?.data) {
         const vouchers = response.data.data.map((voucher: any) => ({
@@ -265,7 +338,8 @@ const PaymentTab: React.FC = () => {
           posting_date: voucher.posting_date || '',
           paid_amount: voucher.paid_amount || 0,
           status: voucher.status || '',
-          mode_of_payment: voucher.mode_of_payment || ''
+          mode_of_payment: voucher.mode_of_payment || '',
+          payment_type: voucher.payment_type || ''
         }))
 
         console.log('📄 Processed vouchers:', vouchers)
@@ -273,25 +347,26 @@ const PaymentTab: React.FC = () => {
 
         setPaymentVouchers(vouchers)
         setFilteredVouchers(vouchers)
+        // Store total (API: res.data.total or data.length fallback)
+        setVoucherTotal(typeof response?.data?.total === 'number' ? response.data.total : vouchers.length)
         console.log('✅ Successfully loaded payment vouchers:', vouchers)
       } else {
         console.log('📄 No voucher data found in response')
         setPaymentVouchers([])
         setFilteredVouchers([])
+        setVoucherTotal(0)
       }
     } catch (error) {
       console.error('📄 Error loading payment vouchers:', error)
       console.error('📄 Error response:', error?.response)
       console.error('📄 Error data:', error?.response?.data)
 
-      if (error?.response?.data?.message) {
-        toast.error(error.response.data.message)
-      } else {
-        toast.error('Failed to load payment vouchers')
-      }
-
+      setVoucherError(error instanceof Error ? error.message : 'Failed to load payment vouchers')
       setPaymentVouchers([])
       setFilteredVouchers([])
+      setVoucherTotal(0)
+    } finally {
+      setVoucherLoading(false)
     }
   }
 
@@ -416,6 +491,20 @@ const PaymentTab: React.FC = () => {
     )
   }
 
+  // Handle select all
+  const handleSelectAll = (checked: boolean) => {
+    setDueInvoices((prev) =>
+      prev.map((invoice) => ({
+        ...invoice,
+        is_selected: checked,
+        allocated_amount: checked ? invoice.due_amount : 0
+      }))
+    )
+  }
+
+  // Check if all invoices are selected
+  const isAllSelected = dueInvoices.length > 0 && dueInvoices.every((invoice) => invoice.is_selected)
+
   // Handle allocated amount change
   const handleAllocatedAmountChange = (index: number, value: string) => {
     const amount = parseFloat(value) || 0
@@ -460,7 +549,28 @@ const PaymentTab: React.FC = () => {
         }))
       }
 
-      console.log('💳 Making payment with data:', paymentData)
+      // Enhanced console logging for API call
+      console.log('💳 ===== MAKE PAYMENT API CALL START =====')
+      console.log('💳 API Endpoint: /api/method/centro_pos_apis.api.order.create_payment_entry')
+      console.log('💳 API Method: POST')
+      console.log('💳 ===== REQUEST BODY PARAMETERS =====')
+      console.log('💳 Payment Data (Full Object):', JSON.stringify(paymentData, null, 2))
+      console.log('💳 Payment Type:', paymentData.payment_type)
+      console.log('💳 Party Type:', paymentData.party_type)
+      console.log('💳 Party (Customer ID):', paymentData.party)
+      console.log('💳 Posting Date:', paymentData.posting_date)
+      console.log('💳 Paid Amount:', paymentData.paid_amount)
+      console.log('💳 Mode of Payment:', paymentData.mode_of_payment)
+      console.log('💳 References Count:', paymentData.references.length)
+      console.log('💳 References Details:')
+      paymentData.references.forEach((ref, index) => {
+        console.log(`   Reference ${index + 1}:`, {
+          reference_doctype: ref.reference_doctype,
+          reference_name: ref.reference_name,
+          allocated_amount: ref.allocated_amount
+        })
+      })
+      console.log('💳 ===== END REQUEST BODY PARAMETERS =====')
 
       // Call payment API
       const response = await window.electronAPI.proxy.request({
@@ -469,30 +579,46 @@ const PaymentTab: React.FC = () => {
         data: paymentData
       })
 
-      console.log('💳 Payment API response:', response)
-      console.log('💳 Payment response data:', response?.data)
-      console.log('💳 Payment response status:', response?.status)
+      console.log('💳 ===== MAKE PAYMENT API RESPONSE =====')
+      console.log('💳 Full Response Object:', response)
+      console.log('💳 Response Status:', response?.status)
+      console.log('💳 Response Success:', response?.success)
+      console.log('💳 Response Data:', JSON.stringify(response?.data, null, 2))
+      console.log('💳 Response Headers:', response?.headers)
+      console.log('💳 ===== END API RESPONSE =====')
 
       if (response?.success) {
+        console.log('✅ ===== PAYMENT SUCCESS =====')
         if (response?.data?.message) {
-          console.log('💳 Payment success message:', response.data.message)
+          console.log('✅ Payment success message:', response.data.message)
           toast.success(response.data.message)
         } else {
+          console.log('✅ Payment processed successfully (no message in response)')
           toast.success('Payment processed successfully')
         }
+        console.log('✅ ===== END PAYMENT SUCCESS =====')
       } else {
+        console.log('❌ ===== PAYMENT FAILED =====')
+        console.log('❌ API call failed - response.success is false')
+        console.log('❌ Response:', response)
+        console.log('❌ ===== END PAYMENT FAILED =====')
         // Handle server error messages
-        handleServerErrorMessages(response?.data?._server_messages, 'Failed to process payment')
+        handleServerErrorMessages(response?.data?._server_messages, '')
         return
       }
 
       // Reset form
       setSelectedCustomer(null)
       setDueInvoices([])
+      console.log('💳 ===== MAKE PAYMENT API CALL END =====')
     } catch (error) {
-      console.error('💳 Error processing payment:', error)
-      console.error('💳 Error response:', error?.response)
-      console.error('💳 Error data:', error?.response?.data)
+      console.error('❌ ===== PAYMENT ERROR =====')
+      console.error('❌ Error processing payment:', error)
+      console.error('❌ Error response:', error?.response)
+      console.error('❌ Error data:', error?.response?.data)
+      console.error('❌ Error message:', (error as any)?.message)
+      console.error('❌ Error stack:', (error as any)?.stack)
+      console.error('❌ ===== END PAYMENT ERROR =====')
 
       // Check if this is a server message error that was already handled
       const errorMessage = (error as any)?.message || 'Please try again.'
@@ -540,13 +666,17 @@ const PaymentTab: React.FC = () => {
       {isPaymentModalOpen && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center" onClick={(e) => { if (e.target === e.currentTarget) setIsPaymentModalOpen(false) }}>
           <div className="absolute inset-0 bg-black/40" />
-          <div className="relative bg-white w-[720px] max-w-[90vw] max-h-[90vh] overflow-y-auto rounded-lg shadow-2xl p-4">
-            {/* Party Type and Party Name */}
-            <div className="grid grid-cols-2 gap-2">
+          <div className="relative bg-white w-[800px] max-w-[90vw] h-[90vh] flex flex-col rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
+            <div className="px-6 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200 flex-shrink-0">
+              <h2 className="text-lg font-bold text-gray-800">Make Payment</h2>
+            </div>
+            <div className="flex-1 flex flex-col min-h-0 p-6">
+            {/* Header Section - All Select Boxes */}
+            <div className="grid grid-cols-3 gap-4 mb-4 pb-4 border-b border-gray-200 flex-shrink-0">
               <div>
                 <Label htmlFor="party-type" className="text-sm font-medium text-gray-700">Party Type</Label>
                 <Select value={partyType} onValueChange={setPartyType}>
-                  <SelectTrigger className="h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                  <SelectTrigger className="w-full h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
                     <SelectValue placeholder="Select party type" />
                   </SelectTrigger>
                   <SelectContent className="bg-white border-gray-200 shadow-lg z-[140]">
@@ -556,17 +686,9 @@ const PaymentTab: React.FC = () => {
                 </Select>
               </div>
               <div>
-                <Label htmlFor="party-name" className="text-sm font-medium text-gray-700">Party Name</Label>
-                <Input value={selectedCustomer?.customer_name || ''} placeholder="Select customer" readOnly onClick={() => setIsCustomerModalOpen(true)} className="h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500 cursor-pointer hover:bg-gray-50" />
-              </div>
-            </div>
-
-            {/* Payment Type and Mode of Payment */}
-            <div className="grid grid-cols-2 gap-4 mt-3">
-              <div>
                 <Label htmlFor="payment-type" className="text-sm font-medium text-gray-700">Payment Type</Label>
                 <Select value={paymentType} onValueChange={setPaymentType}>
-                  <SelectTrigger className="h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                  <SelectTrigger className="w-full h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
                     <SelectValue placeholder="Select payment type" />
                   </SelectTrigger>
                   <SelectContent className="bg-white border-gray-200 shadow-lg z-[140]">
@@ -578,7 +700,7 @@ const PaymentTab: React.FC = () => {
               <div>
                 <Label htmlFor="mode-of-payment" className="text-sm font-medium text-gray-700">Mode of Payment</Label>
                 <Select value={modeOfPayment} onValueChange={setModeOfPayment}>
-                  <SelectTrigger className="h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                  <SelectTrigger className="w-full h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
                     <SelectValue placeholder="Select payment mode" />
                   </SelectTrigger>
                   <SelectContent className="bg-white border-gray-200 shadow-lg z-[140]">
@@ -588,27 +710,39 @@ const PaymentTab: React.FC = () => {
               </div>
             </div>
 
-            {/* Date and Amount */}
-            <div className="grid grid-cols-2 gap-4 mt-3">
+            {/* Party Name, Date and Amount */}
+            <div className="grid grid-cols-3 gap-4 mb-4 flex-shrink-0">
+              <div>
+                <Label htmlFor="party-name" className="text-sm font-medium text-gray-700">Party Name</Label>
+                <Input value={selectedCustomer?.customer_name || ''} placeholder="Select customer" readOnly onClick={() => setIsCustomerModalOpen(true)} className="w-full h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500 cursor-pointer hover:bg-gray-50" />
+              </div>
               <div>
                 <Label htmlFor="payment-date" className="text-sm font-medium text-gray-700">Date</Label>
-                <Input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500" />
+                <Input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="w-full h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500" />
               </div>
               <div>
                 <Label htmlFor="total-amount" className="text-sm font-medium text-gray-700">Amount</Label>
-                <Input value={totalAllocatedAmount.toFixed(2)} readOnly className="h-10 bg-gray-100 border-gray-300 text-gray-700 font-semibold" />
+                <Input value={totalAllocatedAmount.toFixed(2)} readOnly className="w-full h-10 bg-gray-100 border-gray-300 text-gray-700 font-semibold" />
               </div>
             </div>
 
-            {/* Due invoices table and actions as before */}
+            {/* Due invoices table and actions - Scrollable */}
             {dueInvoices.length > 0 && (
-              <Card className="border border-gray-200 shadow-sm mt-4">
-                <CardHeader className="bg-gray-50 border-b border-gray-200"><CardTitle className="text-lg font-semibold text-gray-800">Allocate Pending Due</CardTitle></CardHeader>
-                <CardContent className="p-0">
+              <Card className="border border-gray-200 shadow-sm flex-1 flex flex-col min-h-0">
+                <CardHeader className="bg-gray-50 border-b border-gray-200 flex-shrink-0">
+                  <CardTitle className="text-lg font-semibold text-gray-800">Allocate Pending Due</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0 flex-1 overflow-y-auto min-h-0">
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-gray-50">
-                        <TableHead className="w-8 px-2"></TableHead>
+                        <TableHead className="w-8 px-2">
+                          <Checkbox 
+                            checked={isAllSelected}
+                            onCheckedChange={handleSelectAll}
+                            className="border-gray-300 focus:ring-blue-500"
+                          />
+                        </TableHead>
                         <TableHead className="w-16 px-2 text-sm font-medium text-gray-700">Invoice</TableHead>
                         <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700">Total</TableHead>
                         <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700">Due</TableHead>
@@ -637,9 +771,22 @@ const PaymentTab: React.FC = () => {
               </Card>
             )}
 
-            <div className="flex justify-end pt-4">
-              <Button onClick={handleMakePayment} disabled={loading || !selectedCustomer || totalAllocatedAmount <= 0} className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors">{loading ? 'Processing...' : 'Make Payment'}</Button>
-              <Button variant="outline" className="ml-2" onClick={() => setIsPaymentModalOpen(false)}>Close</Button>
+            </div>
+            <div className="flex justify-end gap-3 p-6 bg-gray-50 border-t border-gray-200 flex-shrink-0">
+              <Button 
+                variant="outline" 
+                onClick={() => setIsPaymentModalOpen(false)}
+                className="px-6 py-2 border-gray-300 hover:bg-gray-100"
+              >
+                Close
+              </Button>
+              <Button 
+                onClick={handleMakePayment} 
+                disabled={loading || !selectedCustomer || totalAllocatedAmount <= 0} 
+                className="px-8 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+              >
+                {loading ? 'Processing...' : 'Make Payment'}
+              </Button>
             </div>
           </div>
         </div>,
@@ -654,35 +801,55 @@ const PaymentTab: React.FC = () => {
           <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => setIsPaymentModalOpen(true)}>Make Payment</Button>
         </div>
 
-        {/* Search Bar */}
-        <div className="relative mb-3">
-          <input
-            type="text"
-            placeholder="Search payment vouchers..."
-            value={voucherSearchTerm}
-            onChange={(e) => setVoucherSearchTerm(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-          <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-            <svg
-              className="w-4 h-4 text-gray-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
+        {/* Payment Type Filter and Search Bar */}
+        <div className="flex items-center gap-3 mb-3">
+          <div className="flex-shrink-0">
+            <Select value={paymentTypeFilter} onValueChange={setPaymentTypeFilter}>
+              <SelectTrigger className="w-32 h-9 text-xs border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                <SelectValue placeholder="Payment Type" />
+              </SelectTrigger>
+              <SelectContent className="bg-white border-gray-200 shadow-lg z-[140]">
+                <SelectItem value="All">All</SelectItem>
+                <SelectItem value="Receive">Receive</SelectItem>
+                <SelectItem value="Pay">Pay</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="relative flex-1">
+            <input
+              type="text"
+              placeholder="Search payment vouchers..."
+              value={voucherSearchTerm}
+              onChange={(e) => setVoucherSearchTerm(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+              <svg
+                className="w-4 h-4 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+            </div>
           </div>
         </div>
 
         {/* Payment Vouchers Content */}
         <div>
-          {filteredVouchers.length > 0 ? (
+          {voucherLoading && (
+            <div className="text-xs text-gray-500 text-center py-4">Loading payment vouchers...</div>
+          )}
+          {voucherError && (
+            <div className="text-xs text-red-600 text-center py-4">{voucherError}</div>
+          )}
+          {!voucherLoading && !voucherError && filteredVouchers.length > 0 ? (
             <div className="space-y-2">
               {filteredVouchers.map((voucher, index) => (
                 <div
@@ -706,17 +873,24 @@ const PaymentTab: React.FC = () => {
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span
-                      className={`text-xs px-2 py-1 rounded-full font-medium ${
-                        voucher.status === 'Submitted'
-                          ? 'bg-green-100 text-green-700'
-                          : voucher.status === 'Draft'
-                            ? 'bg-yellow-100 text-yellow-700'
-                            : 'bg-gray-100 text-gray-700'
-                      }`}
-                    >
-                      {voucher.status}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-xs px-2 py-1 rounded-full font-medium ${
+                          voucher.status === 'Submitted'
+                            ? 'bg-green-100 text-green-700'
+                            : voucher.status === 'Draft'
+                              ? 'bg-yellow-100 text-yellow-700'
+                              : 'bg-gray-100 text-gray-700'
+                        }`}
+                      >
+                        {voucher.status}
+                      </span>
+                      {voucher.payment_type && (
+                        <span className="text-xs px-2 py-1 rounded-full font-medium bg-blue-100 text-blue-700">
+                          {voucher.payment_type}
+                        </span>
+                      )}
+                    </div>
                     <span className="text-gray-500 text-xs">{voucher.mode_of_payment}</span>
                   </div>
                 </div>
@@ -725,13 +899,48 @@ const PaymentTab: React.FC = () => {
           ) : (
             <div className="text-center py-4">
               <div className="text-sm text-gray-500">
-                {voucherSearchTerm
+                {voucherSearchTerm || paymentTypeFilter !== 'All'
                   ? 'No vouchers found matching your search.'
                   : 'No payment vouchers available.'}
               </div>
             </div>
           )}
         </div>
+
+        {/* Pagination */}
+        {!voucherLoading && !voucherError && filteredVouchers.length > 0 && (
+          <>
+            <div className="flex items-center justify-between pt-3">
+              <button
+                className="px-3 py-1 text-xs border rounded disabled:opacity-40"
+                onClick={() => setVoucherPage((p) => Math.max(1, p - 1))}
+                disabled={voucherPage <= 1}
+              >
+                Prev
+              </button>
+              <div className="text-xs text-gray-600">Page {voucherPage}</div>
+              <button
+                className="px-3 py-1 text-xs border rounded disabled:opacity-40"
+                onClick={() => setVoucherPage((p) => p + 1)}
+                disabled={filteredVouchers.length < voucherPageLength}
+              >
+                Next
+              </button>
+            </div>
+            <div className="flex items-center justify-between mb-2 mt-2">
+              <span className="text-xs text-gray-500">{voucherTotal} results found</span>
+              <select
+                value={voucherPageLength}
+                onChange={e => setVoucherPageLength(Number(e.target.value))}
+                className="text-xs border rounded px-2 py-1"
+              >
+                {pageSizeOptions.map(opt => (
+                  <option key={opt} value={opt}>{opt} / page</option>
+                ))}
+              </select>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Customer Selection Modal (portal above payment modal) */}

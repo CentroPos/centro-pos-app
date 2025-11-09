@@ -104,6 +104,13 @@ const POSInterface: React.FC = () => {
 
   const items = getCurrentTabItems();
   const currentTab = getCurrentTab();
+  
+  // Clear selected item when no active tab
+  React.useEffect(() => {
+    if (!activeTabId && selectedItemId) {
+      setSelectedItemId(undefined)
+    }
+  }, [activeTabId, selectedItemId])
 
   // Load POS profile and user profile details once POS loads
   const { data: profileDetails } = useProfileDetails()
@@ -210,6 +217,7 @@ const POSInterface: React.FC = () => {
 
     addItemToTab(activeTabId, item);
     setSelectedItemId(item.item_code);
+    setRightPanelTab('product'); // Switch to product tab when item is added
 
     // Trigger auto-editing
     setShouldStartEditing(true);
@@ -264,7 +272,6 @@ const POSInterface: React.FC = () => {
     }
   };
 
-  useHotkeys('shift', () => setOpen(true), { enableOnFormTags: false })
   useHotkeys('backspace', () => {
     if (selectedItemId) {
       removeItem(selectedItemId);
@@ -286,7 +293,11 @@ const POSInterface: React.FC = () => {
   // Ctrl+N for new order
   useHotkeys('ctrl+n', (event) => {
     event.preventDefault()
-    createNewTab()
+    const created = createNewTab()
+    if (created) {
+      // Open customer selection automatically when new order is created
+      setIsCustomerModalOpen(true)
+    }
   }, { enableOnFormTags: false })
   
   // Ctrl+R for return
@@ -336,7 +347,7 @@ const POSInterface: React.FC = () => {
 
   // Hotkeys
   useHotkeys('ctrl+shift+p', () => setRightPanelTab('prints'), { enableOnFormTags: true });
-  useHotkeys('ctrl+c', () => setIsCustomerModalOpen(true), { enableOnFormTags: true });
+  useHotkeys('ctrl+shift+c', () => setIsCustomerModalOpen(true), { enableOnFormTags: true });
 
   return (
     <Fragment>
@@ -363,8 +374,6 @@ const POSInterface: React.FC = () => {
             onCustomerModalChange={setIsCustomerModalOpen}
             onCustomerSelect={(customer) => {
               handleCustomerSelect(customer)
-              // After customer selection, open product list popup
-              setOpen(true)
             }}
             forceOpenCustomerModal={isCustomerModalOpen}
           />

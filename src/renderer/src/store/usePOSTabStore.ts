@@ -20,22 +20,31 @@ interface Tab {
   status: 'draft' | 'confirmed' | 'paid'
   privilege: 'return' | 'billing' | 'sales'
   customer: {
-    name: string
-    gst: string
+    name?: string
+    gst?: string
     customer_id?: string
-  }
+  } | null
   items: any[]  // Add items to each tab
   isEdited?: boolean
   taxAmount?: number
   invoiceData?: any
   globalDiscountPercent?: number
+  po_no?: string | null
+  po_date?: string | null
+  internal_note?: string | null
+  posting_date?: string | null
+  instantPrintUrl?: string | null
+  isRoundingEnabled?: boolean
+  invoiceNumber?: string | null
+  invoiceStatus?: string | null
+  invoiceCustomReverseStatus?: string | null
 }
 
 interface POSTabStore {
   tabs: Tab[]
   activeTabId: string | null
 
-  openTab: (orderId: string, orderData?: any) => void
+  openTab: (orderId: string, orderData?: any, status?: 'draft' | 'confirmed' | 'paid') => void
   createNewTab: () => boolean
   closeTab: (tabId: string) => void
   setActiveTab: (tabId: string) => void
@@ -46,8 +55,10 @@ interface POSTabStore {
   // Tab data methods
   addItemToTab: (tabId: string, item: any) => void
   removeItemFromTab: (tabId: string, itemCode: string) => void
+  removeItemFromTabByIndex: (tabId: string, index: number) => void
   updateItemInTab: (tabId: string, itemCode: string, updates: any) => void
   updateTabOrderId: (tabId: string, orderId: string) => void
+  updateTabOrderData: (tabId: string, orderData: any) => void
   updateTabTaxAmount: (tabId: string, taxAmount: number) => void
   setTabEdited: (tabId: string, isEdited: boolean) => void
   updateTabInvoiceData: (tabId: string, invoiceData: any) => void
@@ -59,10 +70,30 @@ interface POSTabStore {
   // Customer management methods
   updateTabCustomer: (tabId: string, customer: { name: string; gst: string; customer_id?: string }) => void
   
+  // Other Details methods
+  updateTabOtherDetails: (tabId: string, details: { po_no?: string | null; po_date?: string | null; internal_note?: string | null }) => void
+  
+  // Posting Date methods
+  updateTabPostingDate: (tabId: string, postingDate: string | null) => void
+  getCurrentTabPostingDate: () => string | null
+  
+  // Instant Print methods
+  updateTabInstantPrintUrl: (tabId: string, url: string | null) => void
+  
+  // Rounding methods
+  updateTabRoundingEnabled: (tabId: string, enabled: boolean) => void
+  getCurrentTabRoundingEnabled: () => boolean
+  
+  // Invoice number methods
+  updateTabInvoiceNumber: (tabId: string, invoiceNumber: string | null, invoiceStatus?: string | null, invoiceCustomReverseStatus?: string | null) => void
+  getCurrentTabInvoiceNumber: () => string | null
+  getCurrentTabInvoiceStatus: () => string | null
+  getCurrentTabInvoiceCustomReverseStatus: () => string | null
+  
   // Helper methods
   getCurrentTab: () => Tab | undefined
   getCurrentTabItems: () => any[]
-  getCurrentTabCustomer: () => { name: string; gst: string; customer_id?: string }
+  getCurrentTabCustomer: () => { name?: string; gst?: string; customer_id?: string } | null
   
   // Clear all tabs (use with caution)
   clearAllTabs: () => void
@@ -76,8 +107,15 @@ export const usePOSTabStore = create<POSTabStore>()(
       activeTabId: null,
 
       // Tab management methods
-      openTab: (orderId: string, orderData?: any) => {
+      openTab: (orderId: string, orderData?: any, status?: 'draft' | 'confirmed' | 'paid') => {
         const state = get()
+        
+        console.log('📋 [openTab] ===== OPENING TAB =====')
+        console.log('📋 [openTab] Order ID:', orderId)
+        console.log('📋 [openTab] Order Data received:', orderData ? 'Present' : 'Missing')
+        console.log('📋 [openTab] Order Data full:', JSON.stringify(orderData, null, 2))
+        console.log('📋 [openTab] Linked invoices in orderData:', JSON.stringify(orderData?.linked_invoices, null, 2))
+        
         // Enforce total tab limit (max 6)
         if (state.tabs.length >= 6) {
           toast.error('You can keep only up to 6 orders open at a time')
@@ -96,28 +134,110 @@ export const usePOSTabStore = create<POSTabStore>()(
             }))
           : []
 
+        // Determine status: use provided status, or check docstatus, or default to draft
+        let tabStatus: 'draft' | 'confirmed' | 'paid' = status || 'draft'
+        if (!status && orderData) {
+          const docstatus = Number(orderData.docstatus)
+          if (docstatus === 1) {
+            tabStatus = 'confirmed'
+          }
+        }
+
         const newTab: Tab = {
           id: `tab-${Date.now()}`,
           orderId,
           orderData: orderData || null,
           type: 'existing',
           displayName: abbreviateOrderId(orderId),
-          status: 'draft',
+          status: tabStatus,
           privilege: 'billing',
-          customer: {
-            name: orderData?.customer_name || 'Walking Customer',
-            gst: orderData?.tax_id || 'Not Applicable'
-          },
+          customer: orderData?.customer_name
+            ? { name: orderData.customer_name, gst: orderData?.tax_id || undefined }
+            : null,
           items: mappedItems,
           isEdited: false,
           taxAmount: 0,
-          invoiceData: null
+          invoiceData: null,
+          po_no: orderData?.po_no || null,
+          po_date: orderData?.po_date || null,
+          internal_note: orderData?.internal_note || null,
+          posting_date: orderData?.posting_date || null,
+          instantPrintUrl: null,
+          isRoundingEnabled: true,
+          invoiceNumber: (() => {
+            // Extract invoice number from linked_invoices if available
+            console.log('📋 [openTab] Extracting invoice number from linked_invoices...')
+            const linkedInvoices = orderData?.linked_invoices
+            console.log('📋 [openTab] linked_invoices raw:', JSON.stringify(linkedInvoices, null, 2))
+            console.log('📋 [openTab] linked_invoices type:', typeof linkedInvoices)
+            console.log('📋 [openTab] Is array:', Array.isArray(linkedInvoices))
+            
+            if (linkedInvoices) {
+              if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
+                const firstInvoice = linkedInvoices[0]
+                const invNum = firstInvoice?.name || null
+                console.log('📋 [openTab] ✅ Invoice number extracted from array:', invNum)
+                console.log('📋 [openTab] First invoice object:', JSON.stringify(firstInvoice, null, 2))
+                return invNum
+              } else if (linkedInvoices && typeof linkedInvoices === 'object' && !Array.isArray(linkedInvoices)) {
+                const invNum = linkedInvoices.name || null
+                console.log('📋 [openTab] ✅ Invoice number extracted from object:', invNum)
+                return invNum
+              }
+            }
+            console.log('📋 [openTab] ⚠️ No invoice number found, returning null')
+            return null
+          })(),
+          invoiceStatus: (() => {
+            const linkedInvoices = orderData?.linked_invoices
+            if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
+              return linkedInvoices[0]?.status || null
+            } else if (linkedInvoices && typeof linkedInvoices === 'object' && !Array.isArray(linkedInvoices)) {
+              return linkedInvoices.status || null
+            }
+            return null
+          })(),
+          invoiceCustomReverseStatus: (() => {
+            const linkedInvoices = orderData?.linked_invoices
+            if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
+              return linkedInvoices[0]?.custom_reverse_status || null
+            } else if (linkedInvoices && typeof linkedInvoices === 'object' && !Array.isArray(linkedInvoices)) {
+              return linkedInvoices.custom_reverse_status || null
+            }
+            return null
+          })()
         }
 
-        set((state) => ({
-          tabs: [...state.tabs, newTab],
-          activeTabId: newTab.id
-        }))
+        console.log('📋 [openTab] New tab created:', {
+          tabId: newTab.id,
+          orderId: newTab.orderId,
+          invoiceNumber: newTab.invoiceNumber,
+          invoiceStatus: newTab.invoiceStatus,
+          invoiceCustomReverseStatus: newTab.invoiceCustomReverseStatus,
+          hasOrderData: !!newTab.orderData,
+          orderDataLinkedInvoices: newTab.orderData?.linked_invoices ? 'Present' : 'Missing'
+        })
+        console.log('📋 [openTab] OrderData in new tab:', JSON.stringify(newTab.orderData?.linked_invoices, null, 2))
+
+        set((state) => {
+          const updatedState = {
+            tabs: [...state.tabs, newTab],
+            activeTabId: newTab.id
+          }
+          console.log('📋 [openTab] Tab stored in state. Total tabs:', updatedState.tabs.length)
+          console.log('📋 [openTab] Active tab ID:', updatedState.activeTabId)
+          const storedTab = updatedState.tabs.find(t => t.id === newTab.id)
+          console.log('📋 [openTab] Stored tab verification:', {
+            tabId: storedTab?.id,
+            orderId: storedTab?.orderId,
+            invoiceNumber: storedTab?.invoiceNumber,
+            hasOrderData: !!storedTab?.orderData,
+            orderDataLinkedInvoices: storedTab?.orderData?.linked_invoices ? 'Present' : 'Missing'
+          })
+          return updatedState
+        })
+        
+        console.log('📋 [openTab] ===== TAB OPENED =====')
       },
 
       createNewTab: () => {
@@ -133,6 +253,15 @@ export const usePOSTabStore = create<POSTabStore>()(
           return false
         }
         const newCount = existingNewCount + 1
+        // Get current date in YYYY-MM-DD format
+        const getCurrentDate = () => {
+          const now = new Date()
+          const year = now.getFullYear()
+          const month = String(now.getMonth() + 1).padStart(2, '0')
+          const day = String(now.getDate()).padStart(2, '0')
+          return `${year}-${month}-${day}`
+        }
+
         const newTab: Tab = {
           id: `tab-${Date.now()}`,
           orderId: null,
@@ -141,11 +270,18 @@ export const usePOSTabStore = create<POSTabStore>()(
           displayName: `New ${newCount}`,
           status: 'draft',
           privilege: 'billing',
-          customer: { name: 'Walking Customer', gst: 'Not Applicable' },
+          customer: null,
           items: [],
           isEdited: false,
           taxAmount: 0,
-          invoiceData: null
+          invoiceData: null,
+          po_no: null,
+          po_date: getCurrentDate(), // Default to current date
+          internal_note: null,
+          posting_date: null,
+          instantPrintUrl: null,
+          isRoundingEnabled: true,
+          invoiceNumber: null
         }
 
         set((state) => ({
@@ -242,6 +378,20 @@ export const usePOSTabStore = create<POSTabStore>()(
         }))
       },
 
+      removeItemFromTabByIndex: (tabId: string, index: number) => {
+        set((state) => ({
+          tabs: state.tabs.map((tab) =>
+            tab.id === tabId 
+              ? { 
+                  ...tab, 
+                  items: tab.items.filter((_, i) => i !== index),
+                  isEdited: true 
+                } 
+              : tab
+          )
+        }))
+      },
+
       updateItemInTab: (tabId: string, itemCode: string, updates: any) => {
         set((state) => ({
           tabs: state.tabs.map((tab) => {
@@ -276,6 +426,12 @@ export const usePOSTabStore = create<POSTabStore>()(
       updateTabOrderId: (tabId: string, orderId: string) => {
         set((state) => ({
           tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, orderId, type: 'existing', displayName: abbreviateOrderId(orderId), isEdited: false } : tab))
+        }))
+      },
+
+      updateTabOrderData: (tabId: string, orderData: any) => {
+        set((state) => ({
+          tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, orderData } : tab))
         }))
       },
 
@@ -329,10 +485,141 @@ export const usePOSTabStore = create<POSTabStore>()(
         return currentTab?.items || []
       },
 
-      getCurrentTabCustomer: () => {
+      getCurrentTabCustomer: () => { 
         const state = get()
         const currentTab = state.tabs.find(tab => tab.id === state.activeTabId)
-        return currentTab?.customer || { name: 'Walking Customer', gst: 'Not Applicable' }
+        return currentTab?.customer || null
+      },
+
+      updateTabOtherDetails: (tabId: string, details: { po_no?: string | null; po_date?: string | null; internal_note?: string | null }) => {
+        set((state) => ({
+          tabs: state.tabs.map((tab) =>
+            tab.id === tabId
+              ? {
+                  ...tab,
+                  po_no: details.po_no !== undefined ? details.po_no : tab.po_no,
+                  po_date: details.po_date !== undefined ? details.po_date : tab.po_date,
+                  internal_note: details.internal_note !== undefined ? details.internal_note : tab.internal_note,
+                  isEdited: true
+                }
+              : tab
+          )
+        }))
+      },
+
+      updateTabPostingDate: (tabId: string, postingDate: string | null) => {
+        set((state) => ({
+          tabs: state.tabs.map((tab) =>
+            tab.id === tabId
+              ? {
+                  ...tab,
+                  posting_date: postingDate,
+                  isEdited: true
+                }
+              : tab
+          )
+        }))
+      },
+
+      getCurrentTabPostingDate: () => {
+        const state = get()
+        const currentTab = state.tabs.find(tab => tab.id === state.activeTabId)
+        return currentTab?.posting_date || null
+      },
+
+      updateTabInstantPrintUrl: (tabId: string, url: string | null) => {
+        set((state) => ({
+          tabs: state.tabs.map((tab) =>
+            tab.id === tabId
+              ? {
+                  ...tab,
+                  instantPrintUrl: url
+                }
+              : tab
+          )
+        }))
+      },
+
+      updateTabRoundingEnabled: (tabId: string, enabled: boolean) => {
+        set((state) => ({
+          tabs: state.tabs.map((tab) =>
+            tab.id === tabId
+              ? {
+                  ...tab,
+                  isRoundingEnabled: enabled
+                }
+              : tab
+          )
+        }))
+      },
+
+      getCurrentTabRoundingEnabled: () => {
+        const state = get()
+        const currentTab = state.tabs.find(tab => tab.id === state.activeTabId)
+        return currentTab?.isRoundingEnabled ?? true
+      },
+
+      updateTabInvoiceNumber: (tabId: string, invoiceNumber: string | null, invoiceStatus?: string | null, invoiceCustomReverseStatus?: string | null) => {
+        console.log('📋 [updateTabInvoiceNumber] Called with:', { 
+          tabId, 
+          invoiceNumber, 
+          invoiceStatus, 
+          invoiceCustomReverseStatus 
+        })
+        set((state) => {
+          const updatedTabs = state.tabs.map((tab) =>
+            tab.id === tabId
+              ? {
+                  ...tab,
+                  invoiceNumber: invoiceNumber,
+                  invoiceStatus: invoiceStatus !== undefined ? invoiceStatus : tab.invoiceStatus,
+                  invoiceCustomReverseStatus: invoiceCustomReverseStatus !== undefined ? invoiceCustomReverseStatus : tab.invoiceCustomReverseStatus
+                }
+              : tab
+          )
+          const updatedTab = updatedTabs.find(tab => tab.id === tabId)
+          console.log('📋 [updateTabInvoiceNumber] Tab updated:', {
+            tabId,
+            oldInvoiceNumber: state.tabs.find(t => t.id === tabId)?.invoiceNumber,
+            newInvoiceNumber: updatedTab?.invoiceNumber,
+            newInvoiceStatus: updatedTab?.invoiceStatus,
+            newInvoiceCustomReverseStatus: updatedTab?.invoiceCustomReverseStatus
+          })
+          return { tabs: updatedTabs }
+        })
+      },
+
+      getCurrentTabInvoiceNumber: () => {
+        const state = get()
+        const currentTab = state.tabs.find(tab => tab.id === state.activeTabId)
+        const invoiceNumber = currentTab?.invoiceNumber || null
+        console.log('📋 [getCurrentTabInvoiceNumber] Retrieved:', {
+          activeTabId: state.activeTabId,
+          currentTabId: currentTab?.id,
+          invoiceNumber: invoiceNumber,
+          invoiceStatus: currentTab?.invoiceStatus,
+          invoiceCustomReverseStatus: currentTab?.invoiceCustomReverseStatus,
+          fullTab: currentTab ? { 
+            id: currentTab.id, 
+            orderId: currentTab.orderId, 
+            invoiceNumber: currentTab.invoiceNumber,
+            invoiceStatus: currentTab.invoiceStatus,
+            invoiceCustomReverseStatus: currentTab.invoiceCustomReverseStatus
+          } : null
+        })
+        return invoiceNumber
+      },
+
+      getCurrentTabInvoiceStatus: () => {
+        const state = get()
+        const currentTab = state.tabs.find(tab => tab.id === state.activeTabId)
+        return currentTab?.invoiceStatus || null
+      },
+
+      getCurrentTabInvoiceCustomReverseStatus: () => {
+        const state = get()
+        const currentTab = state.tabs.find(tab => tab.id === state.activeTabId)
+        return currentTab?.invoiceCustomReverseStatus || null
       },
 
       itemExistsInTab: (tabId: string, itemCode: string) => {

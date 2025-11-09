@@ -68,7 +68,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
   const [isLoading, setIsLoading] = useState(false)
   const [isFetchingMore, setIsFetchingMore] = useState(false)
   const [error, setError] = useState<any>(null)
-  const perPage = 10
+  const perPage = 15
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
   const latestRequestId = useRef(0)
@@ -82,9 +82,9 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
 
     const requestId = ++latestRequestId.current
     try {
-      // API expects cumulative pagination: (1, 10), (1, 20), (1, 30)...
+      // Fixed-size page: always request 1-7 (no cumulative growth)
       const limit_start = 1
-      const limit_page_length = pageToLoad * perPage
+      const limit_page_length = perPage
       console.log('[CustomerModal] Fetching page', pageToLoad, {
         search_term: term,
         limit_start,
@@ -94,7 +94,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
       const res = await window.electronAPI?.proxy?.request({
         url: '/api/method/centro_pos_apis.api.customer.customer_list',
         params: {
-          search_term: term,
+          search_term: term || '',  // Send empty string when no search term
           limit_start,
           limit_page_length
         }
@@ -124,16 +124,17 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
         customerType: 'Individual',
         gst: customer.tax_id || null,
         customer_id: customer.name,
+        default_price_list: customer.default_price_list || null,
         isActive: true,
         createdAt: '',
         updatedAt: ''
       }))
+      console.log('[CustomerModal] Mapped customers (first 5):', transformedCustomers.slice(0,5).map(c => ({ name: c.name, default_price_list: (c as any).default_price_list })))
 
-      // If we received fewer than perPage, no more data
-      // If server returns fewer than requested cumulative length, we've reached the end
-      setHasMore(transformedCustomers.length === limit_page_length)
+      // Fixed page size; disable further loads
+      setHasMore(false)
       setPage(pageToLoad)
-      // Always replace list with cumulative result (prevents duplicates)
+      // Replace list with current page
       setApiCustomers(transformedCustomers)
     } catch (err) {
       if (requestId !== latestRequestId.current) return
@@ -143,31 +144,13 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
       else setIsLoading(false)
     }
   }
-  // Load customers on modal open
-  useEffect(() => {
-    if (open) {
-      setApiCustomers([])
-      setPage(1)
-      setHasMore(true)
-      loadCustomers(search, 1, false)
-    }
-  }, [open, search])
+  // Unified debounced loader: runs on open/view/search changes
+  // Ensures only ONE request path is used to avoid duplicate/blink
 
-  // When switching back to search view
-  useEffect(() => {
-    if (view === 'search') {
-      setApiCustomers([])
-      setPage(1)
-      setHasMore(true)
-      loadCustomers(search, 1, false)
-    }
-  }, [view, search])
-
-  // Debounced server-side search with cutoff (only last request applies)
+  // Debounced server-side search/open/view changes with cutoff (only last request applies)
   useEffect(() => {
     if (!open || view !== 'search') return
-    // Immediately clear the list while waiting for the next server response
-    console.log('[CustomerModal] Search changed → clearing list and resetting pagination', search)
+    console.log('[CustomerModal] trigger load (debounced)', { search, open, view })
     setApiCustomers([])
     setPage(1)
     setHasMore(true)
@@ -192,7 +175,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
         params: {
           search_term: search,
           limit_start: 1,
-          limit_page_length: 10
+          limit_page_length: 15
         }
       })
       console.log('🧪 Customer API result:', res)
@@ -339,7 +322,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
         resetAndClose()
       } else {
         // Handle server error messages
-        handleServerErrorMessages(response?.data?._server_messages, 'Failed to create customer')
+        handleServerErrorMessages(response?.data?._server_messages, '')
         return
       }
     } catch (err: any) {
@@ -437,7 +420,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     resetAndClose()
                   }
                 }}
-                className="pl-10 pr-20"
+                className="pl-10 pr-28"
                 autoFocus
               />
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
@@ -644,7 +627,8 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                 </div>
               </div>
 
-              
+              {/* Separator */}
+              <div className="border-t border-gray-300 my-2"></div>
 
               {/* Row 3: Tax ID and ZATCA fields */}
               <div className="grid grid-cols-2 gap-4">
@@ -707,7 +691,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
               {/* Row 5: Address Line 1 and 2 */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-sm font-medium">Address Line 1 *</label>
+                  <label className="text-sm font-medium">Address Line 1{newCustomer.customer_type === 'Company' ? ' *' : ''}</label>
                   <Input
                     value={newCustomer.address_line1}
                     onChange={(e) =>
@@ -744,10 +728,10 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                 </div>
               </div>
 
-              {/* Row 6: City, State, Pincode */}
+              {/* Row 6: City/Town, Building No., Pincode */}
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-1">
-                  <label className="text-sm font-medium">City *</label>
+                  <label className="text-sm font-medium">City/Town{newCustomer.customer_type === 'Company' ? ' *' : ''}</label>
                   <Input
                     value={newCustomer.city}
                     onChange={(e) =>
@@ -765,7 +749,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-sm font-medium">Province *</label>
+                  <label className="text-sm font-medium">Building No.{newCustomer.customer_type === 'Company' ? ' *' : ''}</label>
                   <Input
                     value={newCustomer.state}
                     onChange={(e) =>
@@ -779,11 +763,11 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                         e.stopPropagation()
                       }
                     }}
-                    placeholder="Riyadh Province"
+                    placeholder="Building number"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-sm font-medium">Pincode *</label>
+                  <label className="text-sm font-medium">Pincode{newCustomer.customer_type === 'Company' ? ' *' : ''}</label>
                   <Input
                     value={newCustomer.pincode}
                     onChange={(e) =>
@@ -811,11 +795,16 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                 disabled={
                   isCreatingCustomer ||
                   !newCustomer.customer_name.trim() ||
-                  !newCustomer.address_line1.trim() ||
-                  !newCustomer.city.trim() ||
-                  !newCustomer.state.trim() ||
-                  !newCustomer.pincode.trim() ||
-                  (newCustomer.customer_type === 'Company' && (!newCustomer.mobile.trim() || !newCustomer.tax_id.trim() || !newCustomer.customer_id_type_for_zatca.trim() || !newCustomer.customer_id_number_for_zatca.trim()))
+                  (newCustomer.customer_type === 'Company' && (
+                    !newCustomer.mobile.trim() ||
+                    !newCustomer.tax_id.trim() ||
+                    !newCustomer.customer_id_type_for_zatca.trim() ||
+                    !newCustomer.customer_id_number_for_zatca.trim() ||
+                    !newCustomer.address_line1.trim() ||
+                    !newCustomer.city.trim() ||
+                    !newCustomer.state.trim() ||
+                    !newCustomer.pincode.trim()
+                  ))
                 }
               >
                 {isCreatingCustomer ? (
