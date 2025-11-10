@@ -22,6 +22,8 @@ interface CustomElectronAPI {
     request: (payload: { method?: string; url: string; params?: Record<string, any>; data?: any }) => Promise<any>
     session: () => Promise<any>
     logout: () => Promise<any>
+    setBaseUrl: (baseUrl: string) => Promise<any>
+    getBaseUrl: () => Promise<string>
   }
   app: {
     getVersion: () => Promise<string>

@@ -16,9 +16,12 @@ import { toast } from 'sonner'
 import { COMMON_ERROR_MESSAGE } from '@renderer/data/messages'
 import { useAuthStore } from '../../store/useAuthStore';
 import { useNavigate } from '@tanstack/react-router';
-
+import { BASE_URL_STORAGE_KEY, getApiBaseUrl, sanitizeBaseUrl } from '@renderer/config/production'
+import { setApiBaseUrl } from '@renderer/services/api'
+import { setFetchApiBaseUrl } from '@renderer/services/fetchAPI'
 
 const schema = Yup.object().shape({
+  baseUrl: Yup.string().required('Base URL is required'),
   email: Yup.string().required('This field is required'),
   password: Yup.string()
     .required('This field is required')
@@ -29,9 +32,12 @@ type FormData = Yup.InferType<typeof schema>
 
 const LoginPage: React.FC = () => {
 
+  const defaultBaseUrl = React.useMemo(() => getApiBaseUrl(), [])
+
   const form = useForm<FormData>({
     resolver: yupResolver(schema),
     defaultValues: {
+      baseUrl: defaultBaseUrl,
       email: '',
       password: ''
     }
@@ -39,6 +45,43 @@ const LoginPage: React.FC = () => {
 
   const { isLoading, login: storeLogin } = useAuthStore()
   const navigate = useNavigate()
+
+  React.useEffect(() => {
+    let isMounted = true
+
+    const syncBaseUrlFromMain = async () => {
+      if (typeof window === 'undefined' || !window.electronAPI?.proxy?.getBaseUrl) {
+        return
+      }
+
+      try {
+        const mainBaseUrl = await window.electronAPI.proxy.getBaseUrl()
+        const normalized = sanitizeBaseUrl(mainBaseUrl)
+
+        if (!isMounted) {
+          return
+        }
+
+        form.setValue('baseUrl', normalized, { shouldDirty: false, shouldTouch: false })
+        setApiBaseUrl(normalized)
+        setFetchApiBaseUrl(normalized)
+
+        try {
+          window.localStorage.setItem(BASE_URL_STORAGE_KEY, normalized)
+        } catch (error) {
+          console.warn('Failed to sync base URL to local storage', error)
+        }
+      } catch (error) {
+        console.warn('Failed to retrieve base URL from main process', error)
+      }
+    }
+
+    void syncBaseUrlFromMain()
+
+    return () => {
+      isMounted = false
+    }
+  }, [form])
 
   // Remove API mutation login flow; we'll use proxy-backed auth via storeLogin
   const error = null as unknown as any
@@ -48,6 +91,25 @@ const LoginPage: React.FC = () => {
 
   const onSubmit: SubmitHandler<FormData> = async (data: FormData) => {
     try {
+      const normalizedBaseUrl = sanitizeBaseUrl(data.baseUrl)
+
+      if (typeof window !== 'undefined') {
+        try {
+          window.localStorage.setItem(BASE_URL_STORAGE_KEY, normalizedBaseUrl)
+        } catch (storageError) {
+          console.warn('Failed to persist base URL', storageError)
+        }
+      }
+
+      setApiBaseUrl(normalizedBaseUrl)
+      setFetchApiBaseUrl(normalizedBaseUrl)
+
+      if (typeof window !== 'undefined' && window.electronAPI?.proxy?.setBaseUrl) {
+        await window.electronAPI.proxy.setBaseUrl(normalizedBaseUrl)
+      }
+
+      form.setValue('baseUrl', normalizedBaseUrl, { shouldDirty: false, shouldTouch: false })
+
       console.log('=== LOGIN ATTEMPT ===')
       console.log('1. Calling storeLogin...')
       await storeLogin({ username: data.email, password: data.password })
@@ -96,6 +158,14 @@ const LoginPage: React.FC = () => {
             )}
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-2">
+                <ControlledTextField
+                  name="baseUrl"
+                  label={"Base URL"}
+                  className="block text-sm font-semibold text-gray-700"
+                  required
+                  control={form.control}
+                  placeholder="Enter the ERPNext base URL"
+                />
                 <ControlledTextField
                   name="email"
                   leftIcon={<UserIcon />}
