@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import ElectronAuthStore from './electron-auth-store'
 import { getApiBaseUrl } from '@renderer/config/production'
 
-const API_BASE_URL = getApiBaseUrl()
+let API_BASE_URL = getApiBaseUrl()
 
 // Create axios instance
 const api: AxiosInstance = axios.create({
@@ -14,6 +14,13 @@ const api: AxiosInstance = axios.create({
   },
   withCredentials: true
 })
+
+export const setFetchApiBaseUrl = (baseUrl: string) => {
+  API_BASE_URL = baseUrl
+  api.defaults.baseURL = baseUrl
+}
+
+export const getFetchApiBaseUrl = () => API_BASE_URL
 
 // FormData conversion utility
 function jsonToFormData(

@@ -1,7 +1,7 @@
 import axios, { AxiosInstance } from 'axios'
 import { getApiBaseUrl } from '@renderer/config/production'
 
-const API_BASE_URL = getApiBaseUrl()
+let API_BASE_URL = getApiBaseUrl()
 
 // Create axios instance
 const api: AxiosInstance = axios.create({
@@ -13,6 +13,13 @@ const api: AxiosInstance = axios.create({
   },
   withCredentials: true
 })
+
+export const setApiBaseUrl = (baseUrl: string) => {
+  API_BASE_URL = baseUrl
+  api.defaults.baseURL = baseUrl
+}
+
+export const getCurrentApiBaseUrl = () => API_BASE_URL
 
 // Response interceptor for error handling
 api.interceptors.response.use(

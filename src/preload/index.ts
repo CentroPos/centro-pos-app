@@ -46,7 +46,9 @@ const proxyAPI = {
   request: (payload: { method?: string; url: string; params?: Record<string, any>; data?: any }) =>
     ipcRenderer.invoke('proxy-request', payload),
   session: () => ipcRenderer.invoke('proxy-session'),
-  logout: () => ipcRenderer.invoke('proxy-logout')
+  logout: () => ipcRenderer.invoke('proxy-logout'),
+  setBaseUrl: (baseUrl: string) => ipcRenderer.invoke('set-api-base-url', baseUrl),
+  getBaseUrl: () => ipcRenderer.invoke('get-api-base-url')
 }
 
 // Print API for Electron native printing

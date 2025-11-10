@@ -89,6 +89,58 @@ function setupAuthHandlers(): void {
     isLoggedIn: false
   }
 
+  const DEFAULT_API_BASE_URL = 'http://172.104.140.136'
+  let apiBaseUrl = DEFAULT_API_BASE_URL
+
+  const sanitizeBaseUrl = (url: string | null | undefined) => {
+    if (!url) {
+      return DEFAULT_API_BASE_URL
+    }
+
+    let sanitized = url.trim()
+
+    if (!sanitized) {
+      return DEFAULT_API_BASE_URL
+    }
+
+    if (!/^https?:\/\//i.test(sanitized)) {
+      sanitized = `http://${sanitized}`
+    }
+
+    sanitized = sanitized.replace(/\s+/g, '')
+    sanitized = sanitized.replace(/\/+$/, '')
+
+    return sanitized
+  }
+
+  const readPreferences = async (): Promise<Record<string, any>> => {
+    try {
+      const data = await fs.readFile(getPrefsPath(), 'utf8')
+      return JSON.parse(data)
+    } catch {
+      return {}
+    }
+  }
+
+  const writePreferences = async (preferences: Record<string, any>) => {
+    await fs.writeFile(getPrefsPath(), JSON.stringify(preferences, null, 2))
+  }
+
+  const setAndPersistBaseUrl = async (nextBaseUrl: string) => {
+    apiBaseUrl = sanitizeBaseUrl(nextBaseUrl)
+    const prefs = await readPreferences()
+    await writePreferences({ ...prefs, apiBaseUrl })
+  }
+
+  ;(async () => {
+    const prefs = await readPreferences()
+    if (prefs.apiBaseUrl) {
+      apiBaseUrl = sanitizeBaseUrl(prefs.apiBaseUrl)
+    }
+  })().catch((error) => {
+    console.warn('Failed to load persisted base URL, using default', error)
+  })
+
   // Store auth data securely
   ipcMain.handle('store-auth-data', async (_event, authData) => {
     try {
@@ -157,11 +209,19 @@ function setupAuthHandlers(): void {
     }
   })
 
+  ipcMain.handle('set-api-base-url', async (_event, baseUrl: string) => {
+    await setAndPersistBaseUrl(baseUrl)
+    return { success: true, baseUrl: apiBaseUrl }
+  })
+
+  ipcMain.handle('get-api-base-url', async () => {
+    return apiBaseUrl
+  })
+
   // Proxy: login via ERP, capture cookies and CSRF header
   ipcMain.handle('proxy-login', async (_event, payload: { username: string; password: string }) => {
     try {
-      const API_BASE_URL = 'http://172.104.140.136'
-      const loginUrl = `${API_BASE_URL}/api/method/login`
+      const loginUrl = `${apiBaseUrl}/api/method/login`
       const body = new URLSearchParams()
       body.append('usr', payload.username)
       body.append('pwd', payload.password)
@@ -215,8 +275,7 @@ function setupAuthHandlers(): void {
       payload: { method?: string; url: string; params?: Record<string, any>; data?: any }
     ) => {
       try {
-        const API_BASE_URL = 'http://172.104.140.136'
-        const url = new URL(`${API_BASE_URL}${payload.url.startsWith('/') ? '' : '/'}${payload.url}`)
+        const url = new URL(`${apiBaseUrl}${payload.url.startsWith('/') ? '' : '/'}${payload.url}`)
         if (payload.params) {
           Object.entries(payload.params).forEach(([k, v]) => url.searchParams.append(k, String(v)))
         }
@@ -503,7 +562,8 @@ function setupAuthHandlers(): void {
   // User preferences storage (non-sensitive data)
   ipcMain.handle('store-user-preferences', async (_event, preferences) => {
     try {
-      await fs.writeFile(getPrefsPath(), JSON.stringify(preferences, null, 2))
+      const existingPreferences = await readPreferences()
+      await writePreferences({ ...existingPreferences, ...preferences })
       return true
     } catch (error) {
       console.error('Failed to store user preferences:', error)
@@ -512,13 +572,8 @@ function setupAuthHandlers(): void {
   })
 
   ipcMain.handle('get-user-preferences', async () => {
-    try {
-      const data = await fs.readFile(getPrefsPath(), 'utf8')
-      return JSON.parse(data)
-    } catch {
-      // File might not exist, return empty object
-      return {}
-    }
+    const preferences = await readPreferences()
+    return preferences
   })
 
   ipcMain.handle('clear-user-preferences', async () => {
