@@ -31,4 +31,3 @@ jobs:
         with:
           name: windows-installer
           path: dist/*.exe
-
