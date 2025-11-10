@@ -75,7 +75,8 @@ const transformCustomerList = (response: any): Customer[] => {
         name: c.name,  // This will be mapped to id in transformCustomer
         customer_name: c.customer_name,
         email_id: c.email_id,
-        mobile_no: c.phone,
+        mobile_no: c.mobile_no,
+        gst_number: c.tax_id,
         address_line_1: c.address_line1,
         city: c.city,
         state: c.state,

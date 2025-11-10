@@ -100,6 +100,8 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
         }
       })
 
+      console.log('[CustomerModal] customer_list raw response:', res)
+
       // Ignore if a newer request has been issued
       if (requestId !== latestRequestId.current) return
 
@@ -115,7 +117,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
         id: customer.name,
         name: customer.customer_name || customer.name,
         email: customer.email_id || '',
-        phone: customer.phone || null,
+        phone: customer.mobile_no || customer.phone || null,
         address: customer.address_line1 || null,
         city: customer.city || null,
         state: customer.state || null,
@@ -193,9 +195,16 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
     return (apiCustomers || []).map((customer: any) => ({
       id: customer.id,
       name: customer.name,
-      gst: customer.gst || 'Not Available'
+      gst: customer.gst || 'Not Available',
+      phone: customer.phone || 'Not Available'
     }))
   }, [apiCustomers])
+
+  useEffect(() => {
+    if (!open || view !== 'search') return
+    if (customersForDisplay.length === 0) return
+    console.log('📋 Customer list loaded:', customersForDisplay)
+  }, [customersForDisplay, open, view])
 
   // Keyboard scroll support (UI-only)
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
@@ -500,7 +509,9 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                                 : 'text-muted-foreground'
                             }`}
                           >
-                            GST: {c.gst || 'Not Available'}
+                            <span>Tax ID: {c.gst || 'Not Available'}</span>
+                            <span className="mx-1">•</span>
+                            <span>Mobile: {c.phone || 'Not Available'}</span>
                           </p>
                         </div>
                         <Badge variant={selectedIndex === index ? 'secondary' : 'outline'}>

@@ -650,22 +650,64 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
   useHotkeys(
     'space',
-    async () => {
-      console.log('⌨️ Space key pressed. Active field:', activeField, 'Selected item:', selectedItemId)
+    async (e) => {
+      console.log('⌨️ Space key pressed. Active field:', activeField, 'Selected item:', selectedItemId, 'Is editing:', isEditing)
       // New behavior: Space toggles/cycles UOM for the selected item from any field
-      if (isProductModalOpen) return // Disable when product modal is open
-      if (isCustomerModalOpen) return // Disable when customer modal is open
-      if (!selectedItemId || isReadOnly) return
+      if (isProductModalOpen) {
+        console.log('⚠️ Space blocked: Product modal is open')
+        return // Disable when product modal is open
+      }
+      if (isCustomerModalOpen) {
+        console.log('⚠️ Space blocked: Customer modal is open')
+        return // Disable when customer modal is open
+      }
+      if (!selectedItemId) {
+        console.log('⚠️ Space blocked: No item selected')
+        return
+      }
+      if (isReadOnly) {
+        console.log('⚠️ Space blocked: Read-only mode')
+        return
+      }
       
-      // Check if we're in a text input field - if so, don't prevent default spacebar behavior
+      // Check if we're actively editing in a text input field - if so, allow normal spacebar behavior
+      // BUT: if item is selected and NOT in edit mode, spacebar should change UOM
       const activeElement = document.activeElement
-      if (activeElement && (
+      const isInputField = activeElement && (
         activeElement.tagName === 'INPUT' || 
         activeElement.tagName === 'TEXTAREA' || 
         (activeElement as HTMLElement).contentEditable === 'true'
-      )) {
-        return // Allow normal spacebar behavior in text fields
+      )
+      
+      // If editing UOM field, let the input's own handler take care of it
+      // Don't prevent default here so the input can handle it
+      if (isEditing && activeField === 'uom' && isInputField) {
+        console.log('⚠️ Space blocked: UOM input field has its own handler - letting it handle')
+        // Don't prevent default - let the input's onKeyDown handle it
+        return
       }
+      
+      // If editing other text fields, allow normal spacebar for typing
+      if (isEditing && isInputField && activeField !== 'uom') {
+        console.log('⚠️ Space blocked: Actively editing text field, allowing normal spacebar')
+        return // When actively editing a text field, allow normal spacebar for typing
+      }
+      
+      // Prevent default to stop page scroll or other default behaviors
+      // We need to prevent default here since useHotkeys has preventDefault: false
+      if (e) {
+        if (typeof e.preventDefault === 'function') {
+          e.preventDefault()
+        }
+        if (typeof e.stopPropagation === 'function') {
+          e.stopPropagation()
+        }
+      }
+      
+      console.log('✅ Spacebar will cycle UOM for item:', selectedItemId)
+      
+      // If not editing, spacebar should change UOM (even if some other element has focus)
+      // This allows UOM change when item is selected but edit box is not open
 
       // Save current scroll position to prevent scroll jump
       const container = tableScrollRef.current
@@ -675,8 +717,10 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         const item = items.find((i) => i.item_code === selectedItemId)
         if (!item) return
 
-        // Fetch UOM list for the exact item
-        const resp = await api.get(API_Endpoints.PRODUCT_LIST_METHOD, {
+        // Fetch UOM list for the exact item using electronAPI proxy (same as other successful calls)
+        const resp = await window.electronAPI?.proxy?.request({
+          method: 'GET',
+          url: '/api/method/centro_pos_apis.api.product.product_list',
           params: {
             price_list: 'Standard Selling',
             search_text: item.item_code,
@@ -731,7 +775,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         console.error('Space-to-cycle UOM failed:', err)
       }
     },
-    { preventDefault: true, enableOnFormTags: false }
+    { preventDefault: false, enableOnFormTags: false }
   )
 
   // Emergency reset shortcut (Ctrl+R)
@@ -1407,27 +1451,89 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             type="text"
                             value={editValue}
                               onChange={() => { /* disabled manual edit */ }}
-                            onKeyDown={(e) => {
+                            onKeyDown={async (e) => {
+                                // Handle spacebar FIRST before other handlers
+                                if (e.key === ' ' || e.key === 'Space') {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  console.log('⌨️ Spacebar pressed in UOM input field')
+                                  
+                                  try {
+                                    // Fetch UOM list for the exact item using electronAPI proxy (same as other successful calls)
+                                    const resp = await window.electronAPI?.proxy?.request({
+                                      method: 'GET',
+                                      url: '/api/method/centro_pos_apis.api.product.product_list',
+                                      params: {
+                                        price_list: 'Standard Selling',
+                                        search_text: item.item_code,
+                                        limit_start: 0,
+                                        limit_page_length: 10
+                                      }
+                                    })
+                                    const allItems = Array.isArray(resp?.data?.data) ? resp.data.data : []
+                                    const exactItem = allItems.find((i: any) => i.item_id === item.item_code)
+                                    const details: Array<{ uom: string; rate: number; qty?: number }> = Array.isArray(exactItem?.uom_details)
+                                      ? exactItem.uom_details
+                                      : []
+                                    
+                                    if (details.length === 0) {
+                                      console.warn('⚠️ No UOM details found for item:', item.item_code)
+                                      return
+                                    }
+
+                                    // Build ordered UOM list
+                                    const orderedUoms = details.map((d) => ({ uom: String(d.uom), rate: Number(d.rate || 0) }))
+                                    const currentUomLower = String(item.uom || 'Nos').toLowerCase()
+                                    const currentIndex = Math.max(
+                                      0,
+                                      orderedUoms.findIndex((d) => d.uom.toLowerCase() === currentUomLower)
+                                    )
+                                    const nextIndex = (currentIndex + 1) % orderedUoms.length
+                                    const next = orderedUoms[nextIndex]
+
+                                    console.log('🔁 Cycling UOM in input field:', {
+                                      current: item.uom,
+                                      next: next.uom,
+                                      nextRate: next.rate,
+                                      list: orderedUoms
+                                    })
+
+                                    setEditValue(next.uom)
+                                    if (activeTabId && selectedItemId) {
+                                      updateItemAndMarkEdited(selectedItemId, {
+                                        uom: next.uom,
+                                        standard_rate: Number(next.rate || 0),
+                                        uomRates: Object.fromEntries(orderedUoms.map((d) => [d.uom, d.rate]))
+                                      })
+                                    }
+                                    return // Exit early, don't process other keys
+                                  } catch (err) {
+                                    console.error('Space-to-cycle UOM in input field failed:', err)
+                                    // Fallback to using existing uomRates if available
+                                    const rates = item.uomRates || {}
+                                    const uoms = Object.keys(rates)
+                                    if (uoms.length > 0) {
+                                      const currentUom = String(item.uom || 'Nos')
+                                      const currentIndex = Math.max(0, uoms.indexOf(currentUom))
+                                      const nextIndex = (currentIndex + 1) % uoms.length
+                                      const nextUom = uoms[nextIndex]
+                                      setEditValue(nextUom)
+                                      if (activeTabId && selectedItemId) {
+                                        updateItemAndMarkEdited(selectedItemId, {
+                                          uom: nextUom,
+                                          standard_rate: rates[nextUom] ?? item.standard_rate
+                                        })
+                                      }
+                                    }
+                                    return
+                                  }
+                                }
+                                
                                 // Allow horizontal navigation to other fields
                                 handleArrowNavigation(e, 'uom', item.item_code)
                                 handleVerticalNavigation(e, 'uom', item.item_code)
-                                if (e.key === ' ') {
-                                  e.preventDefault()
-                                  // Cycle to next UOM
-                                  const rates = item.uomRates || {}
-                                  const uoms = Object.keys(rates)
-                                  const currentUom = String(item.uom || 'Nos')
-                                  const currentIndex = Math.max(0, uoms.indexOf(currentUom))
-                                  const nextIndex = (currentIndex + 1) % (uoms.length || 1)
-                                  const nextUom = uoms.length ? uoms[nextIndex] : currentUom
-                                  setEditValue(nextUom)
-                                  if (activeTabId && selectedItemId) {
-                                    updateItemAndMarkEdited(selectedItemId, {
-                                      uom: nextUom,
-                                      standard_rate: rates[nextUom] ?? item.standard_rate
-                                    })
-                                  }
-                                } else if (e.key === 'Escape') {
+                                
+                                if (e.key === 'Escape') {
                                 e.preventDefault()
                                 setIsEditing(false)
                               }
