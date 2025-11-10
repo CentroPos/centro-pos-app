@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react'
+import { RefreshCcw } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@renderer/components/ui/dialog'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
@@ -26,11 +27,22 @@ const PrintsTabContent: React.FC = () => {
   const [pdfPreviews, setPdfPreviews] = useState<Record<string, string>>({})
   const [activePrintTab, setActivePrintTab] = useState<string>('')
   const [instantPrintPreview, setInstantPrintPreview] = useState<string>('')
+  const [refreshKey, setRefreshKey] = useState(0)
   const prevOrderIdRef = useRef<string | null>(null)
 
   // Persistent cache for print items and PDF previews
   const printItemsCache = useRef<Record<string, any[]>>({})
   const pdfPreviewsCache = useRef<Record<string, string>>({})
+
+  const handlePrintsRefresh = () => {
+    const currentOrderId = getCurrentTab()?.orderId
+    if (currentOrderId) {
+      delete printItemsCache.current[currentOrderId]
+    }
+    setPdfPreviews({})
+    setActivePrintTab('')
+    setRefreshKey((prev) => prev + 1)
+  }
 
   // Load PDF preview for a specific item
   const loadPDFPreview = async (item: any) => {
@@ -136,7 +148,7 @@ const PrintsTabContent: React.FC = () => {
     } else {
       setInstantPrintPreview('')
     }
-  }, [currentTab?.instantPrintUrl])
+  }, [currentTab?.instantPrintUrl, refreshKey])
 
   // Track previous instant print URL to detect when it's newly set
   const prevInstantPrintUrlForSelectionRef = useRef<string | null>(null)
@@ -172,7 +184,7 @@ const PrintsTabContent: React.FC = () => {
     if (currentInstantPrintUrl) {
       prevInstantPrintUrlForSelectionRef.current = currentInstantPrintUrl
     }
-  }, [printItems, activePrintTab, currentTab?.instantPrintUrl])
+  }, [printItems, activePrintTab, currentTab?.instantPrintUrl, refreshKey])
 
   // Track previous instant print URL to detect changes
   const prevInstantPrintUrlRef = useRef<string | null>(null)
@@ -317,7 +329,7 @@ const PrintsTabContent: React.FC = () => {
 
     console.log('🖨️ Calling fetchPrintItems')
     fetchPrintItems()
-  }, [currentTab?.orderId, currentTab?.instantPrintUrl])
+  }, [currentTab?.orderId, currentTab?.instantPrintUrl, refreshKey])
 
   // Keyboard navigation for print sub tabs (MUST be before any conditional returns)
   useEffect(() => {
@@ -396,6 +408,16 @@ const PrintsTabContent: React.FC = () => {
 
   return (
     <div className="p-4 h-full flex flex-col">
+      <div className="flex justify-end mb-2">
+        <button
+          type="button"
+          onClick={handlePrintsRefresh}
+          className="inline-flex items-center justify-center rounded-full p-2 text-gray-500 hover:text-black hover:bg-gray-100 transition-colors"
+          title="Refresh print options"
+        >
+          <RefreshCcw className="h-4 w-4" />
+        </button>
+      </div>
       <div className="mb-4">
         <h3 className="text-lg font-semibold text-gray-800 mb-2">Print Options</h3>
         <p className="text-sm text-gray-600">Order: {currentTab.orderId}</p>
@@ -643,6 +665,14 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [productSubTab, setProductSubTab] = useState<'sales-history' | 'customer-history' | 'purchase-history'>(
     'sales-history'
   )
+  const [refreshTokens, setRefreshTokens] = useState({
+    product: 0,
+    customer: 0,
+    prints: 0,
+    payments: 0,
+    orders: 0
+  })
+  const refreshBypassRef = useRef<{ token?: number; pending?: Set<'recent' | 'most' | 'details'> }>({})
   
   // Tab configuration - update this array when adding/removing tabs
   const productTabs = [
@@ -655,7 +685,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [currencySymbol, setCurrencySymbol] = useState('$')
   const { profile } = usePOSProfileStore()
   const hideCostAndMargin = profile?.custom_hide_cost_and_margin_info === 1
-  const { updateItemInTab, getCurrentTab } = usePOSTabStore()
+  const { updateItemInTab, getCurrentTab, updateTabOrderData } = usePOSTabStore()
   const { openTab } = usePOSTabStore()
   const { tabs, setActiveTab } = usePOSTabStore()
   const currentTab = getCurrentTab()
@@ -799,6 +829,32 @@ const RightPanel: React.FC<RightPanelProps> = ({
     onTabChange?.(tab)
   }
 
+  const triggerTabRefresh = (tab: 'product' | 'customer' | 'prints' | 'payments' | 'orders') => {
+    setRefreshTokens((prev) => {
+      const next = {
+        ...prev,
+        [tab]: prev[tab] + 1
+      }
+      if (tab === 'customer') {
+        refreshBypassRef.current.token = next.customer
+        refreshBypassRef.current.pending = new Set(['recent', 'most', 'details'])
+      }
+      return next
+    })
+  }
+
+  const resolveCustomerBypass = (section: 'recent' | 'most' | 'details') => {
+    if (refreshBypassRef.current.token !== refreshTokens.customer) return
+    const pending = refreshBypassRef.current.pending
+    if (!pending) return
+    pending.delete(section)
+    if (pending.size === 0) {
+      delete refreshBypassRef.current.token
+      delete refreshBypassRef.current.pending
+    }
+  }
+
+
   // Get the currently selected item
   const selectedItem = selectedItemId
     ? items.find((item) => item.item_code === selectedItemId)
@@ -888,7 +944,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
     if (selectedItemId) {
       fetchProductListData(selectedItemId)
     }
-  }, [selectedItemId, currentUom])
+  }, [selectedItemId, currentUom, refreshTokens.product])
 
   // Fetch customer history for selected product
   // Pagination state for product tab histories
@@ -1158,7 +1214,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
     salesHasMoreRef.current = true
     customerHasMoreRef.current = true
     purchaseHasMoreRef.current = true
-  }, [selectedItemId, selectedCustomer])
+  }, [selectedItemId, selectedCustomer, refreshTokens.product])
 
   // Reset customer/most pagination when customer tab switches or customer changes
   useEffect(() => {
@@ -1187,7 +1243,17 @@ const RightPanel: React.FC<RightPanelProps> = ({
         fetchPurchaseHistory(selectedItemId, purchaseHistoryPage, purchaseHistorySearch)
       }
     }
-  }, [productSubTab, salesHistoryPage, salesHistorySearch, customerHistoryPage, customerHistorySearch, purchaseHistoryPage, purchaseHistorySearch, selectedItemId])
+  }, [
+    productSubTab,
+    salesHistoryPage,
+    salesHistorySearch,
+    customerHistoryPage,
+    customerHistorySearch,
+    purchaseHistoryPage,
+    purchaseHistorySearch,
+    selectedItemId,
+    refreshTokens.product
+  ])
 
   // Live warehouse stock fetched from backend (for all UOMs)
   const [stockLoading, setStockLoading] = useState(false)
@@ -1265,7 +1331,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
     return () => {
       cancelled = true
     }
-  }, [productData?.item_code])
+  }, [productData?.item_code, refreshTokens.product])
 
   // Product history states
   const [salesHistory, setSalesHistory] = useState<any[]>([])
@@ -1621,7 +1687,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
     return () => {
       cancelled = true
     }
-  }, [selectedItem?.item_code, productListData?.item_id])
+  }, [selectedItem?.item_code, productListData?.item_id, refreshTokens.product])
 
   // Fetch recent orders when customer is selected - matching Orders pattern
   useEffect(() => {
@@ -1634,6 +1700,9 @@ const RightPanel: React.FC<RightPanelProps> = ({
       selectedCustomerFull: selectedCustomer,
       timestamp: new Date().toISOString()
     });
+    const bypassPrefetch =
+      refreshBypassRef.current.token === refreshTokens.customer &&
+      refreshBypassRef.current.pending?.has('recent')
     let cancelled = false;
     async function loadRecentOrders(page: number, searchTerm: string = '') {
       console.log('📞 Recent Orders API called:', {
@@ -1656,7 +1725,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
       const shouldUsePreFetched = page === 1 && !searchTerm && recentOrdersSearch === '' && !hasRecentOrdersSearchedRef.current
       if (shouldUsePreFetched) {
         const preFetched = currentTab?.orderData?._relatedData
-        if (preFetched?.recentOrders) {
+        if (preFetched?.recentOrders && !bypassPrefetch) {
           console.log('✅ Using pre-fetched recent orders from order')
           if (!cancelled) {
             const orders = Array.isArray(preFetched.recentOrders) ? preFetched.recentOrders : []
@@ -1765,12 +1834,23 @@ const RightPanel: React.FC<RightPanelProps> = ({
       }
     }
     if (activeTab === 'customer' && customerSubTab === 'recent' && (selectedCustomer?.name || selectedCustomer?.customer_id)) {
-      loadRecentOrders(recentPage, recentOrdersSearch);
+      void loadRecentOrders(recentPage, recentOrdersSearch).finally(() => resolveCustomerBypass('recent'))
+    } else if (bypassPrefetch) {
+      resolveCustomerBypass('recent')
     }
     return () => {
       cancelled = true;
     };
-  }, [recentPage, activeTab, customerSubTab, recentOrdersSearch, selectedCustomer?.name, selectedCustomer?.customer_id, currentTab?.orderId])
+  }, [
+    recentPage,
+    activeTab,
+    customerSubTab,
+    recentOrdersSearch,
+    selectedCustomer?.name,
+    selectedCustomer?.customer_id,
+    currentTab?.orderId,
+    refreshTokens.customer
+  ])
 
   // Fetch most ordered when customer is selected - matching Orders pattern
   useEffect(() => {
@@ -1783,6 +1863,9 @@ const RightPanel: React.FC<RightPanelProps> = ({
       selectedCustomerFull: selectedCustomer,
       timestamp: new Date().toISOString()
     });
+    const bypassPrefetch =
+      refreshBypassRef.current.token === refreshTokens.customer &&
+      refreshBypassRef.current.pending?.has('most')
     let cancelled = false;
     async function loadMostOrdered(page: number, searchTerm: string = '') {
       console.log('📞 Most Ordered API called:', {
@@ -1805,7 +1888,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
       const shouldUsePreFetched = page === 1 && !searchTerm && mostOrderedSearch === '' && !hasMostOrderedSearchedRef.current
       if (shouldUsePreFetched) {
         const preFetched = currentTab?.orderData?._relatedData
-        if (preFetched?.mostOrdered) {
+        if (preFetched?.mostOrdered && !bypassPrefetch) {
           console.log('✅ Using pre-fetched most ordered from order')
           if (!cancelled) {
             const items = Array.isArray(preFetched.mostOrdered) ? preFetched.mostOrdered : []
@@ -1899,33 +1982,129 @@ const RightPanel: React.FC<RightPanelProps> = ({
       }
     }
     if (activeTab === 'customer' && customerSubTab === 'most' && (selectedCustomer?.name || selectedCustomer?.customer_id)) {
-      loadMostOrdered(mostPage, mostOrderedSearch);
+      void loadMostOrdered(mostPage, mostOrderedSearch).finally(() => resolveCustomerBypass('most'))
+    } else if (bypassPrefetch) {
+      resolveCustomerBypass('most')
     }
     return () => {
       cancelled = true;
     };
-  }, [mostPage, activeTab, customerSubTab, mostOrderedSearch, selectedCustomer?.name, selectedCustomer?.customer_id, currentTab?.orderId])
+  }, [
+    mostPage,
+    activeTab,
+    customerSubTab,
+    mostOrderedSearch,
+    selectedCustomer?.name,
+    selectedCustomer?.customer_id,
+    currentTab?.orderId,
+    refreshTokens.customer
+  ])
 
+  // Track previous active tab to detect tab switches
+  const prevActiveTabRef = useRef<string | null>(null)
+  
   // Fetch customer details and insights when customer is selected
   useEffect(() => {
+    console.log('🔄 Customer details useEffect triggered:', {
+      activeTab,
+      selectedCustomer: selectedCustomer?.name,
+      currentTabOrderId: currentTab?.orderId,
+      currentTabStatus: currentTab?.status,
+      refreshToken: refreshTokens.customer
+    })
+    
+    // Only fetch when customer tab is active
+    if (activeTab !== 'customer') {
+      prevActiveTabRef.current = activeTab
+      return
+    }
+    
     let cancelled = false
+    const bypassPrefetch =
+      refreshBypassRef.current.token === refreshTokens.customer &&
+      refreshBypassRef.current.pending?.has('details')
+    
+    // Check if order status changed - if so, bypass cache to get fresh insights
+    // Also bypass if orderId changed (order was just saved)
+    // Also bypass cache when switching to customer tab to always get fresh data
+    const lastKnownStatus = (currentTab?.orderData as any)?._lastKnownStatus
+    const lastKnownOrderId = (currentTab?.orderData as any)?._lastKnownOrderId
+    const orderStatusChanged = lastKnownStatus !== undefined && currentTab?.status && currentTab.status !== lastKnownStatus
+    const orderIdChanged = lastKnownOrderId !== undefined && currentTab?.orderId && currentTab.orderId !== lastKnownOrderId
+    const justSwitchedToCustomer = prevActiveTabRef.current !== 'customer' && activeTab === 'customer'
+    const shouldBypassCache = bypassPrefetch || orderStatusChanged || orderIdChanged || justSwitchedToCustomer
+    
+    // Update ref for next comparison
+    prevActiveTabRef.current = activeTab
+    
     async function loadCustomerDetails() {
       if (!selectedCustomer) {
+        console.log('⚠️ No customer selected, clearing details')
         setCustomerDetails(null)
         setCustomerInsights(null)
+        setCustomerDetailsLoading(false)
+        resolveCustomerBypass('details')
         return
       }
       
+      console.log('🔄 Loading customer details for:', selectedCustomer.name, {
+        shouldBypassCache,
+        bypassPrefetch,
+        orderStatusChanged,
+        orderIdChanged,
+        justSwitchedToCustomer
+      })
+      
       // Check if we have pre-fetched data from order opening
+      // Skip cache if order status changed (save/confirm/pay/return happened)
+      // Always bypass cache when switching to customer tab to get fresh insights
       const preFetched = currentTab?.orderData?._relatedData
-      if (preFetched?.customerDetails || preFetched?.customerInsights) {
+      
+      if ((preFetched?.customerDetails || preFetched?.customerInsights) && !shouldBypassCache) {
         console.log('✅ Using pre-fetched customer data from order')
         if (!cancelled) {
           setCustomerDetails(preFetched.customerDetails || null)
           setCustomerInsights(preFetched.customerInsights || null)
           setCustomerDetailsLoading(false)
+          
+          // Set _lastKnownStatus and _lastKnownOrderId so we can detect changes later
+          if (currentTab?.id && currentTab?.orderData && !(currentTab.orderData as any)?._lastKnownStatus) {
+            const updatedOrderData = {
+              ...currentTab.orderData,
+              _lastKnownStatus: currentTab.status,
+              _lastKnownOrderId: currentTab.orderId
+            }
+            updateTabOrderData(currentTab.id, updatedOrderData)
+          }
         }
+        resolveCustomerBypass('details')
         return
+      }
+      
+      // If we reach here, we need to fetch fresh data
+      console.log('🔄 Fetching fresh customer details (bypassing cache)')
+      
+      if (justSwitchedToCustomer) {
+        console.log('🔄 Just switched to customer tab, fetching fresh insights')
+      }
+      
+      // If we should bypass cache, clear cached insights from orderData
+      if (shouldBypassCache && currentTab?.orderData?._relatedData) {
+        console.log('🔄 Bypassing cache, clearing cached customer insights', {
+          bypassPrefetch,
+          orderStatusChanged,
+          orderIdChanged,
+          justSwitchedToCustomer
+        })
+        const updatedOrderData = {
+          ...currentTab.orderData,
+          _relatedData: {
+            ...currentTab.orderData._relatedData,
+            customerInsights: null,
+            customerDetails: null
+          }
+        }
+        updateTabOrderData(currentTab.id, updatedOrderData)
       }
       
       try {
@@ -1942,10 +2121,15 @@ const RightPanel: React.FC<RightPanelProps> = ({
         const customerId = match?.name
 
         if (!customerId) {
+          console.log('❌ Customer ID not found for:', selectedCustomer.name)
           setCustomerDetails(null)
           setCustomerInsights(null)
+          setCustomerDetailsLoading(false)
+          resolveCustomerBypass('details')
           return
         }
+        
+        console.log('✅ Found customer ID:', customerId, 'for customer:', selectedCustomer.name)
 
         // Step 2: Fetch customer details
         const detailsRes = await window.electronAPI?.proxy?.request({
@@ -1960,8 +2144,30 @@ const RightPanel: React.FC<RightPanelProps> = ({
         })
 
         if (!cancelled) {
-          setCustomerDetails(detailsRes?.data?.data || null)
-          setCustomerInsights(insightsRes?.data?.data || null)
+          const details = detailsRes?.data?.data || null
+          const insights = insightsRes?.data?.data || null
+          console.log('✅ Customer details loaded:', { 
+            hasDetails: !!details, 
+            hasInsights: !!insights,
+            customerName: details?.customer_name || selectedCustomer.name
+          })
+          setCustomerDetails(details)
+          setCustomerInsights(insights)
+          
+          // Update orderData with fresh insights and track status/orderId
+          if (currentTab?.id && currentTab?.orderData) {
+            const updatedOrderData = {
+              ...currentTab.orderData,
+              _relatedData: {
+                ...currentTab.orderData._relatedData,
+                customerInsights: insightsRes?.data?.data || null,
+                customerDetails: detailsRes?.data?.data || null
+              },
+              _lastKnownStatus: currentTab.status,
+              _lastKnownOrderId: currentTab.orderId
+            }
+            updateTabOrderData(currentTab.id, updatedOrderData)
+          }
         }
       } catch (e: any) {
         if (!cancelled) {
@@ -1971,13 +2177,14 @@ const RightPanel: React.FC<RightPanelProps> = ({
         if (!cancelled) {
           setCustomerDetailsLoading(false)
         }
+        resolveCustomerBypass('details')
       }
     }
-    loadCustomerDetails()
+    void loadCustomerDetails()
     return () => {
       cancelled = true
     }
-  }, [selectedCustomer?.name, currentTab?.orderId])
+  }, [selectedCustomer?.name, currentTab?.orderId, currentTab?.status, refreshTokens.customer, activeTab])
 
   // PATCH 1: Add page size state
   const pageSizeOptions = [10, 25, 50];
@@ -2045,7 +2252,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [ordersPage, pageLength, activeTab, subTab, ordersSearch]); // Added ordersSearch to dependencies
+  }, [ordersPage, pageLength, activeTab, subTab, ordersSearch, refreshTokens.orders]); // Added ordersSearch to dependencies
 
   // Debounced search effect - resets pagination and triggers API call when search changes
   const prevSearchRef = useRef<string>('');
@@ -2134,7 +2341,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [returnsPage, pageLength, activeTab, subTab, returnsSearch]); // Added returnsSearch to dependencies
+  }, [returnsPage, pageLength, activeTab, subTab, returnsSearch, refreshTokens.orders]); // Added returnsSearch to dependencies
 
   // Debounced search effect for Returns - resets pagination and triggers API call when search changes
   const prevReturnsSearchRef = useRef<string>('');
@@ -2168,7 +2375,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
     return () => {
       clearTimeout(handler);
     };
-  }, [returnsSearch, activeTab, subTab]); // Trigger when search term changes
+  }, [returnsSearch, activeTab, subTab, refreshTokens.orders]); // Trigger when search term changes
 
   // PATCH 5: Show total state for orders/returns
   const [ordersTotal, setOrdersTotal] = useState(0);
@@ -2364,6 +2571,16 @@ const RightPanel: React.FC<RightPanelProps> = ({
             </div>
           ) : (
             <>
+              <div className="flex justify-end px-4 pt-3">
+                <button
+                  type="button"
+                  onClick={() => triggerTabRefresh('product')}
+                  className="inline-flex items-center justify-center rounded-full p-2 text-gray-500 hover:text-black hover:bg-gray-100 transition-colors"
+                  title="Refresh product data"
+                >
+                  <RefreshCcw className="h-4 w-4" />
+                </button>
+              </div>
               {/* Product Overview */}
               <div className="p-4 border-b border-gray-200/60 bg-white/90">
                 <div className="flex">
@@ -3014,6 +3231,16 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
       {activeTab === 'customer' && (
         <div className="flex-1 overflow-y-auto scrollbar-hide">
+      <div className="flex justify-end px-4 pt-3">
+        <button
+          type="button"
+          onClick={() => triggerTabRefresh('customer')}
+          className="inline-flex items-center justify-center rounded-full p-2 text-gray-500 hover:text-black hover:bg-gray-100 transition-colors"
+          title="Refresh customer data"
+        >
+          <RefreshCcw className="h-4 w-4" />
+        </button>
+      </div>
           <div className="p-4 border-b border-gray-200/60 bg-white/90">
             {customerDetailsLoading && (
               <div className="text-center py-4">
@@ -3183,9 +3410,14 @@ const RightPanel: React.FC<RightPanelProps> = ({
                 </div>
               </>
             )}
-            {!customerDetailsLoading && !customerDetailsError && !customerDetails && (
+            {!customerDetailsLoading && !customerDetailsError && !customerDetails && !selectedCustomer && (
               <div className="text-center py-4">
                 <div className="text-sm text-gray-500">Select a customer to view details</div>
+              </div>
+            )}
+            {!customerDetailsLoading && !customerDetailsError && !customerDetails && selectedCustomer && (
+              <div className="text-center py-4">
+                <div className="text-sm text-gray-500">Loading customer details...</div>
               </div>
             )}
           </div>
@@ -3799,6 +4031,16 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
       {activeTab === 'orders' && (
         <div className="flex-1 overflow-y-auto scrollbar-hide">
+      <div className="flex justify-end px-4 pt-3">
+        <button
+          type="button"
+          onClick={() => triggerTabRefresh('orders')}
+          className="inline-flex items-center justify-center rounded-full p-2 text-gray-500 hover:text-black hover:bg-gray-100 transition-colors"
+          title="Refresh orders data"
+        >
+          <RefreshCcw className="h-4 w-4" />
+        </button>
+      </div>
           <div className="bg-white/90 mt-2">
             <div className="flex border-b border-gray-200/60">
               <button

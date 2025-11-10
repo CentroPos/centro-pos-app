@@ -312,20 +312,8 @@ const POSInterface: React.FC = () => {
   
   // Arrow keys are handled by the items table component, so we don't need global handlers here
   // Enter key is handled by the items table component, so we don't need a global handler here
-  useHotkeys('space', () => {
-    // Check if we're in a text input field - if so, don't prevent default spacebar behavior
-    const activeElement = document.activeElement
-    if (activeElement && (
-      activeElement.tagName === 'INPUT' || 
-      activeElement.tagName === 'TEXTAREA' || 
-      activeElement.contentEditable === 'true'
-    )) {
-      return // Allow normal spacebar behavior in text fields
-    }
-    
-    // Spacebar functionality is handled by individual components
-    // No need for global notification
-  }, { enableOnFormTags: false, preventDefault: false })
+  // Spacebar is handled by items-table component for UOM cycling
+  // No global handler needed here
 
   // React effects to handle custom events
   React.useEffect(() => {

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { RefreshCcw } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
 import { Label } from '@renderer/components/ui/label'
@@ -797,7 +798,20 @@ const PaymentTab: React.FC = () => {
       {/* Payment Vouchers full section */}
       <div className="p-3 bg-white">
         <div className="flex items-center justify-between mb-1">
-          <h3 className="text-lg font-semibold text-gray-800">Payment Vouchers</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg font-semibold text-gray-800">Payment Vouchers</h3>
+            <button
+              onClick={() => {
+                console.log('🔄 Refreshing payment vouchers...')
+                setVoucherPage(1)
+                loadPaymentVouchers(1, voucherSearchTerm, paymentTypeFilter)
+              }}
+              className="p-1.5 hover:bg-gray-100 rounded transition-colors"
+              title="Refresh payment vouchers"
+            >
+              <RefreshCcw className="h-4 w-4 text-gray-600" />
+            </button>
+          </div>
           <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => setIsPaymentModalOpen(true)}>Make Payment</Button>
         </div>
 

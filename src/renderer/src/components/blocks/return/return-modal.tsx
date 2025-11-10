@@ -37,7 +37,7 @@ interface ReturnModalProps {
 }
 
 const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSuccess }) => {
-  const { getCurrentTab, updateTabInstantPrintUrl, getCurrentTabInvoiceNumber } = usePOSTabStore()
+  const { getCurrentTab, updateTabInstantPrintUrl, getCurrentTabInvoiceNumber, updateTabOrderData } = usePOSTabStore()
   const currentTab = getCurrentTab()
   const storedInvoiceNumber = getCurrentTabInvoiceNumber()
   const [invoiceNumber, setInvoiceNumber] = useState('')
@@ -412,6 +412,23 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
         if (pdfUrl && currentTab) {
           updateTabInstantPrintUrl(currentTab.id, pdfUrl)
         }
+        
+        // Clear cached customer insights to trigger refresh in right panel
+        // Don't update _lastKnownStatus yet - let the right panel detect the change
+        if (currentTab.orderData?._relatedData) {
+          const updatedOrderData = {
+            ...currentTab.orderData,
+            _relatedData: {
+              ...currentTab.orderData._relatedData,
+              customerInsights: null,
+              customerDetails: null
+            }
+            // Keep _lastKnownStatus as is so right panel can detect the change
+          }
+          updateTabOrderData(currentTab.id, updatedOrderData)
+          console.log('🔄 Cleared cached customer insights after return to trigger refresh')
+        }
+        
         toast.success('Return order processed successfully!', { duration: 2000 })
         onReturnSuccess?.()
         onClose()

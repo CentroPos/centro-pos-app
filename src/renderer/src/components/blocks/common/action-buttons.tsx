@@ -1401,6 +1401,22 @@ const ActionButtons: React.FC<Props> = ({
         console.log('✅ Payment Amount:', paymentAmount)
         setTabStatus(currentTab.id, newStatus)
         console.log('✅ Tab status updated')
+        
+        // Clear cached customer insights to trigger refresh in right panel
+        // Don't update _lastKnownStatus yet - let the right panel detect the status change
+        if (currentTab.orderData?._relatedData) {
+          const updatedOrderData = {
+            ...currentTab.orderData,
+            _relatedData: {
+              ...currentTab.orderData._relatedData,
+              customerInsights: null,
+              customerDetails: null
+            }
+            // Keep _lastKnownStatus as is so right panel can detect the change
+          }
+          updateTabOrderData(currentTab.id, updatedOrderData)
+          console.log('🔄 Cleared cached customer insights to trigger refresh after confirm/pay')
+        }
 
         const action = paymentAmount > 0 ? 'paid' : 'confirmed'
         console.log('✅ Showing success toast for action:', action)
