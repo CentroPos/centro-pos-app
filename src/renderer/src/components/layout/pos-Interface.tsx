@@ -96,7 +96,9 @@ const POSInterface: React.FC = () => {
     itemExistsInTab,
     getCurrentTab,
     getCurrentTabCustomer,
-    createNewTab
+    createNewTab,
+    lastAction,
+    setLastAction
   } = usePOSTabStore();
 
   // Get selected customer from store
@@ -112,10 +114,18 @@ const POSInterface: React.FC = () => {
     }
   }, [activeTabId, selectedItemId])
 
+  // When a duplicate or open-existing action switches to a new tab, switch right panel to Customer
+  React.useEffect(() => {
+    if (lastAction === 'duplicated' || lastAction === 'opened') {
+      setRightPanelTab('customer')
+      setLastAction(null)
+    }
+  }, [activeTabId, lastAction, setLastAction])
+
   // Load POS profile and user profile details once POS loads
   const { data: profileDetails } = useProfileDetails()
   const { data: posProfile } = usePosProfile()
-  const { user } = useAuthStore()
+  const { user, isAuthenticated } = useAuthStore()
   const { setProfile, setCurrentUserPrivileges } = usePOSProfileStore()
   const { profile } = usePOSProfileStore()
 
@@ -187,6 +197,13 @@ const POSInterface: React.FC = () => {
       console.log('❌ No POS profile data found')
     }
   }, [posProfile, user?.email, setProfile, setCurrentUserPrivileges])
+
+  // After login/session validation, default right panel to Orders
+  React.useEffect(() => {
+    if (isAuthenticated) {
+      setRightPanelTab('orders')
+    }
+  }, [isAuthenticated])
 
   const itemExists = (itemCode: string) => {
     if (!activeTabId) return false;

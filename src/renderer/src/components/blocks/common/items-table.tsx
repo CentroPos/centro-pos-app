@@ -221,6 +221,22 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   const tableScrollRef = useRef<HTMLDivElement>(null)
   const localKeyHandlingRef = useRef(false)
   const navigatingRef = useRef(false)
+  const [priceLimitHighlight, setPriceLimitHighlight] = useState<Set<string>>(new Set())
+
+  const triggerPriceHighlight = (itemCode: string) => {
+    setPriceLimitHighlight(prev => {
+      const next = new Set(prev)
+      next.add(itemCode)
+      return next
+    })
+    setTimeout(() => {
+      setPriceLimitHighlight(prev => {
+        const next = new Set(prev)
+        next.delete(itemCode)
+        return next
+      })
+    }, 3000)
+  }
 
   // Function to completely reset editing state
   const resetEditingState = () => {
@@ -635,6 +651,52 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     // Warehouse popup is now only triggered manually via Ctrl+Shift+W
     // Removed automatic popup trigger on quantity change
 
+    // If editing unit price, validate against min/max from product_list for current UOM
+    if (activeField === 'standard_rate') {
+      try {
+        const numeric = typeof finalValue === 'number' ? finalValue : parseFloat(String(finalValue))
+        // Skip validation if zero
+        if (numeric !== 0) {
+          const resp = await window.electronAPI?.proxy?.request({
+            method: 'GET',
+            url: '/api/method/centro_pos_apis.api.product.product_list',
+            params: {
+              price_list: 'Standard Selling',
+              search_text: item.item_code,
+              limit_start: 0,
+              limit_page_length: 10
+            }
+          })
+          const allItems = Array.isArray(resp?.data?.data) ? resp.data.data : []
+          const exactItem = allItems.find((i: any) => i.item_id === item.item_code)
+          const details: Array<{ uom: string; rate: number; min_price?: number; max_price?: number }> =
+            Array.isArray(exactItem?.uom_details) ? exactItem.uom_details : []
+          const currentUomLower = String(item.uom || 'Nos').toLowerCase()
+          const uomEntry = details.find(d => String(d.uom || '').toLowerCase() === currentUomLower)
+          const minPrice = Number(uomEntry?.min_price ?? 0)
+          const maxPrice = Number(uomEntry?.max_price ?? 0)
+          let clamped = numeric
+          let violated = false
+          if (minPrice && numeric < minPrice) {
+            clamped = minPrice
+            violated = true
+          }
+          if (maxPrice && numeric > maxPrice) {
+            clamped = maxPrice
+            violated = true
+          }
+          if (violated) {
+            toast.error('Less than Minimum Price or more than maximum Price.', { position: 'bottom-right', duration: 3000 })
+            triggerPriceHighlight(item.item_code)
+          }
+          finalValue = clamped
+        }
+      } catch (err) {
+        // If validation API fails, proceed without blocking
+        console.warn('Price min/max validation failed:', err)
+      }
+    }
+
     updateItemAndMarkEdited(selectedItemId, { [activeField]: finalValue })
 
     // Don't auto-navigate - let user use arrow keys for navigation
@@ -970,6 +1032,40 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     { preventDefault: true, enableOnFormTags: false }
   )
 
+  // Delete key to trigger the same action as clicking the X (delete) on the selected row
+  useHotkeys(
+    ['delete', 'del'],
+    () => {
+      if (isProductModalOpen || isCustomerModalOpen) return
+      if (showDeleteConfirm) return
+      if (!selectedItemId || isReadOnly) return
+      // Don't trigger when actively editing an input
+      if (isEditing) return
+      // Determine actual index in items[] corresponding to selectedRowIndex in filteredItems[]
+      const filteredBefore = filteredItems.slice(0, selectedRowIndex)
+      let itemsBeforeCount = 0
+      let actualIndex = -1
+      const term = tableSearch.trim().toLowerCase()
+      for (let i = 0; i < items.length; i++) {
+        const matchesFilter =
+          !term ||
+          String(items[i].item_code || '').toLowerCase().includes(term) ||
+          String(items[i].item_name || '').toLowerCase().includes(term)
+        if (matchesFilter) {
+          if (itemsBeforeCount === filteredBefore.length) {
+            actualIndex = i
+            break
+          }
+          itemsBeforeCount++
+        }
+      }
+      setDeleteCandidate(selectedItemId)
+      setDeleteCandidateIndex(actualIndex >= 0 ? actualIndex : null)
+      setShowDeleteConfirm(true)
+    },
+    { preventDefault: true, enableOnFormTags: true }
+  )
+
   // Handle warehouse allocation
   const handleWarehouseAllocation = (allocations: any[]) => {
     if (!warehousePopupData || !activeTabId) return
@@ -1196,6 +1292,32 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                   if (selectedItem) {
                     moveToField(selectedItem.item_code, 'quantity')
                   }
+                } else if (e.key === 'Delete') {
+                  // Fallback: handle Delete at the container level when not editing
+                  if (isProductModalOpen || isCustomerModalOpen) return
+                  if (showDeleteConfirm) return
+                  if (!selectedItemId || isReadOnly) return
+                  if (isEditing) return
+                  const filteredBefore = filteredItems.slice(0, selectedRowIndex)
+                  let itemsBeforeCount = 0
+                  let actualIndex = -1
+                  const term = tableSearch.trim().toLowerCase()
+                  for (let i = 0; i < items.length; i++) {
+                    const matchesFilter =
+                      !term ||
+                      String(items[i].item_code || '').toLowerCase().includes(term) ||
+                      String(items[i].item_name || '').toLowerCase().includes(term)
+                    if (matchesFilter) {
+                      if (itemsBeforeCount === filteredBefore.length) {
+                        actualIndex = i
+                        break
+                      }
+                      itemsBeforeCount++
+                    }
+                  }
+                  setDeleteCandidate(selectedItemId)
+                  setDeleteCandidateIndex(actualIndex >= 0 ? actualIndex : null)
+                  setShowDeleteConfirm(true)
                 }
               }}
               onClick={(e) => {
@@ -1606,7 +1728,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
                       {/* Unit Price (editable) */}
                       <TableCell
-                        className={`${hasError ? 'text-red-600 font-medium' : hasSplitWarehouse ? 'text-yellow-600 font-medium' : isSelected ? 'font-medium' : ''} w-[100px] text-center`}
+                        className={`${hasError ? 'text-red-600 font-medium' : hasSplitWarehouse ? 'text-yellow-600 font-medium' : isSelected ? 'font-medium' : ''} w-[100px] text-center ${priceLimitHighlight.has(item.item_code) ? 'bg-red-50' : ''}`}
                         onClick={(e) => {
                           e.stopPropagation()
                           if (!isReadOnly) {
@@ -1663,10 +1785,10 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             onBlur={handleSaveEdit}
                             min="0"
                             step="0.01"
-                            className="w-[80px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
+                            className={`w-[80px] mx-auto px-2 py-1 border ${priceLimitHighlight.has(item.item_code) ? 'border-red-500 bg-red-50' : 'border-gray-300'} rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center`}
                           />
                         ) : (
-                          <span className={`font-bold ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>{Number(item.standard_rate || 0).toFixed(2)}</span>
+                          <span className={`font-bold ${priceLimitHighlight.has(item.item_code) ? 'text-red-600' : hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>{Number(item.standard_rate || 0).toFixed(2)}</span>
                         )}
                       </TableCell>
                       <TableCell className={`font-semibold ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : isSelected ? 'text-blue-900' : ''} w-[100px] text-left pl-8`}>
