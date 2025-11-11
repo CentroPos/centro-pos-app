@@ -43,11 +43,13 @@ interface Tab {
 interface POSTabStore {
   tabs: Tab[]
   activeTabId: string | null
+  lastAction?: 'duplicated' | 'opened' | null
 
   openTab: (orderId: string, orderData?: any, status?: 'draft' | 'confirmed' | 'paid') => void
   createNewTab: () => boolean
   closeTab: (tabId: string) => void
   setActiveTab: (tabId: string) => void
+  setLastAction: (action: 'duplicated' | 'opened' | null) => void
   setTabStatus: (tabId: string, status: Tab['status']) => void
   setTabPrivilege: (tabId: string, privilege: Tab['privilege']) => void
   duplicateCurrentTab: () => boolean
@@ -105,6 +107,7 @@ export const usePOSTabStore = create<POSTabStore>()(
     (set, get) => ({
       tabs: [],
       activeTabId: null,
+      lastAction: null,
 
       // Tab management methods
       openTab: (orderId: string, orderData?: any, status?: 'draft' | 'confirmed' | 'paid') => {
@@ -222,7 +225,8 @@ export const usePOSTabStore = create<POSTabStore>()(
         set((state) => {
           const updatedState = {
             tabs: [...state.tabs, newTab],
-            activeTabId: newTab.id
+            activeTabId: newTab.id,
+            lastAction: 'opened' as const
           }
           console.log('📋 [openTab] Tab stored in state. Total tabs:', updatedState.tabs.length)
           console.log('📋 [openTab] Active tab ID:', updatedState.activeTabId)
@@ -306,6 +310,11 @@ export const usePOSTabStore = create<POSTabStore>()(
       setActiveTab: (tabId: string) => {
         set({ activeTabId: tabId })
       },
+      
+      // Track last high-level action to allow UI reactions
+      setLastAction: (action: 'duplicated' | 'opened' | null) => {
+        set({ lastAction: action })
+      },
 
       setTabStatus: (tabId: string, status: Tab['status']) => {
         set((state) => ({
@@ -349,7 +358,7 @@ export const usePOSTabStore = create<POSTabStore>()(
           invoiceData: null,
           globalDiscountPercent: source.globalDiscountPercent || 0
         }
-        set((s) => ({ tabs: [...s.tabs, clone], activeTabId: clone.id }))
+        set((s) => ({ tabs: [...s.tabs, clone], activeTabId: clone.id, lastAction: 'duplicated' as const }))
         return true
       },
 

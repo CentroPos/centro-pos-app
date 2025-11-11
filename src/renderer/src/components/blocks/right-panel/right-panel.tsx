@@ -408,7 +408,11 @@ const PrintsTabContent: React.FC = () => {
 
   return (
     <div className="p-4 h-full flex flex-col">
-      <div className="flex justify-end mb-2">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-800 mb-2">Print Options</h3>
+          <p className="text-sm text-gray-600">Order: {currentTab.orderId}</p>
+        </div>
         <button
           type="button"
           onClick={handlePrintsRefresh}
@@ -417,10 +421,6 @@ const PrintsTabContent: React.FC = () => {
         >
           <RefreshCcw className="h-4 w-4" />
         </button>
-      </div>
-      <div className="mb-4">
-        <h3 className="text-lg font-semibold text-gray-800 mb-2">Print Options</h3>
-        <p className="text-sm text-gray-600">Order: {currentTab.orderId}</p>
       </div>
 
       {currentTab?.orderId ? (
@@ -1276,12 +1276,23 @@ const RightPanel: React.FC<RightPanelProps> = ({
       ? productListData.uom_details
       : []
     const rateFromApi = uomDetails.length > 0 ? Number(uomDetails[0]?.rate || 0) : undefined
-    // Unit price is always from API (constant), not from item table
-    const standardRate = Number(rateFromApi ?? 0)
+    // Match the rate for the current display UOM (case-insensitive)
+    const matchingUomDetail = uomDetails.find((detail: any) =>
+      String(detail?.uom || '').toLowerCase() === String(displayUom || '').toLowerCase()
+    )
+    const standardRate = Number(
+      matchingUomDetail?.rate ??
+        rateFromApi ??
+        selectedItem?.standard_rate ??
+        0
+    )
     
     // For margin calculation, use unit price from item table if manually changed, otherwise use API rate
     const marginCalculationRate = Number(
-      selectedItem?.standard_rate ?? rateFromApi ?? 0
+      selectedItem?.standard_rate ??
+        matchingUomDetail?.rate ??
+        rateFromApi ??
+        0
     )
     
     // Calculate on-hand qty for the current UOM (selected item's UOM)
@@ -1299,6 +1310,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
       item_code: code,
       item_name: name,
       standard_rate: standardRate,
+      min_price: Number((matchingUomDetail as any)?.min_price ?? 0),
+      max_price: Number((matchingUomDetail as any)?.max_price ?? 0),
       on_hand: onHandQty,
       on_hand_uom: displayUom, // Include the UOM for display
       cost: costPrice,
@@ -1513,6 +1526,9 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [mostError, setMostError] = useState<string | null>(null)
   const [mostPage, setMostPage] = useState(1)
   const [mostHasMore, setMostHasMore] = useState(true)
+  // Page length controls for customer sub-tabs
+  const [recentPageLength, setRecentPageLength] = useState(10)
+  const [mostPageLength, setMostPageLength] = useState(10)
 
   // Customer details and insights
   const [customerDetails, setCustomerDetails] = useState<any>(null)
@@ -1705,6 +1721,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
       refreshBypassRef.current.pending?.has('recent')
     let cancelled = false;
     async function loadRecentOrders(page: number, searchTerm: string = '') {
+      const PAGE_LEN_LOCAL = recentPageLength
       console.log('📞 Recent Orders API called:', {
         page,
         searchTerm,
@@ -1774,7 +1791,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
         const recentOrdersParams = {
           customer_id: customerId,
           limit_start: page,
-          limit_page_length: PAGE_LEN,
+          limit_page_length: PAGE_LEN_LOCAL,
           search_term: searchTerm || '' // Always include search_term
         }
         const apiUrl = '/api/method/centro_pos_apis.api.customer.get_customer_recent_orders'
@@ -1801,17 +1818,17 @@ const RightPanel: React.FC<RightPanelProps> = ({
               if (page > 1) setRecentPage(page - 1)
               return
             }
-            setRecentHasMore(orders.length === PAGE_LEN)
+            setRecentHasMore(orders.length === PAGE_LEN_LOCAL)
             setRecentOrders(orders)
 
-            if (orders.length === PAGE_LEN) {
+            if (orders.length === PAGE_LEN_LOCAL) {
               try {
                 const probe = await window.electronAPI?.proxy?.request({
                   url: '/api/method/centro_pos_apis.api.customer.get_customer_recent_orders',
                 params: { 
                   customer_id: customerId, 
                   limit_start: page + 1, 
-                  limit_page_length: PAGE_LEN,
+                  limit_page_length: PAGE_LEN_LOCAL,
                   search_term: searchTerm || '' // Always include search_term
                 }
                 })
@@ -1849,7 +1866,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
     selectedCustomer?.name,
     selectedCustomer?.customer_id,
     currentTab?.orderId,
-    refreshTokens.customer
+    refreshTokens.customer,
+    recentPageLength
   ])
 
   // Fetch most ordered when customer is selected - matching Orders pattern
@@ -1868,6 +1886,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
       refreshBypassRef.current.pending?.has('most')
     let cancelled = false;
     async function loadMostOrdered(page: number, searchTerm: string = '') {
+      const PAGE_LEN_LOCAL = mostPageLength
       console.log('📞 Most Ordered API called:', {
         page,
         searchTerm,
@@ -1893,7 +1912,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
           if (!cancelled) {
             const items = Array.isArray(preFetched.mostOrdered) ? preFetched.mostOrdered : []
             setMostOrdered(items)
-            setMostHasMore(items.length === PAGE_LEN)
+            setMostHasMore(items.length === mostPageLength)
             setMostLoading(false)
           }
           return
@@ -1927,7 +1946,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
         const mostOrderedParams = {
           customer_id: customerId, 
           limit_start: page, 
-          limit_page_length: PAGE_LEN,
+          limit_page_length: PAGE_LEN_LOCAL,
           search_term: searchTerm || '' // Always include search_term
         }
         const apiUrl = '/api/method/centro_pos_apis.api.customer.get_customer_most_ordered_products'
@@ -1953,17 +1972,17 @@ const RightPanel: React.FC<RightPanelProps> = ({
             if (page > 1) setMostPage(page - 1)
             return
           }
-          setMostHasMore(items.length === PAGE_LEN)
+            setMostHasMore(items.length === PAGE_LEN_LOCAL)
           setMostOrdered(items)
 
-          if (items.length === PAGE_LEN) {
+          if (items.length === PAGE_LEN_LOCAL) {
             try {
               const probe = await window.electronAPI?.proxy?.request({
                 url: '/api/method/centro_pos_apis.api.customer.get_customer_most_ordered_products',
                 params: { 
                   customer_id: customerId, 
                   limit_start: page + 1, 
-                  limit_page_length: PAGE_LEN,
+                  limit_page_length: PAGE_LEN_LOCAL,
                   search_term: searchTerm || '' // Always include search_term
                 }
               })
@@ -1997,7 +2016,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
     selectedCustomer?.name,
     selectedCustomer?.customer_id,
     currentTab?.orderId,
-    refreshTokens.customer
+    refreshTokens.customer,
+    mostPageLength
   ])
 
   // Track previous active tab to detect tab switches
@@ -2571,16 +2591,6 @@ const RightPanel: React.FC<RightPanelProps> = ({
             </div>
           ) : (
             <>
-              <div className="flex justify-end px-4 pt-3">
-                <button
-                  type="button"
-                  onClick={() => triggerTabRefresh('product')}
-                  className="inline-flex items-center justify-center rounded-full p-2 text-gray-500 hover:text-black hover:bg-gray-100 transition-colors"
-                  title="Refresh product data"
-                >
-                  <RefreshCcw className="h-4 w-4" />
-                </button>
-              </div>
               {/* Product Overview */}
               <div className="p-4 border-b border-gray-200/60 bg-white/90">
                 <div className="flex">
@@ -2589,8 +2599,18 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       {productData.item_code.substring(0, 3).toUpperCase()}
                     </div>
                   </div>
-                  <div className="space-y-2 ml-4">
-                    <div className="font-bold text-lg text-gray-500">{productData.item_code}</div>
+                  <div className="space-y-2 ml-4 flex-1">
+                    <div className="flex items-center justify-between">
+                      <div className="font-bold text-lg text-gray-500">{productData.item_code}</div>
+                      <button
+                        type="button"
+                        onClick={() => triggerTabRefresh('product')}
+                        className="inline-flex items-center justify-center rounded-full p-2 text-gray-500 hover:text-black hover:bg-gray-100 transition-colors"
+                        title="Refresh product data"
+                      >
+                        <RefreshCcw className="h-4 w-4" />
+                      </button>
+                    </div>
                     <div className="font-semibold text-sm text-gray-800">{productData.item_name}</div>
                     {productArabicName && (
                       <div className="text-xs text-gray-700">{productArabicName}</div>
@@ -2611,13 +2631,21 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       {currencySymbol} {productData.standard_rate.toFixed(2)}
                     </div>
                   </div>
-                  <div className="p-3 bg-gradient-to-r from-red-50 to-pink-50 rounded-xl">
-                    <div className="text-xs text-gray-600">On Hand</div>
-                    {productListLoading ? (
-                      <div className="font-bold text-gray-500">Loading...</div>
-                    ) : (
-                      <div className="font-bold text-red-600">{productData.on_hand} {productData.on_hand_uom || 'units'}</div>
-                    )}
+                  <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50/40 rounded-xl">
+                    <div className="space-y-1">
+                      <div className="text-sm">
+                        <span className="text-gray-600">Min Price: </span>
+                        <span className="font-bold text-purple-600">
+                          {currencySymbol} {productData.min_price.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="text-sm">
+                        <span className="text-gray-600">Max Price: </span>
+                        <span className="font-bold text-blue-600">
+                          {currencySymbol} {productData.max_price.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                   {!hideCostAndMargin && (
                     <>
@@ -2635,6 +2663,14 @@ const RightPanel: React.FC<RightPanelProps> = ({
                   </div>
                     </>
                   )}
+                  <div className="p-3 bg-gradient-to-r from-red-50 to-pink-50 rounded-xl col-span-2">
+                    <div className="text-xs text-gray-600">On Hand</div>
+                    {productListLoading ? (
+                      <div className="font-bold text-gray-500">Loading...</div>
+                    ) : (
+                      <div className="font-bold text-red-600">{productData.on_hand} {productData.on_hand_uom || 'units'}</div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -3231,16 +3267,6 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
       {activeTab === 'customer' && (
         <div className="flex-1 overflow-y-auto scrollbar-hide">
-      <div className="flex justify-end px-4 pt-3">
-        <button
-          type="button"
-          onClick={() => triggerTabRefresh('customer')}
-          className="inline-flex items-center justify-center rounded-full p-2 text-gray-500 hover:text-black hover:bg-gray-100 transition-colors"
-          title="Refresh customer data"
-        >
-          <RefreshCcw className="h-4 w-4" />
-        </button>
-      </div>
           <div className="p-4 border-b border-gray-200/60 bg-white/90">
             {customerDetailsLoading && (
               <div className="text-center py-4">
@@ -3255,16 +3281,26 @@ const RightPanel: React.FC<RightPanelProps> = ({
             {!customerDetailsLoading && !customerDetailsError && customerDetails && (
               <>
                 <div className="flex items-center gap-4 mb-6 justify-between">
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-4 flex-1">
                   <div className="w-12 h-12 bg-gradient-to-r from-primary to-slate-700 rounded-full flex items-center justify-center">
                     <svg className="w-6 h-6 text-white" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="user" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" fill="currentColor">
                       <path d="M224 256A128 128 0 1 0 224 0a128 128 0 1 0 0 256zm-45.7 48C79.8 304 0 383.8 0 482.3C0 498.7 13.3 512 29.7 512H418.3c16.4 0 29.7-13.3 29.7-29.7C448 383.8 368.2 304 269.7 304H178.3z"></path>
                     </svg>
                   </div>
-                  <div>
-                    <h3 className="font-bold text-lg">
-                      {customerDetails.customer_name || ''}
-                    </h3>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="font-bold text-lg">
+                        {customerDetails.customer_name || ''}
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => triggerTabRefresh('customer')}
+                        className="inline-flex items-center justify-center rounded-full p-2 text-gray-500 hover:text-black hover:bg-gray-100 transition-colors"
+                        title="Refresh customer data"
+                      >
+                        <RefreshCcw className="h-4 w-4" />
+                      </button>
+                    </div>
                     <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">VAT: {customerDetails.tax_id || 'Not Applicable'}</p>
                     <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">Type: {customerDetails.customer_type || '—'}</p>
                     <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">Mobile: {customerDetails.mobile_no || '—'}</p>
@@ -3873,7 +3909,19 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     >
                       Next
                     </button>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500">Results per page</span>
+                      <select
+                        value={recentPageLength}
+                        onChange={e => { setRecentPage(1); setRecentPageLength(Number(e.target.value)); }}
+                        className="text-xs border rounded px-2 py-1"
+                      >
+                        {pageSizeOptions.map(opt => (
+                          <option key={opt} value={opt}>{opt} / page</option>
+                        ))}
+                      </select>
                     </div>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -3963,6 +4011,18 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     >
                       Next
                     </button>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500">Results per page</span>
+                      <select
+                        value={mostPageLength}
+                        onChange={e => { setMostPage(1); setMostPageLength(Number(e.target.value)); }}
+                        className="text-xs border rounded px-2 py-1"
+                      >
+                        {pageSizeOptions.map(opt => (
+                          <option key={opt} value={opt}>{opt} / page</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -4031,16 +4091,6 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
       {activeTab === 'orders' && (
         <div className="flex-1 overflow-y-auto scrollbar-hide">
-      <div className="flex justify-end px-4 pt-3">
-        <button
-          type="button"
-          onClick={() => triggerTabRefresh('orders')}
-          className="inline-flex items-center justify-center rounded-full p-2 text-gray-500 hover:text-black hover:bg-gray-100 transition-colors"
-          title="Refresh orders data"
-        >
-          <RefreshCcw className="h-4 w-4" />
-        </button>
-      </div>
           <div className="bg-white/90 mt-2">
             <div className="flex border-b border-gray-200/60">
               <button
@@ -4067,8 +4117,18 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
             {subTab === 'orders' ? (
               <div className="p-4">
-                <div className="text-xs text-gray-500 mb-2">
-                  All Orders ({filteredOrders.length})
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <div className="text-xs text-gray-500">
+                    All Orders ({filteredOrders.length})
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => triggerTabRefresh('orders')}
+                    className="inline-flex items-center justify-center rounded-full p-2 text-gray-500 hover:text-black hover:bg-gray-100 transition-colors"
+                    title="Refresh orders data"
+                  >
+                    <RefreshCcw className="h-4 w-4" />
+                  </button>
                 </div>
 
                 {/* Search Bar */}
@@ -4401,7 +4461,17 @@ const RightPanel: React.FC<RightPanelProps> = ({
             )
              : (
               <div className="p-4">
-                <div className="text-xs text-gray-500 mb-2">Returns ({filteredReturns.length})</div>
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <div className="text-xs text-gray-500">Returns ({filteredReturns.length})</div>
+                  <button
+                    type="button"
+                    onClick={() => triggerTabRefresh('orders')}
+                    className="inline-flex items-center justify-center rounded-full p-2 text-gray-500 hover:text-black hover:bg-gray-100 transition-colors"
+                    title="Refresh returns data"
+                  >
+                    <RefreshCcw className="h-4 w-4" />
+                  </button>
+                </div>
 
                 {/* Search Bar */}
                 <div className="relative mb-4">
