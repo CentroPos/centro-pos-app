@@ -50,15 +50,17 @@ const MultiWarehousePopup: React.FC<MultiWarehousePopupProps> = ({
   useEffect(() => {
     if (open) {
       // Initialize warehouse data with pre-selected warehouses from props
-      // If defaultWarehouse is provided, mark it as selected and pre-fill allocation
+      // Preserve existing allocations if they exist, otherwise use defaults
       setWarehouseData(
         warehouses.map((warehouse) => {
           const isDefaultWarehouse = defaultWarehouse && warehouse.name === defaultWarehouse
-          const isSelected = warehouse.selected || isDefaultWarehouse || false
+          // Use existing selected state if provided, otherwise default to defaultWarehouse
+          const isSelected = warehouse.selected !== undefined ? warehouse.selected : (isDefaultWarehouse || false)
           
-          // Pre-fill allocation for default/current warehouse
-          let initialAllocated = 0
-          if (isSelected && isDefaultWarehouse) {
+          // Pre-fill allocation: use existing allocated value if provided, otherwise calculate default
+          let initialAllocated = warehouse.allocated || 0
+          if (initialAllocated === 0 && isSelected && isDefaultWarehouse) {
+            // Only auto-fill if no existing allocation and it's the default warehouse
             // If required < available, use required; otherwise use available
             if (requiredQty < warehouse.available) {
               initialAllocated = requiredQty

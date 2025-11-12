@@ -851,6 +851,11 @@ const RightPanel: React.FC<RightPanelProps> = ({
     // Get current UOM from selected item
     const currentUom = selectedItemFromTable.uom || 'Nos'
     
+    // Check if item already has warehouse allocations (split warehouse state)
+    const existingAllocations = selectedItemFromTable.warehouseAllocations && Array.isArray(selectedItemFromTable.warehouseAllocations) 
+      ? selectedItemFromTable.warehouseAllocations 
+      : []
+    
     // Transform warehouseStock to MultiWarehousePopup format
     const warehouses = warehouseStock.map((warehouse) => {
       // Find quantity for current UOM
@@ -859,11 +864,16 @@ const RightPanel: React.FC<RightPanelProps> = ({
       )
       const availableQty = qtyForUom ? Number(qtyForUom.qty) : 0
 
+      // Check if this warehouse has an existing allocation
+      const existingAlloc = existingAllocations.find((alloc: any) => alloc.name === warehouse.name)
+      const isSelected = existingAlloc ? true : false // Use existing selection or default to false
+      const allocated = existingAlloc ? Number(existingAlloc.allocated || 0) : 0
+
       return {
         name: warehouse.name,
         available: availableQty,
-        allocated: 0,
-        selected: false
+        allocated: allocated, // Pre-fill with existing allocation
+        selected: isSelected // Use existing selection
       }
     })
 
