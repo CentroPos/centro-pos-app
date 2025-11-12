@@ -309,13 +309,14 @@ const ActionButtons: React.FC<Props> = ({
 
   // Load VAT percentage from profile
   useEffect(() => {
-    if (profile?.custom_tax_rate !== null && profile?.custom_tax_rate !== undefined) {
-      const vatValue = Number(profile.custom_tax_rate)
+    const taxRate = (profile as any)?.custom_tax_rate
+    if (taxRate !== null && taxRate !== undefined) {
+      const vatValue = Number(taxRate)
       if (!isNaN(vatValue) && vatValue >= 0) {
         setVatPercentage(vatValue)
       }
     }
-  }, [profile?.custom_tax_rate])
+  }, [(profile as any)?.custom_tax_rate])
 
   // Helper function to round to nearest (same as DiscountSection)
   const roundToNearest = (value: number, step = 0.05) => {
@@ -1203,8 +1204,8 @@ const ActionButtons: React.FC<Props> = ({
       // POS Profile
       console.log('🏪 POS Profile:', {
         name: profile.name,
-        company: profile.company || 'N/A',
-        warehouse: profile.warehouse || 'N/A'
+        company: (profile as any).company || 'N/A',
+        warehouse: (profile as any).warehouse || 'N/A'
       })
       
       // Other Details
