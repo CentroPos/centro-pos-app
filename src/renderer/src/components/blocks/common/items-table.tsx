@@ -497,13 +497,24 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       // Check if required quantity exceeds current warehouse stock
       if (requiredQty > currentWarehouseQty) {
         // Prepare all warehouses for popup
+        // Check if item already has warehouse allocations (split warehouse state)
+        const existingAllocations = item.warehouseAllocations && Array.isArray(item.warehouseAllocations) ? item.warehouseAllocations : []
+        
         const warehouses = list.map((w: any) => {
           const q = Array.isArray(w.quantities) ? w.quantities : []
           const match = q.find((qq: any) => String(qq.uom).toLowerCase() === uomToCheck)
+          const available = Number(match?.qty || 0)
+          
+          // Check if this warehouse has an existing allocation
+          const existingAlloc = existingAllocations.find((alloc: any) => alloc.name === w.warehouse)
+          const isSelected = existingAlloc ? true : (w.warehouse === currentWarehouse) // Use existing selection or default
+          const allocated = existingAlloc ? Number(existingAlloc.allocated || 0) : 0
+          
           return { 
             name: w.warehouse, 
-            available: Number(match?.qty || 0),
-            selected: w.warehouse === currentWarehouse // Pre-select current warehouse
+            available: available,
+            allocated: allocated, // Pre-fill with existing allocation
+            selected: isSelected // Use existing selection or default
           }
         })
 
