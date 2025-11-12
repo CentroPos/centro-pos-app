@@ -59,6 +59,7 @@ interface POSTabStore {
   removeItemFromTab: (tabId: string, itemCode: string) => void
   removeItemFromTabByIndex: (tabId: string, index: number) => void
   updateItemInTab: (tabId: string, itemCode: string, updates: any) => void
+  updateItemInTabByIndex: (tabId: string, index: number, updates: any) => void
   updateTabOrderId: (tabId: string, orderId: string) => void
   updateTabOrderData: (tabId: string, orderData: any) => void
   updateTabTaxAmount: (tabId: string, taxAmount: number) => void

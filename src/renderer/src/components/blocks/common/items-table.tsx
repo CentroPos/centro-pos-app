@@ -37,8 +37,6 @@ type Props = {
   errorItems?: string[]
 }
 
-type EditField = 'quantity' | 'standard_rate' | 'uom' | 'discount_percentage' | 'item_name' | 'item_description'
-
 const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem, shouldStartEditing = false, onEditingStarted, onAddItemClick, onSaveCompleted, isProductModalOpen = false, isCustomerModalOpen = false, isErrorBoxFocused = false, onEditingStateChange, errorItems = [] }) => {
   const { getCurrentTabItems, activeTabId, updateItemInTab, updateItemInTabByIndex, getCurrentTab, setTabEdited, removeItemFromTabByIndex, updateTabOtherDetails } = usePOSTabStore();
   const items = getCurrentTabItems();

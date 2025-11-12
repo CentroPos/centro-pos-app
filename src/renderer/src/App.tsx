@@ -7,7 +7,7 @@ import Providers from './providers/Providers'
 const App: React.FC = () => {
   const [isInitialized, setIsInitialized] = useState(false)
   const [currentPage, setCurrentPage] = useState<'login' | 'pos'>('login')
-  const { user, validateSession, isAuthenticated, logout } = useAuthStore()
+  const { validateSession, isAuthenticated } = useAuthStore()
 
   // Initialize app - check authentication status
   useEffect(() => {
@@ -63,12 +63,6 @@ const App: React.FC = () => {
       setCurrentPage('pos')
     }
   }, [isAuthenticated, isInitialized, currentPage])
-
-  // Handle successful login
-  const handleLoginSuccess = () => {
-    console.log('Login successful, user:', user)
-    setCurrentPage('pos')
-  }
 
   // Handle logout
   // const handleLogout = () => {
