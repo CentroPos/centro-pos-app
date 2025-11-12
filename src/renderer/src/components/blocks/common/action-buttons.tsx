@@ -1137,6 +1137,25 @@ const ActionButtons: React.FC<Props> = ({
           // Update tab status to paid
           setTabStatus(currentTab.id, 'paid')
           
+          // Fetch order details to refresh outstanding_amount after payment
+          try {
+            if (currentTab.orderId) {
+              const orderDetailsRes = await window.electronAPI?.proxy?.request({
+                url: '/api/method/centro_pos_apis.api.order.get_sales_order_details',
+                params: {
+                  sales_order_id: currentTab.orderId
+                },
+                method: 'GET'
+              })
+              if (orderDetailsRes?.data?.data && currentTab.id) {
+                updateTabOrderData(currentTab.id, orderDetailsRes.data.data)
+                console.log('📋 Order details refreshed after payment. Outstanding amount:', orderDetailsRes.data.data?.linked_invoices?.[0]?.outstanding_amount)
+              }
+            }
+          } catch (e) {
+            console.error('Failed to refresh order details after payment:', e)
+          }
+          
           // Close dialog and navigate to prints
           setOpen(false)
           onNavigateToPrints?.()
@@ -1392,6 +1411,25 @@ const ActionButtons: React.FC<Props> = ({
                   
                   if (paymentEntryResponse?.success) {
                     console.log('✅ Payment entry created successfully!')
+                    
+                    // Fetch order details to refresh outstanding_amount after payment
+                    try {
+                      if (currentTab.orderId) {
+                        const orderDetailsRes = await window.electronAPI?.proxy?.request({
+                          url: '/api/method/centro_pos_apis.api.order.get_sales_order_details',
+                          params: {
+                            sales_order_id: currentTab.orderId
+                          },
+                          method: 'GET'
+                        })
+                        if (orderDetailsRes?.data?.data && currentTab.id) {
+                          updateTabOrderData(currentTab.id, orderDetailsRes.data.data)
+                          console.log('📋 Order details refreshed after payment (confirmed order). Outstanding amount:', orderDetailsRes.data.data?.linked_invoices?.[0]?.outstanding_amount)
+                        }
+                      }
+                    } catch (e) {
+                      console.error('Failed to refresh order details after payment (confirmed order):', e)
+                    }
                   } else {
                     console.log('⚠️ Payment entry API call failed or returned success: false')
                     // Don't show error toast as order confirmation already succeeded
@@ -1543,7 +1581,7 @@ const ActionButtons: React.FC<Props> = ({
       console.log('🔄 Setting isProcessingPayment to false')
       setIsProcessingPayment(false)
 
-      // After confirming, fetch order details to check docstatus and lock tab if submitted
+      // After confirming, fetch order details to check docstatus, outstanding_amount, and lock tab if submitted
       try {
         const latestOrderId = currentTab?.orderId
         if (latestOrderId) {
@@ -1555,8 +1593,13 @@ const ActionButtons: React.FC<Props> = ({
             method: 'GET'
           })
           const doc = res?.data?.data
-          if (doc && Number(doc.docstatus) === 1 && currentTab?.id) {
-            setTabStatus(currentTab.id, 'confirmed')
+          if (doc && currentTab?.id) {
+            // Update orderData to refresh outstanding_amount check
+            updateTabOrderData(currentTab.id, doc)
+            if (Number(doc.docstatus) === 1) {
+              setTabStatus(currentTab.id, 'confirmed')
+            }
+            console.log('📋 Order details refreshed after confirm/pay. Outstanding amount:', doc?.linked_invoices?.[0]?.outstanding_amount)
           }
         }
       } catch (e) {
@@ -1713,19 +1756,31 @@ const ActionButtons: React.FC<Props> = ({
                 <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+Shift+S</span>
               </Button>
             )}
-            {currentUserPrivileges?.billing && (
-              <Button
-                className="px-2 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs"
-                disabled={isItemTableEditing}
-                onClick={handlePay}
-              >
-                <svg className="w-4 h-4" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="credit-card" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512" fill="currentColor">
-                  <path d="M64 32C28.7 32 0 60.7 0 96v32H576V96c0-35.3-28.7-64-64-64H64zM576 224H0V416c0 35.3 28.7 64 64 64H512c35.3 0 64-28.7 64-64V224zM112 352h64c8.8 0 16 7.2 16 16s-7.2 16-16 16H112c-8.8 0-16-7.2-16-16s7.2-16 16-16zm112 16c0-8.8 7.2-16 16-16H368c8.8 0 16 7.2 16 16s-7.2 16-16 16H240c-8.8 0-16-7.2-16-16z"></path>
-                </svg>
-                Pay{' '}
-                <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+Shift+F</span>
-              </Button>
-            )}
+            {currentUserPrivileges?.billing && (() => {
+              // Check if outstanding_amount is 0.0 in linked_invoices[0]
+              const linkedInvoices = currentTab?.orderData?.linked_invoices
+              const firstLinkedInvoice = Array.isArray(linkedInvoices) && linkedInvoices.length > 0 ? linkedInvoices[0] : null
+              const outstandingAmount = firstLinkedInvoice?.outstanding_amount
+              const shouldHidePayButton = outstandingAmount === 0.0 || outstandingAmount === 0
+              
+              if (shouldHidePayButton) {
+                return null
+              }
+              
+              return (
+                <Button
+                  className="px-2 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs"
+                  disabled={isItemTableEditing}
+                  onClick={handlePay}
+                >
+                  <svg className="w-4 h-4" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="credit-card" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512" fill="currentColor">
+                    <path d="M64 32C28.7 32 0 60.7 0 96v32H576V96c0-35.3-28.7-64-64-64H64zM576 224H0V416c0 35.3 28.7 64 64 64H512c35.3 0 64-28.7 64-64V224zM112 352h64c8.8 0 16 7.2 16 16s-7.2 16-16 16H112c-8.8 0-16-7.2-16-16s7.2-16 16-16zm112 16c0-8.8 7.2-16 16-16H368c8.8 0 16 7.2 16 16s-7.2 16-16 16H240c-8.8 0-16-7.2-16-16z"></path>
+                  </svg>
+                  Pay{' '}
+                  <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+Shift+F</span>
+                </Button>
+              )
+            })()}
 
             {/* Return Button - Show if user has return privilege */}
             {currentUserPrivileges?.return && currentTab?.orderData?.is_fully_returned !== 1 && (

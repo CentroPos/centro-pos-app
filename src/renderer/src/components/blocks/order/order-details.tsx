@@ -263,30 +263,30 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange, onCustom
   }
 
 
+  const ribbonClipPath = 'polygon(12% 0%, 88% 0%, 100% 50%, 88% 100%, 12% 100%, 0% 50%)'
+  const orderStatusText =
+    currentTab?.orderData?.order_status || currentTab?.invoiceStatus || 'N/A'
+  const returnStatusText =
+    currentTab?.invoiceCustomReverseStatus ||
+    (Array.isArray(currentTab?.orderData?.linked_invoices) &&
+      currentTab?.orderData?.linked_invoices[0]?.custom_reverse_status) ||
+    'N/A'
+
   return (
-    <div className="p-3 bg-white/60 backdrop-blur border-b border-white/20">
-      {/* Compact Order/Return badges aligned to the right, directly under date/time card (same row as buttons) */}
-      <div className="w-full flex justify-end -mt-14 pointer-events-none">
-        <div className="inline-flex flex-col items-end gap-1 mr-1">
-          <span className="inline-flex items-center gap-2">
-            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-100 text-indigo-600 text-xs font-bold">
-              <span className="font-bold">Order:</span>
-              <span className="font-bold">
-                {currentTab?.orderData?.order_status || currentTab?.invoiceStatus || 'N/A'}
-              </span>
-            </span>
-          </span>
-          <span className="inline-flex items-center gap-2">
-            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-100 text-purple-600 text-xs font-bold">
-              <span className="font-bold">Return:</span>
-              <span className="font-bold">
-                {currentTab?.invoiceCustomReverseStatus ||
-                  (Array.isArray(currentTab?.orderData?.linked_invoices) &&
-                    currentTab?.orderData?.linked_invoices[0]?.custom_reverse_status) ||
-                  'N/A'}
-              </span>
-            </span>
-          </span>
+    <div className="relative p-3 bg-white/60 backdrop-blur border-b border-white/20">
+      {/* Order & Return ribbons */}
+      <div className="pointer-events-none absolute right-[28px] -top-6 z-[60] flex flex-col gap-[2px] items-end">
+        <div
+          className="px-4 py-1.5 bg-gradient-to-r from-amber-400 to-orange-400 text-white text-[11px] font-bold uppercase shadow-lg tracking-wide origin-top-right"
+          style={{ clipPath: ribbonClipPath, transform: 'rotate(30deg) translateX(22px)' }}
+        >
+          <span>Order: {orderStatusText}</span>
+        </div>
+        <div
+          className="px-4 py-1.5 bg-gradient-to-r from-purple-400 to-indigo-400 text-white text-[11px] font-bold uppercase shadow-lg tracking-wide origin-top-right"
+          style={{ clipPath: ribbonClipPath, transform: 'rotate(30deg) translateX(22px)' }}
+        >
+          <span>Return: {returnStatusText}</span>
         </div>
       </div>
 
