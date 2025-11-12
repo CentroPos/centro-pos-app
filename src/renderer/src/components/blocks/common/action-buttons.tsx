@@ -972,6 +972,40 @@ const ActionButtons: React.FC<Props> = ({
       }
     } finally {
       setIsSaving(false)
+      // Refresh order details so status badges and linked invoice info update immediately
+      try {
+        const latestOrderId = currentTab?.orderId
+        if (currentTab?.id && latestOrderId) {
+          const res = await window.electronAPI?.proxy?.request({
+            url: '/api/method/centro_pos_apis.api.order.get_sales_order_details',
+            params: { sales_order_id: latestOrderId },
+            method: 'GET'
+          })
+          const orderData = res?.data?.data
+          if (orderData) {
+            updateTabOrderData(currentTab.id, orderData)
+            // Also persist invoice number/status/reverse status if available
+            const linked = orderData.linked_invoices
+            let invNo: string | null = null
+            let invStatus: string | null = null
+            let invReverse: string | null = null
+            if (Array.isArray(linked) && linked.length > 0) {
+              invNo = linked[0]?.name || null
+              invStatus = linked[0]?.status || null
+              invReverse = linked[0]?.custom_reverse_status || null
+            } else if (linked && typeof linked === 'object') {
+              invNo = linked.name || null
+              invStatus = linked.status || null
+              invReverse = linked.custom_reverse_status || null
+            }
+            if (invNo) {
+              updateTabInvoiceNumber(currentTab.id, invNo, invStatus, invReverse)
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('⚠️ Failed to refresh order details after save:', e)
+      }
     }
   }
 
@@ -1693,12 +1727,17 @@ const ActionButtons: React.FC<Props> = ({
             )}
 
             {/* Return Button - Show if user has return privilege */}
-            {currentUserPrivileges?.return && (
+            {currentUserPrivileges?.return && currentTab?.orderData?.is_fully_returned !== 1 && (
               <Button
                 data-testid="return-button"
-                className="px-2 py-2 bg-gradient-to-r from-orange-500 to-orange-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs"
+                className="relative px-2 py-2 bg-gradient-to-r from-orange-500 to-orange-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs"
                 onClick={handleReturn}
               >
+                {typeof currentTab?.orderData?.return_count === 'number' && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-white text-orange-600 text-[10px] font-bold flex items-center justify-center shadow">
+                    {currentTab.orderData.return_count}
+                  </span>
+                )}
                 <svg className="w-4 h-4" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="arrow-rotate-left" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="currentColor">
                   <path d="M125.7 160H176c17.7 0 32 14.3 32 32s-14.3 32-32 32H48c-17.7 0-32-14.3-32-32V64c0-17.7 14.3-32 32-32s32 14.3 32 32v51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
                 </svg>

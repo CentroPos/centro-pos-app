@@ -19,6 +19,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { BASE_URL_STORAGE_KEY, getApiBaseUrl, sanitizeBaseUrl } from '@renderer/config/production'
 import { setApiBaseUrl } from '@renderer/services/api'
 import { setFetchApiBaseUrl } from '@renderer/services/fetchAPI'
+import centroerpLogo from '@renderer/assets/centric_image.png'
 
 const schema = Yup.object().shape({
   baseUrl: Yup.string().required('Base URL is required'),
@@ -142,8 +143,12 @@ const LoginPage: React.FC = () => {
         {/* Login Card */}
         <div className="glass-effect rounded-3xl modern-shadow w-full max-w-md p-8 z-10 relative">
           <div className="text-center mb-8">
-            <div className="w-20 h-20 bg-gradient-to-r from-[#334155] to-[#0f172a] rounded-2xl mx-auto mb-4 flex items-center justify-center modern-shadow">
-              <i className="fas fa-cash-register text-white text-2xl"></i>
+            <div className="w-32 h-32 mx-auto mb-4 flex items-center justify-center">
+              <img 
+                src={centroerpLogo} 
+                alt="Centroerp Logo" 
+                className="w-full h-full object-contain"
+              />
             </div>
             <h1 className="text-3xl font-bold text-primary mb-2">CentroERP POS</h1>
             <p className="text-gray-600 text-sm">Point of Sale for Traders</p>
@@ -229,8 +234,12 @@ const LoginPage: React.FC = () => {
           <div className="glass-effect rounded-2xl p-8 w-80 modern-shadow">
             <div className="space-y-6">
               <div className="text-center">
-                <div className="w-16 h-16 bg-gradient-to-r from-accent to-blue-600 rounded-2xl mx-auto mb-4 flex items-center justify-center">
-                  <i className="fas fa-shopping-cart text-white text-xl"></i>
+                <div className="w-20 h-20 mx-auto mb-4 flex items-center justify-center">
+                  <img 
+                    src={centroerpLogo} 
+                    alt="Centroerp Logo" 
+                    className="w-full h-full object-contain"
+                  />
                 </div>
                 <h3 className="text-xl font-bold text-primary mb-2">CentroERP POS</h3>
                 <p className="text-gray-600 text-sm">Simple Point of Sale for Traders</p>

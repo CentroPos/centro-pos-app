@@ -9,6 +9,7 @@ export async function createWindow() {
   const win = new BrowserWindow({
     width: 1024,
     height: 768,
+    title: 'Centroerp',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

@@ -27,6 +27,8 @@ interface InvoiceData {
   customer_name: string
   posting_date: string
   grand_total: number
+  total_order_qty?: number
+  total_unique_items?: number
   items: InvoiceItem[]
 }
 
@@ -80,28 +82,18 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
         console.log('📋 [ReturnModal] ✅ Pre-filling invoice number from store:', storedInvoiceNumber)
         setInvoiceNumber(storedInvoiceNumber)
       } else {
-        console.log('📋 [ReturnModal] No invoice number in store, checking orderData...')
-        // If no invoice number in store, check orderData for linked_invoices
+        console.log('📋 [ReturnModal] No invoice number in store, using first linked invoice if available...')
         const linkedInvoices = currentTab?.orderData?.linked_invoices
-        console.log('📋 [ReturnModal] linked_invoices from orderData:', linkedInvoices)
-        
-        if (linkedInvoices) {
-          let invoiceNum = null
-          if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
-            invoiceNum = linkedInvoices[0]?.name || null
-            console.log('📋 [ReturnModal] Extracted from array:', invoiceNum)
-          } else if (linkedInvoices && typeof linkedInvoices === 'object') {
-            invoiceNum = linkedInvoices.name || null
-            console.log('📋 [ReturnModal] Extracted from object:', invoiceNum)
-          }
-          if (invoiceNum) {
-            console.log('📋 [ReturnModal] ✅ Pre-filling invoice number from orderData:', invoiceNum)
-            setInvoiceNumber(invoiceNum)
-          } else {
-            console.log('📋 [ReturnModal] ⚠️ Could not extract invoice number from linked_invoices')
-          }
+        const firstInvoice =
+          Array.isArray(linkedInvoices) && linkedInvoices.length > 0
+            ? linkedInvoices[0]
+            : typeof linkedInvoices === 'object' && linkedInvoices
+        const invoiceNum = firstInvoice?.name || null
+        if (invoiceNum) {
+          console.log('📋 [ReturnModal] ✅ Pre-filling invoice number from first linked invoice:', invoiceNum)
+          setInvoiceNumber(invoiceNum)
         } else {
-          console.log('📋 [ReturnModal] ⚠️ No linked_invoices found in orderData')
+          console.log('📋 [ReturnModal] ⚠️ No linked invoices available to pre-fill number')
         }
       }
     }
@@ -115,19 +107,15 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
         console.log('📋 Invoice number updated from store while modal is open, setting it:', storedInvoiceNumber)
         setInvoiceNumber(storedInvoiceNumber)
       } else if (!invoiceNumber) {
-        // If no invoice number in field, check orderData for linked_invoices
         const linkedInvoices = currentTab?.orderData?.linked_invoices
-        if (linkedInvoices) {
-          let invoiceNum = null
-          if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
-            invoiceNum = linkedInvoices[0]?.name || null
-          } else if (linkedInvoices && typeof linkedInvoices === 'object') {
-            invoiceNum = linkedInvoices.name || null
-          }
-          if (invoiceNum && invoiceNum !== invoiceNumber) {
-            console.log('📋 Invoice number found in orderData while modal is open, setting it:', invoiceNum)
-            setInvoiceNumber(invoiceNum)
-          }
+        const firstInvoice =
+          Array.isArray(linkedInvoices) && linkedInvoices.length > 0
+            ? linkedInvoices[0]
+            : typeof linkedInvoices === 'object' && linkedInvoices
+        const invoiceNum = firstInvoice?.name || null
+        if (invoiceNum && invoiceNum !== invoiceNumber) {
+          console.log('📋 Invoice number found in orderData while modal is open, setting it:', invoiceNum)
+          setInvoiceNumber(invoiceNum)
         }
       }
     }
@@ -195,7 +183,9 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
           name: invoiceId,
           customer_name: 'N/A',
           posting_date: 'N/A',
-          grand_total: 0
+          grand_total: 0,
+          total_order_qty: undefined as number | undefined,
+          total_unique_items: undefined as number | undefined
         }
         
         try {
@@ -217,39 +207,23 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
             
             // Extract invoice details from linked_invoices
             const linkedInvoices = orderData.linked_invoices
-            if (linkedInvoices) {
-              let linkedInvoice = null
-              if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
-                // Find the invoice that matches the invoiceId
-                linkedInvoice = linkedInvoices.find((inv: any) => inv.name === invoiceId) || linkedInvoices[0]
-              } else if (linkedInvoices && typeof linkedInvoices === 'object' && !Array.isArray(linkedInvoices)) {
-                linkedInvoice = linkedInvoices.name === invoiceId ? linkedInvoices : null
+            const firstInvoice =
+              Array.isArray(linkedInvoices) && linkedInvoices.length > 0
+                ? linkedInvoices[0]
+                : typeof linkedInvoices === 'object'
+                  ? linkedInvoices
+                  : null
+            if (firstInvoice) {
+              invoiceDetails = {
+                name: firstInvoice.name || invoiceId,
+                customer_name: customerName,
+                posting_date: firstInvoice.posting_date || 'N/A',
+                grand_total: typeof firstInvoice.grand_total === 'number' ? firstInvoice.grand_total : 0,
+                total_order_qty: typeof orderData.total_order_qty === 'number' ? orderData.total_order_qty : undefined,
+                total_unique_items: typeof orderData.total_unique_items === 'number' ? orderData.total_unique_items : undefined
               }
-              
-              if (linkedInvoice) {
-                invoiceDetails = {
-                  name: linkedInvoice.name || invoiceId,
-                  customer_name: customerName,
-                  posting_date: linkedInvoice.posting_date || 'N/A',
-                  grand_total: typeof linkedInvoice.grand_total === 'number' ? linkedInvoice.grand_total : 0
-                }
-                console.log('📋 Invoice details extracted from linked_invoices:', invoiceDetails)
-              } else {
-                // If no matching invoice found, use first one or defaults
-                if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
-                  const firstInvoice = linkedInvoices[0]
-                  invoiceDetails = {
-                    name: firstInvoice.name || invoiceId,
-                    customer_name: customerName,
-                    posting_date: firstInvoice.posting_date || 'N/A',
-                    grand_total: typeof firstInvoice.grand_total === 'number' ? firstInvoice.grand_total : 0
-                  }
-                } else {
-                  invoiceDetails.customer_name = customerName
-                }
-              }
+              console.log('📋 Invoice details extracted from first linked invoice:', invoiceDetails)
             } else {
-              // No linked_invoices, but we can still get customer name
               invoiceDetails.customer_name = customerName
             }
           }
@@ -430,6 +404,23 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
         }
         
         toast.success('Return order processed successfully!', { duration: 2000 })
+        // After successful return, fetch latest order details to refresh status immediately
+        try {
+          const latestOrderId = currentTab?.orderId
+          if (latestOrderId) {
+            const res = await window.electronAPI?.proxy?.request({
+              url: '/api/method/centro_pos_apis.api.order.get_sales_order_details',
+              params: { sales_order_id: latestOrderId },
+              method: 'GET'
+            })
+            const orderData = res?.data?.data
+            if (orderData) {
+              updateTabOrderData(currentTab.id, orderData)
+            }
+          }
+        } catch (e) {
+          console.warn('⚠️ Failed to refresh order after return:', e)
+        }
         onReturnSuccess?.()
         onClose()
       } else {
@@ -499,6 +490,14 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                   <div>
                     <span className="font-medium text-gray-600">Total:</span>
                     <span className="ml-2 text-gray-800 font-medium">SAR {(invoiceData.grand_total || 0).toFixed(2)}</span>
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-600">Total Qty:</span>
+                    <span className="ml-2 text-gray-800 font-medium">{invoiceData.total_order_qty ?? '—'}</span>
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-600">Total Items:</span>
+                    <span className="ml-2 text-gray-800 font-medium">{invoiceData.total_unique_items ?? '—'}</span>
                   </div>
                 </div>
               </div>

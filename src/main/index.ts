@@ -5,11 +5,25 @@ import * as fs from 'fs/promises'
 import * as path from 'path'
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
-import icon from '../../resources/icon.png?asset'
 
 // ES module equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
+
+// Get icon path - use white version (JPG from project root)
+// In development: __dirname points to out/main, so go up to project root
+// In production: use resources folder
+const getIconPath = () => {
+  if (is.dev) {
+    // Development: use white JPG from project root
+    const whiteIconPath = join(__dirname, '../../centric_white.jpg')
+    return whiteIconPath
+  } else {
+    // Production: use from resources (will be packaged)
+    return join(process.resourcesPath, 'resources/icon.jpg')
+  }
+}
+const icon = getIconPath()
 
 // Auth storage paths
 const AUTH_FILE_NAME = 'auth.encrypted'
@@ -30,7 +44,8 @@ function createWindow(): void {
     height: 768,
     show: false,
     autoHideMenuBar: true,
-    ...(process.platform === 'linux' ? { icon } : {}),
+    title: 'Centroerp',
+    icon: icon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       devTools: true,
@@ -61,6 +76,8 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
+    // Ensure window title is set correctly
+    mainWindow.setTitle('Centroerp')
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -618,8 +635,11 @@ function setupAuthHandlers(): void {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
+  // Set app name for taskbar and window title
+  app.setName('Centroerp')
+  
   // Set app user model id for windows
-  electronApp.setAppUserModelId('com.electron')
+  electronApp.setAppUserModelId('com.centroerp')
 
   // Setup auth handlers before creating window
   setupAuthHandlers()

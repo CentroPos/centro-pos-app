@@ -40,11 +40,12 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange, onCustom
   }
   
   const [orderDate, setOrderDate] = useState<string>(getCurrentDate());
-  const { activeTabId, getCurrentTabCustomer, updateTabCustomer, setTabEdited, getCurrentTab, updateTabPostingDate } = usePOSTabStore()
+  const { activeTabId, getCurrentTabCustomer, updateTabCustomer, setTabEdited, updateTabPostingDate } = usePOSTabStore()
   const { profile } = usePOSProfileStore()
 
   const selectedCustomer = getCurrentTabCustomer()
-  const currentTab = getCurrentTab()
+  // Subscribe to current tab reactively so UI updates after actions (save/confirm/pay/return)
+  const currentTab = usePOSTabStore((s) => s.tabs.find((t) => t.id === s.activeTabId))
   
   // Check if order is confirmed - similar to items table
   const isReadOnly = currentTab?.status === 'confirmed' || currentTab?.status === 'paid' || 
@@ -258,7 +259,32 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange, onCustom
 
   return (
     <div className="p-3 bg-white/60 backdrop-blur border-b border-white/20">
-      <div className="grid grid-cols-4 gap-6">
+      {/* Compact Order/Return badges aligned to the right, directly under date/time card (same row as buttons) */}
+      <div className="w-full flex justify-end -mt-14 pointer-events-none">
+        <div className="inline-flex flex-col items-end gap-1 mr-1">
+          <span className="inline-flex items-center gap-2">
+            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-100 text-indigo-600 text-xs font-bold">
+              <span className="font-bold">Order:</span>
+              <span className="font-bold">
+                {currentTab?.orderData?.order_status || currentTab?.invoiceStatus || 'N/A'}
+              </span>
+            </span>
+          </span>
+          <span className="inline-flex items-center gap-2">
+            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-100 text-purple-600 text-xs font-bold">
+              <span className="font-bold">Return:</span>
+              <span className="font-bold">
+                {currentTab?.invoiceCustomReverseStatus ||
+                  (Array.isArray(currentTab?.orderData?.linked_invoices) &&
+                    currentTab?.orderData?.linked_invoices[0]?.custom_reverse_status) ||
+                  'N/A'}
+              </span>
+            </span>
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-2 grid grid-cols-4 gap-6">
         <div className="space-y-2">
           <label className="block text-sm font-semibold text-gray-700">Customer</label>
           <Button
@@ -318,6 +344,8 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange, onCustom
 
         {/* Delivery options removed as requested */}
       </div>
+
+      {/* Status badges were moved above; nothing here */}
 
       {/* Customer Search Modal */}
       <CustomerSearchModal
