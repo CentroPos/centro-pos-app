@@ -90,6 +90,9 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   const extendedFieldOrder: Array<EditField | 'actions'> = [...fieldOrder, 'actions']
 
   const moveToField = (itemCode: string, field: EditField) => {
+    if (field === 'item_description' && !allowLabelEditing) {
+      field = 'quantity'
+    }
     selectItem(itemCode)
     setActiveField(field)
     setIsEditing(true)
@@ -1115,6 +1118,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
   const { profile } = usePOSProfileStore();
   const allowDuplicateItems = Boolean(profile?.custom_allow_duplicate_items_in_cart === 1);
+  const allowLabelEditing = Boolean(profile?.custom_allow_item_label_editing === 1);
 
   // Get current date in local timezone (YYYY-MM-DD format)
   const getCurrentDate = () => {
@@ -1398,6 +1402,9 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                         onClick={(e) => {
                           e.stopPropagation()
                           console.log('🖱️ Label cell clicked:', item.item_code, 'isReadOnly:', isReadOnly)
+                          if (!allowLabelEditing) {
+                            return
+                          }
                           if (isSelected && isEditing && activeField === 'item_description') {
                             return
                           }
@@ -1416,7 +1423,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                           }
                         }}
                       >
-                        {isEditingItemName ? (
+                        {allowLabelEditing && isEditingItemName ? (
                           <input
                             key={`label-${item.item_code}-${isEditingItemName}-${forceFocus}`}
                             ref={inputRef}
