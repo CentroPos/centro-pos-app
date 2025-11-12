@@ -14,6 +14,7 @@ import { Button } from '@renderer/components/ui/button'
 import CustomerSearchModal from '../customer/customer-modal'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
+import { toast } from 'sonner'
 
 
 
@@ -203,6 +204,11 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange, onCustom
 
   const handleCustomerSelect = async (customer: any) => {
     console.log('🧾 Customer selected:', customer)
+    if (!activeTabId) {
+      toast.error('No active tab. Please create a new order first.')
+      setShowCustomerModal(false)
+      return
+    }
     if (activeTabId) {
       updateTabCustomer(activeTabId, customer)
       setTabEdited(activeTabId, true) // Mark tab as edited when customer changes
@@ -288,7 +294,15 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange, onCustom
         <div className="space-y-2">
           <label className="block text-sm font-semibold text-gray-700">Customer</label>
           <Button
-            onClick={() => !isReadOnly && setShowCustomerModal(true)}
+            onClick={() => {
+              if (!isReadOnly) {
+                if (!activeTabId) {
+                  toast.error('No active tab. Please create a new order first.')
+                  return
+                }
+                setShowCustomerModal(true)
+              }
+            }}
             disabled={isReadOnly}
             className={`w-full p-4 bg-white/80 border border-white/40 rounded-xl shadow-lg focus:ring-2 focus:ring-accent focus:border-transparent transition-all text-left flex items-center justify-between ${
               isReadOnly ? 'opacity-60 cursor-not-allowed' : 'hover:bg-white/90'
