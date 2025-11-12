@@ -73,6 +73,7 @@ const PaymentTab: React.FC = () => {
   const [dueInvoices, setDueInvoices] = useState<DueInvoice[]>([])
   const [modeOfPayment, setModeOfPayment] = useState<string>('Cash')
   const [paymentDate, setPaymentDate] = useState<string>(() => getCurrentDate())
+  const [paymentAmount, setPaymentAmount] = useState<string>('0.00')
   const [loading, setLoading] = useState(false)
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState<string>('')
@@ -96,6 +97,10 @@ const PaymentTab: React.FC = () => {
   const [currencySymbol, setCurrencySymbol] = useState('$')
   const [vatPercentage, setVatPercentage] = useState(10)
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
+  const [isVoucherViewModalOpen, setIsVoucherViewModalOpen] = useState(false)
+  const [voucherViewData, setVoucherViewData] = useState<any>(null)
+  const [pendingPaymentEntryData, setPendingPaymentEntryData] = useState<any>(null)
+  const isLoadingFromVoucherRef = useRef(false)
 
   // Helper function to abbreviate invoice numbers (last 5 digits)
   const abbreviateInvoiceNumber = (invoiceNo: string): string => {
@@ -154,6 +159,21 @@ const PaymentTab: React.FC = () => {
   useEffect(() => {
     loadPOSProfile()
   }, [])
+
+  // Reset payment amount when modal opens (only if not loading from voucher)
+  useEffect(() => {
+    if (isPaymentModalOpen && !isLoadingFromVoucherRef.current) {
+      setPaymentAmount('0.00')
+    }
+  }, [isPaymentModalOpen])
+
+  // Clear pending data when modal closes
+  useEffect(() => {
+    if (!isPaymentModalOpen) {
+      setPendingPaymentEntryData(null)
+      isLoadingFromVoucherRef.current = false
+    }
+  }, [isPaymentModalOpen])
 
   // Debounced search effect - resets pagination and triggers API call when search changes
   const prevVoucherSearchRef = useRef<string>('')
@@ -371,6 +391,33 @@ const PaymentTab: React.FC = () => {
     }
   }
 
+  // Load payment voucher details for viewing (read-only)
+  const loadPaymentVoucherDetails = async (voucherName: string) => {
+    setLoading(true)
+    try {
+      console.log('📋 Loading payment voucher details for viewing:', voucherName)
+
+      const response = await window.electronAPI.proxy.request({
+        url: `/api/resource/Payment Entry/${voucherName}`
+      })
+
+      console.log('📋 Payment voucher API response:', response)
+
+      if (response?.data?.data) {
+        const paymentData = response.data.data
+        setVoucherViewData(paymentData)
+        setIsVoucherViewModalOpen(true)
+      } else {
+        toast.error('Failed to load payment voucher details')
+      }
+    } catch (error) {
+      console.error('📋 Error loading payment voucher details:', error)
+      toast.error('Failed to load payment voucher details')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // Load due invoices when customer is selected
   const loadDueInvoices = async (customerId: string) => {
     setLoading(true)
@@ -401,8 +448,95 @@ const PaymentTab: React.FC = () => {
 
         console.log('📋 Processed invoices:', invoices)
         console.log('📋 Number of invoices found:', invoices.length)
+        console.log('📋 Invoice details:')
+        invoices.forEach((invoice, index) => {
+          console.log(`📋 Invoice ${index + 1}:`, {
+            invoice_no: invoice.invoice_no,
+            invoice_no_last5: invoice.invoice_no ? invoice.invoice_no.slice(-5) : 'N/A',
+            due_amount: invoice.due_amount
+          })
+        })
 
+        // If we have pending payment entry data, match references with invoices
+        console.log('📋 Checking for pending payment entry data...')
+        console.log('📋 pendingPaymentEntryData exists:', !!pendingPaymentEntryData)
+        console.log('📋 pendingPaymentEntryData.references:', pendingPaymentEntryData?.references)
+        console.log('📋 pendingPaymentEntryData.references is array:', Array.isArray(pendingPaymentEntryData?.references))
+        
+        if (pendingPaymentEntryData?.references && Array.isArray(pendingPaymentEntryData.references)) {
+          console.log('📋 ===== MATCHING REFERENCES WITH INVOICES =====')
+          console.log('📋 References to match:', pendingPaymentEntryData.references.length)
+          console.log('📋 Invoices to match:', invoices.length)
+          
+          const matchedInvoices = invoices.map((invoice) => {
+            console.log(`📋 Checking invoice: ${invoice.invoice_no} (last5: ${invoice.invoice_no ? invoice.invoice_no.slice(-5) : 'N/A'})`)
+            
+            // Find matching reference by comparing last 5 digits
+            // Extract last 5 digits from reference_name (e.g., "ACC-SINV-2025-00040" -> "00040")
+            // and compare with invoice_no (which might be "00040" or full name)
+            const matchingRef = pendingPaymentEntryData.references.find((ref: any) => {
+              if (!ref.reference_name) {
+                console.log('📋 Reference has no reference_name')
+                return false
+              }
+              
+              // Get last 5 digits from reference_name
+              const refLast5 = ref.reference_name.slice(-5)
+              
+              // Compare with invoice_no (could be full name or just last 5 digits)
+              const invoiceNo = invoice.invoice_no || ''
+              const invoiceLast5 = invoiceNo.length >= 5 ? invoiceNo.slice(-5) : invoiceNo
+              
+              console.log(`📋 Comparing: ref="${ref.reference_name}" (last5="${refLast5}") vs invoice="${invoiceNo}" (last5="${invoiceLast5}")`)
+              
+              // Try multiple matching strategies
+              const exactMatch = ref.reference_name === invoiceNo
+              const last5Match = refLast5 === invoiceLast5
+              const refLast5WithInvoice = refLast5 === invoiceNo
+              
+              const matches = exactMatch || last5Match || refLast5WithInvoice
+              
+              if (matches) {
+                console.log(`✅ MATCH FOUND! ref="${ref.reference_name}" matches invoice="${invoiceNo}"`)
+                console.log(`   - Exact match: ${exactMatch}`)
+                console.log(`   - Last5 match: ${last5Match}`)
+                console.log(`   - RefLast5 with invoice: ${refLast5WithInvoice}`)
+                console.log(`   - Allocated amount: ${ref.allocated_amount}`)
+              }
+              
+              return matches
+            })
+
+            if (matchingRef) {
+              console.log('✅ FINAL MATCH - Setting invoice as selected:', {
+                invoice_no: invoice.invoice_no,
+                allocated_amount: matchingRef.allocated_amount,
+                reference_name: matchingRef.reference_name
+              })
+              return {
+                ...invoice,
+                is_selected: true,
+                allocated_amount: matchingRef.allocated_amount || 0
+              }
+            } else {
+              console.log(`❌ No match found for invoice: ${invoice.invoice_no}`)
+            }
+            return invoice
+          })
+          
+          console.log('📋 ===== MATCHING COMPLETE =====')
+          console.log('📋 Matched invoices result:', matchedInvoices)
+          console.log('📋 Selected invoices:', matchedInvoices.filter(inv => inv.is_selected))
+          
+          setDueInvoices(matchedInvoices)
+          // Clear pending data after applying
+          setPendingPaymentEntryData(null)
+          isLoadingFromVoucherRef.current = false
+          console.log('✅ Applied matched invoices to state')
+        } else {
+          console.log('📋 No pending payment entry data or references not found, using invoices as-is')
         setDueInvoices(invoices)
+        }
         console.log('✅ Successfully loaded due invoices:', invoices)
       } else {
         console.log('📋 No invoice data found in response')
@@ -429,6 +563,7 @@ const PaymentTab: React.FC = () => {
   const handleCustomerSelect = (customer: Customer) => {
     setSelectedCustomer(customer)
     setIsCustomerModalOpen(false)
+    setPaymentAmount('0.00') // Reset payment amount when customer changes
     loadDueInvoices(customer.id)
   }
 
@@ -485,7 +620,7 @@ const PaymentTab: React.FC = () => {
           ? {
               ...invoice,
               is_selected: !invoice.is_selected,
-              allocated_amount: !invoice.is_selected ? invoice.due_amount : 0
+              allocated_amount: !invoice.is_selected ? invoice.due_amount : 0 // Auto-fill with due amount when selected
             }
           : invoice
       )
@@ -498,7 +633,7 @@ const PaymentTab: React.FC = () => {
       prev.map((invoice) => ({
         ...invoice,
         is_selected: checked,
-        allocated_amount: checked ? invoice.due_amount : 0
+        allocated_amount: checked ? invoice.due_amount : 0 // Auto-fill with due amount when selected
       }))
     )
   }
@@ -527,8 +662,9 @@ const PaymentTab: React.FC = () => {
       return
     }
 
-    if (totalAllocatedAmount <= 0) {
-      toast.error('Please enter valid allocated amounts')
+    const amountValue = parseFloat(paymentAmount) || 0
+    if (amountValue <= 0) {
+      toast.error('Please enter a valid payment amount')
       return
     }
 
@@ -541,7 +677,7 @@ const PaymentTab: React.FC = () => {
         party_type: partyType,
         party: selectedCustomer.id,
         posting_date: paymentDate,
-        paid_amount: totalAllocatedAmount,
+        paid_amount: amountValue,
         mode_of_payment: modeOfPayment,
         references: selectedInvoices.map((invoice) => ({
           reference_doctype: 'Sales Invoice',
@@ -611,6 +747,7 @@ const PaymentTab: React.FC = () => {
       // Reset form
       setSelectedCustomer(null)
       setDueInvoices([])
+      setPaymentAmount('0.00')
       console.log('💳 ===== MAKE PAYMENT API CALL END =====')
     } catch (error) {
       console.error('❌ ===== PAYMENT ERROR =====')
@@ -723,7 +860,15 @@ const PaymentTab: React.FC = () => {
               </div>
               <div>
                 <Label htmlFor="total-amount" className="text-sm font-medium text-gray-700">Amount</Label>
-                <Input value={totalAllocatedAmount.toFixed(2)} readOnly className="w-full h-10 bg-gray-100 border-gray-300 text-gray-700 font-semibold" />
+                <Input 
+                  type="number"
+                  value={paymentAmount} 
+                  onChange={(e) => setPaymentAmount(e.target.value)}
+                  className="w-full h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500" 
+                  placeholder="0.00"
+                  min="0"
+                  step="0.01"
+                />
               </div>
             </div>
 
@@ -783,7 +928,7 @@ const PaymentTab: React.FC = () => {
               </Button>
               <Button 
                 onClick={handleMakePayment} 
-                disabled={loading || !selectedCustomer || totalAllocatedAmount <= 0} 
+                disabled={loading || !selectedCustomer || parseFloat(paymentAmount) <= 0} 
                 className="px-8 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
               >
                 {loading ? 'Processing...' : 'Make Payment'}
@@ -868,7 +1013,8 @@ const PaymentTab: React.FC = () => {
               {filteredVouchers.map((voucher, index) => (
                 <div
                   key={voucher.name}
-                  className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200"
+                  onClick={() => loadPaymentVoucherDetails(voucher.name)}
+                  className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors"
                 >
                   <div className="flex justify-between items-center mb-2">
                     <div className="font-semibold text-primary text-sm">{voucher.name}</div>
@@ -989,6 +1135,109 @@ const PaymentTab: React.FC = () => {
                 <div className="text-center text-gray-500 py-4">No customers found</div>
               )}
               {isFetchingMoreCustomers && <div className="text-center text-xs text-gray-500 py-2">Loading...</div>}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Payment Voucher View Modal (Read-only) */}
+      {isVoucherViewModalOpen && voucherViewData && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center" onClick={(e) => { if (e.target === e.currentTarget) setIsVoucherViewModalOpen(false) }}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div className="relative bg-white w-[800px] max-w-[90vw] h-[90vh] flex flex-col rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
+            <div className="px-6 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200 flex-shrink-0">
+              <h2 className="text-lg font-bold text-gray-800">Payment Voucher</h2>
+            </div>
+            <div className="flex-1 flex flex-col min-h-0 p-6">
+            {/* Header Section - All Select Boxes */}
+            <div className="grid grid-cols-3 gap-4 mb-4 pb-4 border-b border-gray-200 flex-shrink-0">
+              <div>
+                <Label htmlFor="party-type" className="text-sm font-medium text-gray-700">Party Type</Label>
+                <Input value={voucherViewData.party_type || 'Customer'} readOnly className="w-full h-10 bg-gray-100 border-gray-300 text-gray-700" />
+              </div>
+              <div>
+                <Label htmlFor="payment-type" className="text-sm font-medium text-gray-700">Payment Type</Label>
+                <Input value={voucherViewData.payment_type || 'Receive'} readOnly className="w-full h-10 bg-gray-100 border-gray-300 text-gray-700" />
+              </div>
+              <div>
+                <Label htmlFor="mode-of-payment" className="text-sm font-medium text-gray-700">Mode of Payment</Label>
+                <Input value={voucherViewData.mode_of_payment || 'Cash'} readOnly className="w-full h-10 bg-gray-100 border-gray-300 text-gray-700" />
+              </div>
+            </div>
+
+            {/* Party Name, Date and Amount */}
+            <div className="grid grid-cols-3 gap-4 mb-4 flex-shrink-0">
+              <div>
+                <Label htmlFor="party-name" className="text-sm font-medium text-gray-700">Party Name</Label>
+                <Input value={voucherViewData.party_name || ''} readOnly className="w-full h-10 bg-gray-100 border-gray-300 text-gray-700" />
+              </div>
+              <div>
+                <Label htmlFor="payment-date" className="text-sm font-medium text-gray-700">Date</Label>
+                <Input value={voucherViewData.posting_date || ''} readOnly className="w-full h-10 bg-gray-100 border-gray-300 text-gray-700" />
+              </div>
+              <div>
+                <Label htmlFor="total-amount" className="text-sm font-medium text-gray-700">Amount</Label>
+                <Input value={voucherViewData.paid_amount ? voucherViewData.paid_amount.toFixed(2) : '0.00'} readOnly className="w-full h-10 bg-gray-100 border-gray-300 text-gray-700 font-semibold" />
+              </div>
+            </div>
+
+            {/* Allocated Invoices table - Scrollable */}
+            {voucherViewData.references && Array.isArray(voucherViewData.references) && voucherViewData.references.length > 0 && (
+              <Card className="border border-gray-200 shadow-sm flex-1 flex flex-col min-h-0">
+                <CardHeader className="bg-gray-50 border-b border-gray-200 flex-shrink-0">
+                  <CardTitle className="text-lg font-semibold text-gray-800">Allocated Invoices</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0 flex-1 overflow-y-auto min-h-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-gray-50">
+                        <TableHead className="w-8 px-2">
+                          <Checkbox disabled className="border-gray-300" />
+                        </TableHead>
+                        <TableHead className="w-16 px-2 text-sm font-medium text-gray-700">Invoice</TableHead>
+                        <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700">Total</TableHead>
+                        <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700">Due</TableHead>
+                        <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700">Allocated</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {voucherViewData.references.map((ref: any, index: number) => {
+                        const invoiceNo = ref.reference_name || ''
+                        const invoiceLast5 = invoiceNo.length >= 5 ? invoiceNo.slice(-5) : invoiceNo
+                        const hasOutstanding = (ref.outstanding_amount || 0) > 0
+                        
+                        return (
+                          <TableRow key={index} className="hover:bg-gray-50">
+                            <TableCell className="w-8 px-2">
+                              <Checkbox 
+                                checked={hasOutstanding} 
+                                disabled={!hasOutstanding}
+                                className="border-gray-300"
+                              />
+                            </TableCell>
+                            <TableCell className="w-16 px-2 font-medium text-sm text-gray-900">{invoiceLast5}</TableCell>
+                            <TableCell className="w-20 px-2 text-right text-sm text-gray-700">{(ref.total_amount || 0).toFixed(2)}</TableCell>
+                            <TableCell className="w-20 px-2 text-right text-sm text-gray-700">{(ref.outstanding_amount || 0).toFixed(2)}</TableCell>
+                            <TableCell className="w-20 px-2 text-right text-sm text-gray-700">{(ref.allocated_amount || 0).toFixed(2)}</TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
+
+            </div>
+            <div className="flex justify-end gap-3 p-6 bg-gray-50 border-t border-gray-200 flex-shrink-0">
+              <Button 
+                variant="outline" 
+                onClick={() => setIsVoucherViewModalOpen(false)}
+                className="px-6 py-2 border-gray-300 hover:bg-gray-100"
+              >
+                Close
+              </Button>
             </div>
           </div>
         </div>,

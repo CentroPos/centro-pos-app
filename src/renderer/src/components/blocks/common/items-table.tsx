@@ -1213,9 +1213,9 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   }, [poRef, poRefDate, internalNote, activeTabId])
 
   return (
-    <div className="px-4 pt-4 pb-0 bg-white h-full flex flex-col min-h-0">
+    <div className="px-4 pt-4 pb-0 bg-white h-full flex flex-col min-h-0 relative">
       <Tabs defaultValue="items" className="w-full h-full flex flex-col min-h-0">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-shrink-0 mb-0">
         <TabsList className="bg-transparent p-0 border-b border-gray-200">
           <TabsTrigger
             value="items"
@@ -1240,7 +1240,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
             />
           </div>
         </div>
-        <TabsContent value="items" className="mt-4 flex-1 flex flex-col min-h-0">
+        <div className="relative flex-1 min-h-0">
+        <TabsContent value="items" className="absolute inset-0 flex flex-col min-h-0 data-[state=inactive]:hidden">
           <div className="border rounded-lg flex flex-col min-h-0">
             {/* Sticky table head, scrollable body only */}
             <div className="bg-white sticky top-0 z-10">
@@ -1930,8 +1931,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
             )}
           </div>
         </TabsContent>
-        <TabsContent value="other" className="mt-4">
-          <div className="border rounded-lg p-4 space-y-4">
+        <TabsContent value="other" className="absolute inset-0 flex flex-col min-h-0 data-[state=inactive]:hidden">
+          <div className="border rounded-lg p-4 space-y-4 h-full overflow-auto">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <label className="text-sm font-medium">PO Ref</label>
@@ -1953,6 +1954,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
             </div>
           </div>
         </TabsContent>
+        </div>
       </Tabs>
       
       {/* Delete confirmation dialog */}
