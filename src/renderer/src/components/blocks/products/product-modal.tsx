@@ -37,8 +37,7 @@ import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 import { Separator } from '@renderer/components/ui/separator'
 
 // API and Hooks
-import { useGetQuery, useMutationQuery } from '@renderer/hooks/react-query/useReactQuery'
-import { useProductList } from '@renderer/hooks/useProducts'
+import { useMutationQuery } from '@renderer/hooks/react-query/useReactQuery'
 import { API_Endpoints } from '@renderer/config/endpoints'
 import { ControlledTextField } from '@renderer/components/form/controlled-text-field'
 
@@ -63,15 +62,15 @@ const productSchema = Yup.object().shape({
   item_code: Yup.string().required('Item code is required'),
   item_name: Yup.string().required('Item name is required'),
   standard_rate: Yup.number().required('Standard rate is required').min(0, 'Rate must be positive'),
-  description: Yup.string(),
+  description: Yup.string().optional(),
   stock_uom: Yup.string().required('UOM is required'),
-  item_group: Yup.string(),
-  brand: Yup.string(),
-  barcode: Yup.string(),
-  opening_stock: Yup.number().min(0, 'Stock must be positive'),
-  min_order_qty: Yup.number().min(0, 'Minimum quantity must be positive'),
-  max_order_qty: Yup.number().min(0, 'Maximum quantity must be positive')
-})
+  item_group: Yup.string().optional(),
+  brand: Yup.string().optional(),
+  barcode: Yup.string().optional(),
+  opening_stock: Yup.number().optional().min(0, 'Stock must be positive'),
+  min_order_qty: Yup.number().optional().min(0, 'Minimum quantity must be positive'),
+  max_order_qty: Yup.number().optional().min(0, 'Maximum quantity must be positive')
+}) as Yup.ObjectSchema<ProductFormData>
 
 type ProductFormData = {
   item_code: string
@@ -248,7 +247,7 @@ const ProductSearch: React.FC<{
     }
   }
 
-  const allowAddNew = Boolean(profile?.custom_allow_adding_new_products === 1)
+  const allowAddNew = Boolean((profile as any)?.custom_allow_adding_new_products === 1)
 
   return (
     <div className="space-y-4">
@@ -429,7 +428,7 @@ const ProductCreate: React.FC<{
     endPoint: API_Endpoints.PRODUCTS,
     method: 'POST',
     options: {
-      onSuccess: (response) => {
+      onSuccess: (response: any) => {
         toast.success('Product created successfully!')
         onSuccess(response.data)
         form.reset()
