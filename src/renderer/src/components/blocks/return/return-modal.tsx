@@ -39,7 +39,7 @@ interface ReturnModalProps {
 }
 
 const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSuccess }) => {
-  const { getCurrentTab, updateTabInstantPrintUrl, getCurrentTabInvoiceNumber, updateTabOrderData } = usePOSTabStore()
+  const { getCurrentTab, updateTabInstantPrintUrl, getCurrentTabInvoiceNumber, updateTabOrderData, updateTabInvoiceNumber, activeTabId } = usePOSTabStore()
   const currentTab = getCurrentTab()
   const storedInvoiceNumber = getCurrentTabInvoiceNumber()
   const [invoiceNumber, setInvoiceNumber] = useState('')
@@ -406,8 +406,14 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
         toast.success('Return order processed successfully!', { duration: 2000 })
         // After successful return, fetch latest order details to refresh status immediately
         try {
-          const latestOrderId = currentTab?.orderId
-          if (latestOrderId) {
+          // Get the latest tab reference using activeTabId to ensure we have the current tab
+          const store = usePOSTabStore.getState()
+          const latestTab = activeTabId ? store.tabs.find(t => t.id === activeTabId) : (currentTab || store.getCurrentTab())
+          const latestOrderId = latestTab?.orderId
+          const tabId = latestTab?.id || activeTabId
+          
+          if (latestOrderId && tabId) {
+            console.log('🔄 Fetching order details after return for order:', latestOrderId, 'tabId:', tabId)
             const res = await window.electronAPI?.proxy?.request({
               url: '/api/method/centro_pos_apis.api.order.get_sales_order_details',
               params: { sales_order_id: latestOrderId },
@@ -415,11 +421,60 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
             })
             const orderData = res?.data?.data
             if (orderData) {
-              updateTabOrderData(currentTab.id, orderData)
+              console.log('📋 Order details fetched after return:', {
+                order_status: orderData.order_status,
+                linked_invoices: orderData.linked_invoices
+              })
+              
+              // Update order data
+              updateTabOrderData(tabId, orderData)
+              
+              // Extract and update invoice-related fields from linked_invoices
+              const linkedInvoices = orderData.linked_invoices
+              let invoiceNumber: string | null = null
+              let invoiceStatus: string | null = null
+              let invoiceCustomReverseStatus: string | null = null
+              
+              if (linkedInvoices) {
+                if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
+                  const firstInvoice = linkedInvoices[0]
+                  invoiceNumber = firstInvoice?.name || null
+                  invoiceStatus = firstInvoice?.status || null
+                  invoiceCustomReverseStatus = firstInvoice?.custom_reverse_status || null
+                } else if (linkedInvoices && typeof linkedInvoices === 'object' && !Array.isArray(linkedInvoices)) {
+                  invoiceNumber = linkedInvoices.name || null
+                  invoiceStatus = linkedInvoices.status || null
+                  invoiceCustomReverseStatus = linkedInvoices.custom_reverse_status || null
+                }
+              }
+              
+              // Update invoice fields if we have invoice data
+              if (invoiceNumber) {
+                console.log('📋 Updating invoice fields after return:', {
+                  invoiceNumber,
+                  invoiceStatus,
+                  invoiceCustomReverseStatus
+                })
+                updateTabInvoiceNumber(tabId, invoiceNumber, invoiceStatus, invoiceCustomReverseStatus)
+              } else {
+                // Even if no invoice number, update with null to clear any stale data
+                console.log('📋 No invoice number found, clearing invoice fields')
+                updateTabInvoiceNumber(tabId, null, null, null)
+              }
+              
+              console.log('✅ Order details and invoice fields updated after return')
+            } else {
+              console.warn('⚠️ No order data received from API after return')
             }
+          } else {
+            console.warn('⚠️ Cannot refresh order details: missing orderId or tabId', {
+              latestOrderId,
+              tabId,
+              activeTabId
+            })
           }
         } catch (e) {
-          console.warn('⚠️ Failed to refresh order after return:', e)
+          console.error('⚠️ Failed to refresh order after return:', e)
         }
         onReturnSuccess?.()
         onClose()

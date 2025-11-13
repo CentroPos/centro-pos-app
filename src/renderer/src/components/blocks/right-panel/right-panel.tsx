@@ -978,69 +978,110 @@ const RightPanel: React.FC<RightPanelProps> = ({
     console.log('🔍 Fetching product list data for item:', itemCode)
     setProductListLoading(true)
     try {
-      // Try with search_text first
-      let response = await window.electronAPI?.proxy?.request({
-        method: 'GET',
-        url: '/api/method/centro_pos_apis.api.product.product_list',
-        params: {
-          price_list: 'Standard Selling',
-          search_text: itemCode,
-          limit_start: 0,
-          limit_page_length: 10
-        }
-      })
-
-      console.log('📡 Product list API response (with search):', response)
-
-      // If no data found, try without search_text to get all items
-      if (!response?.success || !response?.data?.data || response.data.data.length === 0) {
-        console.log('🔄 No data with search, trying without search_text...')
-        response = await window.electronAPI?.proxy?.request({
-          method: 'GET',
-          url: '/api/method/centro_pos_apis.api.product.product_list',
-          params: {
-            price_list: 'Standard Selling',
-            limit_start: 0,
-            limit_page_length: 50
-          }
+      const logApiCall = (
+        stage: 'initial-search' | 'fallback-no-search' | 'fallback-post',
+        method: 'GET' | 'POST',
+        paramsOrData: Record<string, unknown>
+      ) => {
+        console.log('🌐 [ProductListAPI]', {
+          stage,
+          method,
+          payload: paramsOrData
         })
-        console.log('📡 Product list API response (without search):', response)
       }
 
-      // If still no data, try POST method
-      if (!response?.success || !response?.data?.data || response.data.data.length === 0) {
-        console.log('🔄 No data with GET, trying POST method...')
-        response = await window.electronAPI?.proxy?.request({
-          method: 'POST',
+      const tryProductList = async (
+        stage: 'item-get' | 'search-text-get' | 'no-filter-get' | 'item-post',
+        method: 'GET' | 'POST',
+        payload: Record<string, unknown>,
+        useParams: boolean
+      ) => {
+        logApiCall(stage, method, payload)
+        const resp = await window.electronAPI?.proxy?.request({
+          method,
           url: '/api/method/centro_pos_apis.api.product.product_list',
-          data: {
+          ...(useParams ? { params: payload } : { data: payload })
+        })
+        console.log(`📡 Product list API response (${stage}):`, resp)
+        return resp
+      }
+
+      const extractList = (resp: any) =>
+        Array.isArray(resp?.data?.data) ? resp.data.data : []
+      const findProduct = (list: any[]) =>
+        list.find((item: any) => item.item_id === itemCode)
+
+      let response = await tryProductList(
+        'item-get',
+        'GET',
+        {
+          price_list: 'Standard Selling',
+          item: itemCode,
+          limit_start: 0,
+          limit_page_length: 100
+        },
+        true
+      )
+      let list = extractList(response)
+      let productData = findProduct(list)
+
+      if (!productData) {
+        console.log('🔄 Item not returned via item filter, trying search_text fallback...')
+        response = await tryProductList(
+          'search-text-get',
+          'GET',
+          {
             price_list: 'Standard Selling',
             search_text: itemCode,
             limit_start: 0,
-            limit_page_length: 50
-          }
-        })
-        console.log('📡 Product list API response (POST):', response)
+            limit_page_length: 100
+          },
+          true
+        )
+        list = extractList(response)
+        productData = findProduct(list)
       }
 
-      if (response?.success && response?.data?.data) {
-        console.log('📦 Raw API data:', response.data.data)
-        const productData = response.data.data.find((item: any) => item.item_id === itemCode)
-        console.log('🎯 Found product data:', productData)
+      if (!productData) {
+        console.log('🔄 Still not found, trying broader fetch without filters...')
+        response = await tryProductList(
+          'no-filter-get',
+          'GET',
+          {
+            price_list: 'Standard Selling',
+            limit_start: 0,
+            limit_page_length: 200
+          },
+          true
+        )
+        list = extractList(response)
+        productData = findProduct(list)
+      }
 
-        if (productData) {
-          setProductListData(productData)
-          console.log('✅ Product list data set:', productData)
-          console.log('📊 UOM details:', productData.uom_details)
-        } else {
-          console.log('❌ No product data found for item:', itemCode)
-          console.log(
-            '🔍 Available items:',
-            response.data.data.map((item: any) => item.item_id)
-          )
-        }
+      if (!productData) {
+        console.log('🔄 Fallback to POST with item filter...')
+        response = await tryProductList(
+          'item-post',
+          'POST',
+          {
+            price_list: 'Standard Selling',
+            item: itemCode,
+            limit_start: 0,
+            limit_page_length: 100
+          },
+          false
+        )
+        list = extractList(response)
+        productData = findProduct(list)
+      }
+
+      if (productData) {
+        console.log('✅ Product list data set:', productData)
+        console.log('📊 UOM details:', productData.uom_details)
+        setProductListData(productData)
       } else {
-        console.log('❌ API response not successful or no data:', response)
+        console.log('❌ No product data found for item:', itemCode)
+        console.log('🔍 Available items:', list.map((item: any) => item.item_id))
       }
     } catch (error) {
       console.error('❌ Error fetching product list data:', error)
@@ -1382,6 +1423,9 @@ const RightPanel: React.FC<RightPanelProps> = ({
     const defaultUom = productListData?.default_uom || 'Nos'
     // Use the selected item's current UOM if available, otherwise use default
     const displayUom = currentUom || defaultUom
+    const displayUomKey = String(displayUom || '').trim()
+    const selectedUomRates = selectedItem?.uomRates || {}
+    const selectedUomMinMax = selectedItem?.uomMinMax || {}
     const uomDetails = Array.isArray(productListData?.uom_details)
       ? productListData.uom_details
       : []
@@ -1390,8 +1434,10 @@ const RightPanel: React.FC<RightPanelProps> = ({
     const matchingUomDetail = uomDetails.find((detail: any) =>
       String(detail?.uom || '').toLowerCase() === String(displayUom || '').toLowerCase()
     )
+    const selectedRate = selectedUomRates[displayUomKey] ?? selectedItem?.standard_rate
     const standardRate = Number(
       matchingUomDetail?.rate ??
+        selectedRate ??
         rateFromApi ??
         selectedItem?.standard_rate ??
         0
@@ -1400,6 +1446,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
     // For margin calculation, use unit price from item table if manually changed, otherwise use API rate
     const marginCalculationRate = Number(
       selectedItem?.standard_rate ??
+        selectedRate ??
         matchingUomDetail?.rate ??
         rateFromApi ??
         0
@@ -1416,12 +1463,39 @@ const RightPanel: React.FC<RightPanelProps> = ({
     const costPrice = Number(productListData?.cost_price ?? selectedItem?.cost ?? 0)
     // Calculate margin based on unit price from table (if manually changed) or API
     const marginPct = marginCalculationRate > 0 ? ((marginCalculationRate - costPrice) / marginCalculationRate) * 100 : 0
+    const minPrice = Number(
+      (matchingUomDetail as any)?.min_price ??
+        selectedUomMinMax[displayUomKey]?.min ??
+        selectedItem?.min_price ??
+        0
+    )
+    const maxPrice = Number(
+      (matchingUomDetail as any)?.max_price ??
+        selectedUomMinMax[displayUomKey]?.max ??
+        selectedItem?.max_price ??
+        0
+    )
+
+    console.log('🧮 [RightPanel] Pricing info resolved for Product tab:', {
+      itemCode: code,
+      displayUom: displayUomKey,
+      apiRate: matchingUomDetail?.rate,
+      cachedRate: selectedRate,
+      finalRate: standardRate,
+      apiMin: matchingUomDetail?.min_price,
+      cachedMin: selectedUomMinMax[displayUomKey]?.min,
+      finalMin: minPrice,
+      apiMax: matchingUomDetail?.max_price,
+      cachedMax: selectedUomMinMax[displayUomKey]?.max,
+      finalMax: maxPrice
+    })
+
     return {
       item_code: code,
       item_name: name,
       standard_rate: standardRate,
-      min_price: Number((matchingUomDetail as any)?.min_price ?? 0),
-      max_price: Number((matchingUomDetail as any)?.max_price ?? 0),
+      min_price: minPrice,
+      max_price: maxPrice,
       on_hand: onHandQty,
       on_hand_uom: displayUom, // Include the UOM for display
       cost: costPrice,
@@ -2407,10 +2481,9 @@ const RightPanel: React.FC<RightPanelProps> = ({
     if (prevSearchRef.current === ordersSearch) return;
     
     const handler = setTimeout(() => {
-      setOrdersList([]); // Clear previous results
-      setOrdersPage(1); // Reset to first page
       prevSearchRef.current = ordersSearch; // Update ref after debounce
-      // The API call will be triggered by the useEffect above when ordersPage changes
+      setOrdersPage((prev) => (prev === 1 ? prev : 1)); // Reset to first page if needed
+      // The API call will be triggered by the useEffect above when dependencies change
     }, 300); // Debounce for 300ms
 
     return () => {
@@ -2496,10 +2569,9 @@ const RightPanel: React.FC<RightPanelProps> = ({
     if (prevReturnsSearchRef.current === returnsSearch) return;
     
     const handler = setTimeout(() => {
-      setReturnsList([]); // Clear previous results
-      setReturnsPage(1); // Reset to first page
       prevReturnsSearchRef.current = returnsSearch; // Update ref after debounce
-      // The API call will be triggered by the useEffect above when returnsPage changes
+      setReturnsPage((prev) => (prev === 1 ? prev : 1)); // Reset to first page if needed
+      // The API call will be triggered by the useEffect above when dependencies change
     }, 300); // Debounce for 300ms
 
     return () => {

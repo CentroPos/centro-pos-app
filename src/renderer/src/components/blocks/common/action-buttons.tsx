@@ -326,42 +326,32 @@ const ActionButtons: React.FC<Props> = ({
 
   // Calculate order total - use rounded_total from order detail API if available
   const calculateOrderTotal = useCallback(() => {
-    // First, check if we have rounded_total from order detail API
-    const roundedTotal = currentTab?.orderData?.rounded_total
-    
-    if (roundedTotal !== null && roundedTotal !== undefined) {
-      const roundedTotalNum = Number(roundedTotal)
-      if (!isNaN(roundedTotalNum)) {
-        console.log('📋 Using rounded_total from order detail API:', roundedTotalNum)
-        return roundedTotalNum.toFixed(2)
-      }
+    const normalize = (value: any) => {
+      const num = Number(value)
+      return Number.isFinite(num) ? Number(num.toFixed(2)) : null
     }
 
-    // Fallback: Check if order is confirmed (docstatus = 1) and has linked_invoices
-    const isConfirmed = currentTab?.orderData && Number(currentTab.orderData.docstatus) === 1
+    const hasSavedOrder = Boolean(currentTab?.orderId)
+    const roundedTotal = normalize(currentTab?.orderData?.rounded_total)
+    const docGrandTotal = normalize(currentTab?.orderData?.grand_total)
+
+    let linkedGrandTotal: number | null = null
     const linkedInvoices = currentTab?.orderData?.linked_invoices
-    
-    // If confirmed and has linked_invoices, use grand_total from linked_invoices
-    if (isConfirmed && linkedInvoices) {
-      let grandTotal = null
-      
+    if (linkedInvoices) {
       if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
-        grandTotal = linkedInvoices[0]?.grand_total
-      } else if (linkedInvoices && typeof linkedInvoices === 'object') {
-        grandTotal = linkedInvoices.grand_total
-      }
-      
-      if (grandTotal !== null && grandTotal !== undefined) {
-        const grandTotalNum = Number(grandTotal)
-        if (!isNaN(grandTotalNum)) {
-          console.log('📋 Using grand_total from linked_invoices:', grandTotalNum)
-          return grandTotalNum.toFixed(2)
-        }
+        linkedGrandTotal = normalize(linkedInvoices[0]?.grand_total)
+      } else if (typeof linkedInvoices === 'object') {
+        linkedGrandTotal = normalize((linkedInvoices as any)?.grand_total)
       }
     }
 
-    // Default calculation (same as DiscountSection)
-    console.log('📋 Using calculated total (rounded_total not available)')
+    const serverTotal = roundedTotal ?? linkedGrandTotal ?? docGrandTotal
+    if (hasSavedOrder && serverTotal !== null) {
+      console.log('📋 Using server-provided rounded total:', serverTotal)
+      return serverTotal.toFixed(2)
+    }
+
+    console.log('📋 Using calculated total (server-rounded total unavailable)')
     const untaxedSum = items.reduce((sum: number, it: any) => {
       const qty = Number(it.quantity || 0)
       const rate = Number(it.standard_rate || 0)
@@ -375,17 +365,10 @@ const ActionButtons: React.FC<Props> = ({
       return sum + (qty * rate * disc) / 100
     }, 0)
 
-    // Net amount after individual discounts (before VAT)
     const netAfterIndividualDiscount = untaxedSum - individualDiscountSum
-
-    // Apply global discount to net amount (before VAT)
     const globalDiscountAmount = (netAfterIndividualDiscount * globalDiscountPercent) / 100
     const netAfterGlobalDiscount = netAfterIndividualDiscount - globalDiscountAmount
-
-    // Calculate VAT on the globally discounted net amount
     const vatCalc = netAfterGlobalDiscount * (vatPercentage / 100)
-
-    // Final total = discounted net amount + VAT
     const totalRaw = netAfterGlobalDiscount + vatCalc
     const totalRoundedCandidate = roundToNearest(totalRaw, 0.05)
 
@@ -393,7 +376,14 @@ const ActionButtons: React.FC<Props> = ({
     const totalFinal = useRounding ? totalRoundedCandidate : Number(totalRaw.toFixed(2))
 
     return totalFinal.toFixed(2)
-  }, [items, globalDiscountPercent, vatPercentage, isRoundingEnabled, currentTab?.orderData])
+  }, [
+    items,
+    globalDiscountPercent,
+    vatPercentage,
+    isRoundingEnabled,
+    currentTab?.orderData,
+    currentTab?.orderId
+  ])
 
   // Update order amount when items, discount, or VAT changes
   useEffect(() => {
@@ -758,6 +748,25 @@ const ActionButtons: React.FC<Props> = ({
           toast.success(`Order updated successfully! Order ID: ${currentTab.orderId}`, {
             duration: 2000
           })
+          
+          // Fetch order details to refresh status ribbons
+          try {
+            if (currentTab.orderId) {
+              const res = await window.electronAPI?.proxy?.request({
+                url: '/api/method/centro_pos_apis.api.order.get_sales_order_details',
+                params: {
+                  sales_order_id: currentTab.orderId
+                },
+                method: 'GET'
+              })
+              if (res?.data?.data && currentTab.id) {
+                updateTabOrderData(currentTab.id, res.data.data)
+                console.log('📋 Order details refreshed after edit. Order status:', res.data.data?.order_status, 'Return status:', res.data.data?.linked_invoices?.[0]?.custom_reverse_status)
+              }
+            }
+          } catch (e) {
+            console.error('Failed to refresh order details after edit:', e)
+          }
         } else {
           // Parse item_error array if present
           const itemErrors: Array<{ message: string; title: string; indicator: string; itemCode: string }> = []
@@ -856,6 +865,23 @@ const ActionButtons: React.FC<Props> = ({
             onSaveCompleted?.()
             // Navigate to prints tab
             onNavigateToPrints?.()
+            
+            // Fetch order details to refresh status ribbons
+            try {
+              const res = await window.electronAPI?.proxy?.request({
+                url: '/api/method/centro_pos_apis.api.order.get_sales_order_details',
+                params: {
+                  sales_order_id: orderId
+                },
+                method: 'GET'
+              })
+              if (res?.data?.data && currentTab.id) {
+                updateTabOrderData(currentTab.id, res.data.data)
+                console.log('📋 Order details refreshed after create. Order status:', res.data.data?.order_status, 'Return status:', res.data.data?.linked_invoices?.[0]?.custom_reverse_status)
+              }
+            } catch (e) {
+              console.error('Failed to refresh order details after create:', e)
+            }
           }
 
           // Show success message with relevant information

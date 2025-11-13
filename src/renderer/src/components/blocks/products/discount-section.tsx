@@ -150,60 +150,6 @@ const DiscountSection: React.FC<Props> = ({
   }, [currentTab?.orderData])
 
   const { untaxed, globalDiscount, vat, rounding, total } = useMemo(() => {
-    // Check if order is confirmed (docstatus = 1) and has linked_invoices
-    const isConfirmed = currentTab?.orderData && Number(currentTab.orderData.docstatus) === 1
-    const linkedInvoices = currentTab?.orderData?.linked_invoices
-    
-    // If confirmed and has linked_invoices, use grand_total from linked_invoices
-    if (isConfirmed && linkedInvoices) {
-      let grandTotal = null
-      
-      // Handle linked_invoices as array or object
-      if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
-        // Get grand_total from first invoice
-        grandTotal = linkedInvoices[0]?.grand_total
-      } else if (linkedInvoices && typeof linkedInvoices === 'object') {
-        // Handle as single object
-        grandTotal = linkedInvoices.grand_total
-      }
-      
-      // If grand_total is found, use it as the total
-      if (grandTotal !== null && grandTotal !== undefined) {
-        const grandTotalNum = Number(grandTotal)
-        if (!isNaN(grandTotalNum)) {
-          // Return calculated values with grand_total as total
-          // For confirmed orders, we still calculate other values for display
-          const untaxedSum = items.reduce((sum: number, it: any) => {
-            const qty = Number(it.quantity || 0)
-            const rate = Number(it.standard_rate || 0)
-            return sum + qty * rate
-          }, 0)
-
-          const individualDiscountSum = items.reduce((sum: number, it: any) => {
-            const qty = Number(it.quantity || 0)
-            const rate = Number(it.standard_rate || 0)
-            const disc = Number(it.discount_percentage || 0)
-            return sum + (qty * rate * disc) / 100
-          }, 0)
-
-          const netAfterIndividualDiscount = untaxedSum - individualDiscountSum
-          const globalDiscountAmount = (netAfterIndividualDiscount * globalDiscountPercent) / 100
-          const netAfterGlobalDiscount = netAfterIndividualDiscount - globalDiscountAmount
-          const vatCalc = netAfterGlobalDiscount * (vatPercentage / 100)
-
-          return {
-            untaxed: Number(untaxedSum.toFixed(2)),
-            individualDiscount: Number(individualDiscountSum.toFixed(2)),
-            globalDiscount: Number(globalDiscountAmount.toFixed(2)),
-            vat: Number(vatCalc.toFixed(2)),
-            rounding: 0, // No rounding adjustment when using grand_total
-            total: grandTotalNum // Use grand_total from linked_invoices
-          }
-        }
-      }
-    }
-
-    // Default calculation for non-confirmed orders or when grand_total is not available
     const untaxedSum = items.reduce((sum: number, it: any) => {
       const qty = Number(it.quantity || 0)
       const rate = Number(it.standard_rate || 0)
@@ -233,8 +179,42 @@ const DiscountSection: React.FC<Props> = ({
     const roundingCandidate = Number((totalRoundedCandidate - totalRaw).toFixed(2))
 
     const useRounding = isRoundingEnabled
-    const totalFinal = useRounding ? totalRoundedCandidate : Number(totalRaw.toFixed(2))
-    const roundingAdj = useRounding ? roundingCandidate : 0
+    let totalFinal = useRounding ? totalRoundedCandidate : Number(totalRaw.toFixed(2))
+    let roundingAdj = useRounding ? roundingCandidate : 0
+
+    // Prefer rounded_total returned from backend once the order exists
+    const hasSavedOrder = Boolean(currentTab?.orderId)
+    const roundedTotalFromOrder = currentTab?.orderData?.rounded_total
+    const grandTotalFromOrder = currentTab?.orderData?.grand_total
+
+    // For confirmed orders, we may also have grand_total inside linked invoices
+    const linkedInvoices = currentTab?.orderData?.linked_invoices
+    let linkedInvoiceGrandTotal: number | null = null
+    if (linkedInvoices) {
+      if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
+        linkedInvoiceGrandTotal = Number(linkedInvoices[0]?.grand_total)
+      } else if (typeof linkedInvoices === 'object') {
+        linkedInvoiceGrandTotal = Number((linkedInvoices as any)?.grand_total)
+      }
+      if (linkedInvoiceGrandTotal !== null && isNaN(linkedInvoiceGrandTotal)) {
+        linkedInvoiceGrandTotal = null
+      }
+    }
+
+    const normalize = (value: any) => {
+      const num = Number(value)
+      return Number.isFinite(num) ? Number(num.toFixed(2)) : null
+    }
+
+    const serverRoundedTotal =
+      normalize(roundedTotalFromOrder) ??
+      normalize(linkedInvoiceGrandTotal) ??
+      normalize(grandTotalFromOrder)
+
+    if (hasSavedOrder && serverRoundedTotal !== null) {
+      totalFinal = serverRoundedTotal
+      roundingAdj = Number((serverRoundedTotal - totalRaw).toFixed(2))
+    }
 
     return {
       untaxed: Number(untaxedSum.toFixed(2)),
@@ -244,7 +224,14 @@ const DiscountSection: React.FC<Props> = ({
       rounding: roundingAdj,
       total: totalFinal
     }
-  }, [items, globalDiscountPercent, isRoundingEnabled, currentTab?.orderData, vatPercentage])
+  }, [
+    items,
+    globalDiscountPercent,
+    isRoundingEnabled,
+    currentTab?.orderData,
+    currentTab?.orderId,
+    vatPercentage
+  ])
 
   const handleGlobalDiscountClick = () => {
     if (currentTab) {

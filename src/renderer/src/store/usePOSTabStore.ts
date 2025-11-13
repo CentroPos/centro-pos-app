@@ -164,7 +164,7 @@ export const usePOSTabStore = create<POSTabStore>()(
           invoiceData: null,
           po_no: orderData?.po_no || null,
           po_date: orderData?.po_date || null,
-          internal_note: orderData?.internal_note || null,
+          internal_note: orderData?.custom_internal_note || orderData?.internal_note || null,
           posting_date: orderData?.posting_date || null,
           instantPrintUrl: null,
           isRoundingEnabled: true,
@@ -441,7 +441,19 @@ export const usePOSTabStore = create<POSTabStore>()(
 
       updateTabOrderData: (tabId: string, orderData: any) => {
         set((state) => ({
-          tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, orderData } : tab))
+          tabs: state.tabs.map((tab) => {
+            if (tab.id === tabId) {
+              return {
+                ...tab,
+                orderData,
+                // Update Other Details fields from orderData if present
+                po_no: orderData?.po_no !== undefined ? orderData.po_no : tab.po_no,
+                po_date: orderData?.po_date !== undefined ? orderData.po_date : tab.po_date,
+                internal_note: orderData?.custom_internal_note !== undefined ? orderData.custom_internal_note : (orderData?.internal_note !== undefined ? orderData.internal_note : tab.internal_note)
+              }
+            }
+            return tab
+          })
         }))
       },
 
