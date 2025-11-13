@@ -6,7 +6,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@renderer/components/ui/select'
-import { ChevronDown } from "lucide-react"
+import { ChevronDown, RefreshCcw } from 'lucide-react'
 
 import { Input } from '@renderer/components/ui/input'
 import { Button } from '@renderer/components/ui/button'
@@ -25,12 +25,16 @@ type OrderDetailsProps = {
   forceOpenCustomerModal?: boolean
 }
 
-const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange, onCustomerModalChange, onCustomerSelect, forceOpenCustomerModal }) => {
-
-  const [showCustomerModal, setShowCustomerModal] = useState(false);
-  const [selectedPriceList, setSelectedPriceList] = useState<string>('Standard Selling');
-  const [priceLists, setPriceLists] = useState<string[]>([]);
-  const [loadingPriceLists, setLoadingPriceLists] = useState(false);
+const OrderDetails: React.FC<OrderDetailsProps> = ({
+  onPriceListChange,
+  onCustomerModalChange,
+  onCustomerSelect,
+  forceOpenCustomerModal
+}) => {
+  const [showCustomerModal, setShowCustomerModal] = useState(false)
+  const [selectedPriceList, setSelectedPriceList] = useState<string>('Standard Selling')
+  const [priceLists, setPriceLists] = useState<string[]>([])
+  const [loadingPriceLists, setLoadingPriceLists] = useState(false)
   // Get current date in local timezone (YYYY-MM-DD format)
   const getCurrentDate = () => {
     const now = new Date()
@@ -41,12 +45,70 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange, onCustom
   }
   
   const [orderDate, setOrderDate] = useState<string>(getCurrentDate());
-  const { activeTabId, getCurrentTabCustomer, updateTabCustomer, setTabEdited, updateTabPostingDate } = usePOSTabStore()
+  const {
+    activeTabId,
+    getCurrentTabCustomer,
+    updateTabCustomer,
+    setTabEdited,
+    updateTabPostingDate,
+    updateTabOtherDetails,
+    updateTabOrderData
+  } = usePOSTabStore()
   const { profile } = usePOSProfileStore()
 
   const selectedCustomer = getCurrentTabCustomer()
   // Subscribe to current tab reactively so UI updates after actions (save/confirm/pay/return)
   const currentTab = usePOSTabStore((s) => s.tabs.find((t) => t.id === s.activeTabId))
+  const hasSavedOrder = Boolean(currentTab?.orderId)
+  const handleGlobalRefresh = async () => {
+    if (!currentTab?.orderId || !activeTabId) return
+
+    try {
+      console.log('🔁 Refreshing order data for', currentTab.orderId)
+      const response = await window.electronAPI?.proxy?.request({
+        url: '/api/method/centro_pos_apis.api.order.get_sales_order_details',
+        params: { sales_order_id: currentTab.orderId }
+      })
+
+      const orderData = response?.data?.data
+      if (!orderData) {
+        toast.error('Failed to refresh order data')
+        return
+      }
+
+      console.log('🔁 Order data refreshed:', orderData)
+      if (orderData.customer) {
+        updateTabCustomer(activeTabId, {
+          name: orderData.customer_name,
+          customer_id: orderData.customer
+        })
+        onCustomerSelect?.({
+          name: orderData.customer_name,
+          customer_id: orderData.customer
+        })
+      }
+
+      updateTabPostingDate(activeTabId, orderData.posting_date || getCurrentDate())
+
+      updateTabOtherDetails(activeTabId, {
+        po_no: orderData.po_no || null,
+        po_date: orderData.po_date || null,
+        internal_note: orderData.custom_internal_note || orderData.internal_note || null
+      })
+
+      const defaultPriceList =
+        orderData.items?.[0]?.price_list || orderData.price_list || 'Standard Selling'
+      setSelectedPriceList(defaultPriceList)
+      onPriceListChange?.(defaultPriceList)
+
+      toast.success('Order refreshed successfully')
+      updateTabOrderData(activeTabId, orderData)
+      window.dispatchEvent(new CustomEvent('pos-refresh'))
+    } catch (error) {
+      console.error('Failed to refresh order data:', error)
+      toast.error('Failed to refresh order data')
+    }
+  }
   
   // Check if order is confirmed - similar to items table
   const isReadOnly = currentTab?.status === 'confirmed' || currentTab?.status === 'paid' || 
@@ -274,6 +336,16 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange, onCustom
 
   return (
     <div className="relative p-3 bg-white/60 backdrop-blur border-b border-white/20">
+      {hasSavedOrder && (
+        <button
+          type="button"
+          onClick={handleGlobalRefresh}
+          className="absolute right-[28px] top-[58px] z-[70] pointer-events-auto inline-flex items-center justify-center rounded-full border border-gray-200 bg-white p-2 text-gray-600 shadow hover-border-blue-300 hover:text-blue-600"
+          title="Refresh order data in POS"
+        >
+          <RefreshCcw className="h-4 w-4" />
+        </button>
+      )}
       {/* Order & Return ribbons */}
       <div className="pointer-events-none absolute right-[28px] top-0 z-[60] flex flex-col gap-3 items-end">
         <div

@@ -350,6 +350,17 @@ const POSInterface: React.FC = () => {
     return () => window.removeEventListener('openPrintsTab', handleOpenPrintsTab);
   }, []);
 
+  React.useEffect(() => {
+    const handleGlobalRefresh = () => {
+      console.log('🔁 POSInterface refreshing main page data')
+      // Trigger a re-fetch by toggling the saveCompleted counter
+      setSaveCompleted(prev => prev + 1)
+    }
+
+    window.addEventListener('pos-refresh', handleGlobalRefresh)
+    return () => window.removeEventListener('pos-refresh', handleGlobalRefresh)
+  }, [])
+
   // Hotkeys
   useHotkeys('ctrl+shift+p', () => setRightPanelTab('prints'), { enableOnFormTags: true });
   useHotkeys('ctrl+shift+c', () => setIsCustomerModalOpen(true), { enableOnFormTags: true });

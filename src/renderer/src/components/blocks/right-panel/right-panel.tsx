@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useRef } from 'react'
+import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { RefreshCcw } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@renderer/components/ui/dialog'
 import { Button } from '@renderer/components/ui/button'
@@ -785,7 +785,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [currencySymbol, setCurrencySymbol] = useState('$')
   const { profile } = usePOSProfileStore()
   const hideCostAndMargin = profile?.custom_hide_cost_and_margin_info === 1
-  const { updateItemInTab, getCurrentTab, updateTabOrderData } = usePOSTabStore()
+  const { updateItemInTab, getCurrentTab, updateTabOrderData, clearAllTabs } = usePOSTabStore()
   const { openTab } = usePOSTabStore()
   const { tabs, setActiveTab } = usePOSTabStore()
   const currentTab = getCurrentTab()
@@ -939,19 +939,23 @@ const RightPanel: React.FC<RightPanelProps> = ({
     onTabChange?.(tab)
   }
 
-  const triggerTabRefresh = (tab: 'product' | 'customer' | 'prints' | 'payments' | 'orders') => {
-    setRefreshTokens((prev) => {
-      const next = {
-        ...prev,
-        [tab]: prev[tab] + 1
-      }
-      if (tab === 'customer') {
-        refreshBypassRef.current.token = next.customer
-        refreshBypassRef.current.pending = new Set(['recent', 'most', 'details'])
-      }
-      return next
-    })
-  }
+  const triggerTabRefresh = useCallback(
+    (tab: 'product' | 'customer' | 'prints' | 'payments' | 'orders') => {
+      setRefreshTokens((prev) => {
+        const next = {
+          ...prev,
+          [tab]: prev[tab] + 1
+        }
+        if (tab === 'customer') {
+          refreshBypassRef.current.token = next.customer
+          refreshBypassRef.current.pending = new Set(['recent', 'most', 'details'])
+        }
+        return next
+      })
+    },
+    []
+  )
+  // Removed global refresh listener to keep right panel untouched by POS refresh
 
   const resolveCustomerBypass = (section: 'recent' | 'most' | 'details') => {
     if (refreshBypassRef.current.token !== refreshTokens.customer) return
@@ -979,7 +983,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
     setProductListLoading(true)
     try {
       const logApiCall = (
-        stage: 'initial-search' | 'fallback-no-search' | 'fallback-post',
+        stage: 'item-get' | 'search-text-get' | 'no-filter-get' | 'item-post',
         method: 'GET' | 'POST',
         paramsOrData: Record<string, unknown>
       ) => {
@@ -1750,7 +1754,6 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [pageLength, setPageLength] = useState(10)
 
   // Profile data and dropdown
-  const [profileData, setProfileData] = useState<any>(null)
   const [profileLoading, setProfileLoading] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
   const [showProfileDropdown, setShowProfileDropdown] = useState(false)
@@ -2661,8 +2664,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
           >
             {profileLoading ? (
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-            ) : profileData?.name ? (
-              profileData.name.substring(0, 2).toUpperCase()
+            ) : profile?.name ? (
+              profile.name.substring(0, 2).toUpperCase()
             ) : (
               'U'
             )}
@@ -2676,9 +2679,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
             >
               <div className="px-4 py-2 border-b border-gray-100">
                 <div className="text-sm font-semibold text-gray-800">
-                  {profileData?.name || 'User Profile'}
+                  {profile?.name || 'User Profile'}
                 </div>
-                <div className="text-xs text-gray-500">{profileData?.company || 'Company'}</div>
               </div>
               <button
                 className="w-full px-4 py-2 text-left text-sm font-semibold text-black hover:bg-gray-100 transition-colors"
@@ -2706,20 +2708,29 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       await window.electronAPI?.proxy?.logout()
                       console.log('4. Proxy logout completed')
 
-                      // Clear only authentication-related localStorage (preserve POS tabs)
-                      console.log('5. Clearing authentication data...')
+                      // Clear POS tab state and authentication data
+                      console.log('5. Clearing POS tab state...')
+                      clearAllTabs()
+                      localStorage.removeItem('pos-tab-store')
+                      const tabStorePersist = (usePOSTabStore as any).persist
+                      if (tabStorePersist?.clearStorage) {
+                        await tabStorePersist.clearStorage()
+                      }
+                      console.log('6. POS tab state cleared')
+
+                      console.log('7. Clearing authentication data...')
                       localStorage.removeItem('userData')
                       localStorage.removeItem('auth-store')
-                      console.log('6. Authentication data cleared, POS tabs preserved')
+                      console.log('8. Authentication data cleared')
 
                       // Close dropdown
                       setShowProfileDropdown(false)
-                      console.log('7. Dropdown closed')
+                      console.log('9. Dropdown closed')
 
                       // FORCE reload to login page
-                      console.log('8. Reloading page to login...')
+                      console.log('10. Reloading page to login...')
                       window.location.href = '/'
-                      console.log('9. Page reload initiated')
+                      console.log('11. Page reload initiated')
                     } catch (error) {
                       console.error('=== DROPDOWN LOGOUT FAILED ===', error)
                       // Force reload even if logout fails
@@ -2727,6 +2738,12 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       setShowProfileDropdown(false)
                       localStorage.removeItem('userData')
                       localStorage.removeItem('auth-store')
+                      clearAllTabs()
+                      localStorage.removeItem('pos-tab-store')
+                      const tabStorePersistFallback = (usePOSTabStore as any).persist
+                      if (tabStorePersistFallback?.clearStorage) {
+                        await tabStorePersistFallback.clearStorage()
+                      }
                       window.location.href = '/'
                     }
                   }
