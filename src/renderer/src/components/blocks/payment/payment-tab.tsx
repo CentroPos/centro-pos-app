@@ -612,6 +612,12 @@ const PaymentTab: React.FC = () => {
       .reduce((sum, invoice) => sum + (invoice.allocated_amount || 0), 0)
   }, [dueInvoices])
 
+  // Calculate unallocated amount
+  const unallocatedAmount = useMemo(() => {
+    const amount = parseFloat(paymentAmount) || 0
+    return amount - totalAllocatedAmount
+  }, [paymentAmount, totalAllocatedAmount])
+
   // Handle invoice selection toggle
   const handleInvoiceToggle = (index: number) => {
     setDueInvoices((prev) =>
@@ -918,7 +924,15 @@ const PaymentTab: React.FC = () => {
             )}
 
             </div>
-            <div className="flex justify-end gap-3 p-6 bg-gray-50 border-t border-gray-200 flex-shrink-0">
+            <div className="flex items-center justify-between gap-3 p-6 bg-gray-50 border-t border-gray-200 flex-shrink-0">
+              <div className="text-sm font-bold">
+                {paymentAmount && parseFloat(paymentAmount) > 0 && (
+                  <span className={unallocatedAmount < 0 ? 'text-red-600' : 'text-black'}>
+                    Unallocated = {unallocatedAmount.toFixed(2)}
+                  </span>
+                )}
+              </div>
+              <div className="flex gap-3">
               <Button 
                 variant="outline" 
                 onClick={() => setIsPaymentModalOpen(false)}
@@ -928,11 +942,12 @@ const PaymentTab: React.FC = () => {
               </Button>
               <Button 
                 onClick={handleMakePayment} 
-                disabled={loading || !selectedCustomer || parseFloat(paymentAmount) <= 0} 
+                  disabled={loading || !selectedCustomer || parseFloat(paymentAmount) <= 0 || unallocatedAmount < 0} 
                 className="px-8 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
               >
                 {loading ? 'Processing...' : 'Make Payment'}
               </Button>
+              </div>
             </div>
           </div>
         </div>,

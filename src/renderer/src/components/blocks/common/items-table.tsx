@@ -424,15 +424,15 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   }, [selectedItemId, isEditing, activeField, items])
 
   // Function to refresh item data from API
-  const refreshItemData = async (itemCode: string) => {
+  const refreshItemData = async (itemCode: string, currentUomOverride?: string) => {
     try {
       console.log('🔄 Refreshing item data for:', itemCode)
       const resp = await api.get(API_Endpoints.PRODUCT_LIST_METHOD, {
         params: {
           price_list: 'Standard Selling',
-          search_text: itemCode,
+          item: itemCode,
           limit_start: 0,
-          limit_page_length: 10
+          limit_page_length: 100
         }
       })
       
@@ -442,11 +442,29 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       if (freshItem && activeTabId) {
         console.log('✅ Refreshed item data:', freshItem)
         const uomDetails = Array.isArray(freshItem?.uom_details) ? freshItem.uom_details : []
-        const uomRates = Object.fromEntries(uomDetails.map((d: any) => [d.uom, d.rate]))
+        const uomRates = Object.fromEntries(
+          uomDetails.map((d: any) => [String(d.uom || '').trim(), Number(d.rate ?? 0)])
+        )
+        const uomMinMax = Object.fromEntries(
+          uomDetails.map((d: any) => [
+            String(d.uom || '').trim(),
+            { min: Number(d.min_price ?? 0), max: Number(d.max_price ?? 0) }
+          ])
+        )
+        const storeState = usePOSTabStore.getState()
+        const activeTabItems =
+          storeState.tabs.find((tab) => tab.id === storeState.activeTabId)?.items || []
+        const existingItem =
+          activeTabItems.find((it: any) => it.item_code === itemCode) ||
+          items.find((it) => it.item_code === itemCode)
+        const currentUomKey = String(currentUomOverride || existingItem?.uom || 'Nos').trim()
         
         // Update the item with fresh data
         updateItemAndMarkEdited(itemCode, {
-          uomRates: uomRates,
+          uomRates,
+          uomMinMax,
+          min_price: uomMinMax[currentUomKey]?.min ?? existingItem?.min_price ?? 0,
+          max_price: uomMinMax[currentUomKey]?.max ?? existingItem?.max_price ?? 0
           // Keep current UOM and rate, just update the rates map
         })
       }
@@ -567,9 +585,9 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         const resp = await api.get(API_Endpoints.PRODUCT_LIST_METHOD, {
           params: {
             price_list: 'Standard Selling',
-            search_text: item.item_code,
+            item: item.item_code,
             limit_start: 0,
-            limit_page_length: 10
+            limit_page_length: 100
           }
         })
         
@@ -594,11 +612,16 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         
         // Create a map of UOM -> rate for easy lookup
         const uomMap = Object.fromEntries(
-          uomDetails.map((d: any) => [String(d.uom).toLowerCase(), {
-            uom: d.uom,
-            rate: Number(d.rate || 0),
-            qty: Number(d.qty || 0)
-          }])
+          uomDetails.map((d: any) => [
+            String(d.uom || '').toLowerCase(),
+            {
+              uom: String(d.uom || '').trim(),
+              rate: Number(d.rate ?? 0),
+              qty: Number(d.qty || 0),
+              min_price: Number(d.min_price ?? 0),
+              max_price: Number(d.max_price ?? 0)
+            }
+          ])
         )
         
         console.log('🗺️ UOM Map created:', uomMap)
@@ -612,17 +635,30 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         // Check if UOM exists in API response
         if (!uomInfo) {
           // UOM not found in API - just revert without popup
-          const prevUomInfo = uomMap[String(previousUom).toLowerCase()]
-          const fallbackRate = prevUomInfo?.rate || Number(item.standard_rate || 0)
+        const prevUomInfo = uomMap[String(previousUom).toLowerCase()]
+        const fallbackRate = prevUomInfo?.rate || Number(item.standard_rate || 0)
+        const uomRates = Object.fromEntries(
+          uomDetails.map((d: any) => [String(d.uom || '').trim(), Number(d.rate ?? 0)])
+        )
+        const uomMinMax = Object.fromEntries(
+          uomDetails.map((d: any) => [
+            String(d.uom || '').trim(),
+            { min: Number(d.min_price ?? 0), max: Number(d.max_price ?? 0) }
+          ])
+        )
           
           console.log('❌ UOM not found, reverting to:', previousUom, 'with rate:', fallbackRate)
           
           // Update the item with previous UOM
-          updateItemAndMarkEdited(item.item_code, {
-            uom: previousUom,
-            standard_rate: Number(fallbackRate || 0),
-            uomRates: Object.fromEntries(uomDetails.map((d: any) => [d.uom, d.rate]))
-          })
+        const previousUomTrim = String(previousUom).trim()
+        updateItemAndMarkEdited(item.item_code, {
+          uom: previousUom,
+          standard_rate: Number(fallbackRate || 0),
+          uomRates,
+          uomMinMax,
+          min_price: uomMinMax[previousUomTrim]?.min ?? Number(fallbackRate || 0),
+          max_price: uomMinMax[previousUomTrim]?.max ?? Number(fallbackRate || 0)
+        })
           
           // Set the edit value to the previous UOM
           setEditValue(previousUom)
@@ -642,15 +678,32 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         // UOM exists in API - use the rate (regardless of qty)
         console.log('✅ UOM found, updating with rate:', uomInfo.rate)
         
+        const uomRates = Object.fromEntries(
+          uomDetails.map((d: any) => [String(d.uom || '').trim(), Number(d.rate ?? 0)])
+        )
+        const uomMinMax = Object.fromEntries(
+          uomDetails.map((d: any) => [
+            String(d.uom || '').trim(),
+            { min: Number(d.min_price ?? 0), max: Number(d.max_price ?? 0) }
+          ])
+        )
+        
+        const uomKey = String(uomInfo.uom || '').trim()
+        const fallbackMin = Number(uomInfo.min_price ?? (uomInfo.rate ?? 0))
+        const fallbackMax = Number(uomInfo.max_price ?? (uomInfo.rate ?? 0))
+
         updateItemAndMarkEdited(item.item_code, {
           uom: uomInfo.uom, // Use the exact UOM from API (preserves case)
           standard_rate: Number(uomInfo.rate || 0),
-          uomRates: Object.fromEntries(uomDetails.map((d: any) => [d.uom, d.rate]))
+          uomRates,
+          uomMinMax,
+          min_price: uomMinMax[uomKey]?.min ?? fallbackMin,
+          max_price: uomMinMax[uomKey]?.max ?? fallbackMax
         })
         
         // Refresh item data to ensure UI is updated
         setTimeout(() => {
-          refreshItemData(item.item_code)
+          refreshItemData(item.item_code, next.uom)
         }, 100)
         finalValue = uomInfo.uom
       } catch (error) {
@@ -669,24 +722,33 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         const numeric = typeof finalValue === 'number' ? finalValue : parseFloat(String(finalValue))
         // Skip validation if zero
         if (numeric !== 0) {
-          const resp = await window.electronAPI?.proxy?.request({
-            method: 'GET',
-            url: '/api/method/centro_pos_apis.api.product.product_list',
-            params: {
-              price_list: 'Standard Selling',
-              search_text: item.item_code,
-              limit_start: 0,
-              limit_page_length: 10
-            }
-          })
-          const allItems = Array.isArray(resp?.data?.data) ? resp.data.data : []
-          const exactItem = allItems.find((i: any) => i.item_id === item.item_code)
-          const details: Array<{ uom: string; rate: number; min_price?: number; max_price?: number }> =
-            Array.isArray(exactItem?.uom_details) ? exactItem.uom_details : []
-          const currentUomLower = String(item.uom || 'Nos').toLowerCase()
-          const uomEntry = details.find(d => String(d.uom || '').toLowerCase() === currentUomLower)
-          const minPrice = Number(uomEntry?.min_price ?? 0)
-          const maxPrice = Number(uomEntry?.max_price ?? 0)
+          const currentUomKey = String(item.uom || 'Nos').trim()
+          const localMinMax = item.uomMinMax?.[currentUomKey]
+          let minPrice = Number(localMinMax?.min ?? 0)
+          let maxPrice = Number(localMinMax?.max ?? 0)
+
+          if (!minPrice && !maxPrice) {
+            const resp = await window.electronAPI?.proxy?.request({
+              method: 'GET',
+              url: '/api/method/centro_pos_apis.api.product.product_list',
+              params: {
+                price_list: 'Standard Selling',
+                search_text: item.item_code,
+                limit_start: 0,
+                limit_page_length: 10
+              }
+            })
+            const allItems = Array.isArray(resp?.data?.data) ? resp.data.data : []
+            const exactItem = allItems.find((i: any) => i.item_id === item.item_code)
+            const details: Array<{ uom: string; min_price?: number; max_price?: number }> =
+              Array.isArray(exactItem?.uom_details) ? exactItem.uom_details : []
+            const uomEntry = details.find(
+              (d) => String(d.uom || '').trim().toLowerCase() === currentUomKey.toLowerCase()
+            )
+            minPrice = Number(uomEntry?.min_price ?? 0)
+            maxPrice = Number(uomEntry?.max_price ?? 0)
+          }
+
           let clamped = numeric
           let violated = false
           if (minPrice && numeric < minPrice) {
@@ -698,7 +760,10 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
             violated = true
           }
           if (violated) {
-            toast.error('Less than Minimum Price or more than maximum Price.', { position: 'bottom-right', duration: 3000 })
+            toast.error('Less than Minimum Price or more than maximum Price.', {
+              position: 'bottom-right',
+              duration: 3000
+            })
             triggerPriceHighlight(item.item_code)
           }
           finalValue = clamped
@@ -797,9 +862,9 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
           url: '/api/method/centro_pos_apis.api.product.product_list',
           params: {
             price_list: 'Standard Selling',
-            search_text: item.item_code,
+            item: item.item_code,
             limit_start: 0,
-            limit_page_length: 10
+            limit_page_length: 100
           }
         })
         const allItems = Array.isArray(resp?.data?.data) ? resp.data.data : []
@@ -810,14 +875,23 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         if (details.length === 0) return
 
         // Build ordered UOM list
-        const orderedUoms = details.map((d) => ({ uom: String(d.uom), rate: Number(d.rate || 0) }))
-        const currentUomLower = String(item.uom || 'Nos').toLowerCase()
+        const orderedUoms = details.map((d) => ({
+          uom: String(d.uom || '').trim(),
+          rate: Number(d.rate ?? d.min_price ?? 0),
+          min_price: Number(d.min_price ?? 0),
+          max_price: Number(d.max_price ?? 0)
+        }))
+        const currentUomLower = String(item.uom || 'Nos').trim().toLowerCase()
         const currentIndex = Math.max(
           0,
           orderedUoms.findIndex((d) => d.uom.toLowerCase() === currentUomLower)
         )
         const nextIndex = (currentIndex + 1) % orderedUoms.length
         const next = orderedUoms[nextIndex]
+        const ratesMap = Object.fromEntries(orderedUoms.map((d) => [d.uom, d.rate]))
+        const limitsMap = Object.fromEntries(
+          orderedUoms.map((d) => [d.uom, { min: d.min_price, max: d.max_price }])
+        )
 
         console.log('🔁 Cycling UOM:', {
           current: item.uom,
@@ -829,7 +903,10 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         updateItemAndMarkEdited(item.item_code, {
           uom: next.uom,
           standard_rate: Number(next.rate || 0),
-          uomRates: Object.fromEntries(orderedUoms.map((d) => [d.uom, d.rate]))
+          uomRates: ratesMap,
+          uomMinMax: limitsMap,
+          min_price: next.min_price,
+          max_price: next.max_price
         })
 
         // Reflect the change in the inline editor state if it's open
@@ -1604,9 +1681,9 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                       url: '/api/method/centro_pos_apis.api.product.product_list',
                                       params: {
                                         price_list: 'Standard Selling',
-                                        search_text: item.item_code,
+                                        item: item.item_code,
                                         limit_start: 0,
-                                        limit_page_length: 10
+                                        limit_page_length: 100
                                       }
                                     })
                                     const allItems = Array.isArray(resp?.data?.data) ? resp.data.data : []
@@ -1621,14 +1698,23 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                     }
 
                                     // Build ordered UOM list
-                                    const orderedUoms = details.map((d) => ({ uom: String(d.uom), rate: Number(d.rate || 0) }))
-                                    const currentUomLower = String(item.uom || 'Nos').toLowerCase()
+                                    const orderedUoms = details.map((d) => ({
+                                      uom: String(d.uom || '').trim(),
+                                      rate: Number(d.rate ?? d.min_price ?? 0),
+                                      min_price: Number(d.min_price ?? 0),
+                                      max_price: Number(d.max_price ?? 0)
+                                    }))
+                                    const currentUomLower = String(item.uom || 'Nos').trim().toLowerCase()
                                     const currentIndex = Math.max(
                                       0,
                                       orderedUoms.findIndex((d) => d.uom.toLowerCase() === currentUomLower)
                                     )
                                     const nextIndex = (currentIndex + 1) % orderedUoms.length
                                     const next = orderedUoms[nextIndex]
+                                    const ratesMap = Object.fromEntries(orderedUoms.map((d) => [d.uom, d.rate]))
+                                    const limitsMap = Object.fromEntries(
+                                      orderedUoms.map((d) => [d.uom, { min: d.min_price, max: d.max_price }])
+                                    )
 
                                     console.log('🔁 Cycling UOM in input field:', {
                                       current: item.uom,
@@ -1642,7 +1728,10 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                       updateItemAndMarkEdited(selectedItemId, {
                                         uom: next.uom,
                                         standard_rate: Number(next.rate || 0),
-                                        uomRates: Object.fromEntries(orderedUoms.map((d) => [d.uom, d.rate]))
+                                        uomRates: ratesMap,
+                                        uomMinMax: limitsMap,
+                                        min_price: next.min_price,
+                                        max_price: next.max_price
                                       })
                                     }
                                     return // Exit early, don't process other keys
@@ -1650,6 +1739,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                     console.error('Space-to-cycle UOM in input field failed:', err)
                                     // Fallback to using existing uomRates if available
                                     const rates = item.uomRates || {}
+                                    const limits = item.uomMinMax || {}
                                     const uoms = Object.keys(rates)
                                     if (uoms.length > 0) {
                                       const currentUom = String(item.uom || 'Nos')
@@ -1660,7 +1750,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                       if (activeTabId && selectedItemId) {
                                         updateItemAndMarkEdited(selectedItemId, {
                                           uom: nextUom,
-                                          standard_rate: rates[nextUom] ?? item.standard_rate
+                                          standard_rate: rates[nextUom] ?? item.standard_rate,
+                                          uomRates: rates,
+                                          uomMinMax: limits,
+                                          min_price: limits[nextUom]?.min ?? item.min_price ?? 0,
+                                          max_price: limits[nextUom]?.max ?? item.max_price ?? 0
                                         })
                                       }
                                     }

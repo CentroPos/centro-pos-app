@@ -275,18 +275,34 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({ onPriceListChange, onCustom
   return (
     <div className="relative p-3 bg-white/60 backdrop-blur border-b border-white/20">
       {/* Order & Return ribbons */}
-      <div className="pointer-events-none absolute right-[28px] -top-6 z-[60] flex flex-col gap-[2px] items-end">
+      <div className="pointer-events-none absolute right-[28px] top-0 z-[60] flex flex-col gap-3 items-end">
         <div
-          className="px-4 py-1.5 bg-gradient-to-r from-amber-400 to-orange-400 text-white text-[11px] font-bold uppercase shadow-lg tracking-wide origin-top-right"
-          style={{ clipPath: ribbonClipPath, transform: 'rotate(30deg) translateX(22px)' }}
+          className="px-3 py-1 bg-gradient-to-r from-amber-400 to-orange-400 text-white text-[10px] font-semibold uppercase shadow-lg tracking-wide origin-top-right"
+          style={{ 
+            clipPath: ribbonClipPath, 
+            transform: 'rotate(42deg) translateX(30px)',
+            width: '160px',
+            height: '26px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
         >
-          <span>Order: {orderStatusText}</span>
+          <span className="whitespace-nowrap overflow-hidden text-ellipsis">{orderStatusText}</span>
         </div>
         <div
-          className="px-4 py-1.5 bg-gradient-to-r from-purple-400 to-indigo-400 text-white text-[11px] font-bold uppercase shadow-lg tracking-wide origin-top-right"
-          style={{ clipPath: ribbonClipPath, transform: 'rotate(30deg) translateX(22px)' }}
+          className="px-3 py-1 bg-gradient-to-r from-purple-400 to-indigo-400 text-white text-[9px] font-semibold uppercase shadow-lg tracking-wide origin-top-right"
+          style={{ 
+            clipPath: ribbonClipPath, 
+            transform: 'rotate(42deg) translateX(30px) translateY(-6px)',
+            width: '160px',
+            height: '26px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
         >
-          <span>Return: {returnStatusText}</span>
+          <span className="whitespace-nowrap overflow-hidden text-ellipsis">{returnStatusText}</span>
         </div>
       </div>
 
