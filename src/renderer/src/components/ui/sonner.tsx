@@ -25,13 +25,6 @@ const Toaster = ({ ...props }: ToasterProps) => {
           color: 'var(--popover-foreground)',
           border: '1px solid var(--border)',
         },
-        error: {
-          style: {
-            background: 'white',
-            color: 'black',
-            border: '1px solid #dc2626',
-          },
-        },
       }}
       {...props}
     />

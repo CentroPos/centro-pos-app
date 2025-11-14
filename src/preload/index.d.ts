@@ -28,6 +28,16 @@ interface CustomElectronAPI {
   app: {
     getVersion: () => Promise<string>
     getUserDataPath: () => Promise<string>
+    checkForUpdates: () => Promise<{ success: boolean; error?: string }>
+    downloadUpdate: () => Promise<{ success: boolean; error?: string; result?: any }>
+    quitAndInstall: () => Promise<{ success: boolean; error?: string }>
+    onUpdateChecking: (callback: () => void) => void
+    onUpdateAvailable: (callback: (info: { version: string; releaseDate?: string; releaseNotes?: string }) => void) => void
+    onUpdateNotAvailable: (callback: () => void) => void
+    onUpdateError: (callback: (error: { message: string }) => void) => void
+    onUpdateDownloadProgress: (callback: (progress: { percent: number; transferred: number; total: number }) => void) => void
+    onUpdateDownloaded: (callback: (info: { version: string; releaseDate?: string; releaseNotes?: string }) => void) => void
+    removeUpdateListeners: () => void
   }
   events: {
     onRedirectToLogin: (callback: () => void) => void

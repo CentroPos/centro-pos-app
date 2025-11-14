@@ -6,7 +6,6 @@ import { Input } from '@renderer/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@renderer/components/ui/select'
 import { toast } from 'sonner'
 import { useAuthStore } from '@renderer/store/useAuthStore'
-import { useNavigate } from '@tanstack/react-router'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 import { useHotkeys } from 'react-hotkeys-hook'
@@ -1754,9 +1753,9 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [pageLength, setPageLength] = useState(10)
 
   // Profile data and dropdown
-  const [profileLoading, setProfileLoading] = useState(false)
-  const [profileError, setProfileError] = useState<string | null>(null)
   const [showProfileDropdown, setShowProfileDropdown] = useState(false)
+  const [appVersion, setAppVersion] = useState<string>('')
+  const profileLoading = false
 
   // Use data directly - server handles all filtering via search_term parameter
   // No client-side filtering needed since API already filters results
@@ -1801,6 +1800,25 @@ const RightPanel: React.FC<RightPanelProps> = ({
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [showProfileDropdown])
+
+  // Load app version on mount for display in profile dropdown
+  useEffect(() => {
+    const loadVersion = async () => {
+      try {
+        const api = window.electronAPI?.app
+        if (!api?.getVersion) {
+          return
+        }
+        const version = await api.getVersion()
+        if (version) {
+          setAppVersion(version)
+        }
+      } catch (error) {
+        console.warn('Failed to load app version', error)
+      }
+    }
+    loadVersion()
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -2681,6 +2699,11 @@ const RightPanel: React.FC<RightPanelProps> = ({
                 <div className="text-sm font-semibold text-gray-800">
                   {profile?.name || 'User Profile'}
                 </div>
+                {appVersion && (
+                  <div className="text-xs text-gray-500 mt-1">
+                    Version {appVersion}
+                  </div>
+                )}
               </div>
               <button
                 className="w-full px-4 py-2 text-left text-sm font-semibold text-black hover:bg-gray-100 transition-colors"
@@ -3097,7 +3120,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                                 const year = date.getFullYear()
                                 return `${day}/${month}/${year}`
                               }
-                              const totalAmount = (Number(item.qty || 0) * Number(item.unit_price || 0)).toFixed(2)
+                              // const totalAmount = (Number(item.qty || 0) * Number(item.unit_price || 0)).toFixed(2) // Unused
                               const unitPrice = Number(item.unit_price || 0).toFixed(2)
                               return (
                                 <div
@@ -3941,7 +3964,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     if (selectedCustomer?.name || selectedCustomer?.customer_id || customerDetails?.name){
                       // trigger reload using existing loadCustomerDetails flow
                       try{ await (async()=>{ 
-                        let cancelled=false; 
+                        // let cancelled=false; // Unused 
                         setCustomerDetailsLoading(true); setCustomerDetailsError(null); 
                         const listRes = await (window as any).electronAPI?.proxy?.request({url: '/api/method/centro_pos_apis.api.customer.customer_list', params:{search_term:'', limit_start:1, limit_page_length:50}})
                         const list = listRes?.data?.data || []
@@ -4377,12 +4400,12 @@ const RightPanel: React.FC<RightPanelProps> = ({
                         const year = date.getFullYear()
                         return `${day}/${month}/${year}`
                       }
-                      const formatTime = (date: Date | null) => {
-                        if (!date) return '—'
-                        const hours = String(date.getHours()).padStart(2, '0')
-                        const minutes = String(date.getMinutes()).padStart(2, '0')
-                        return `${hours}:${minutes}`
-                      }
+                      // const formatTime = (date: Date | null) => { // Unused
+                      //   if (!date) return '—'
+                      //   const hours = String(date.getHours()).padStart(2, '0')
+                      //   const minutes = String(date.getMinutes()).padStart(2, '0')
+                      //   return `${hours}:${minutes}`
+                      // }
 
                       return (
                         <div
@@ -4413,7 +4436,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                                 
                                 if (orderData) {
                                   // Extract customer info from order
-                                  const customerName = orderData.customer_name || orderData.customer
+                                  // const customerName = orderData.customer_name || orderData.customer // Unused
                                   const customerId = orderData.customer || null
                                   
                                   // Fetch all related data in parallel
@@ -4719,12 +4742,12 @@ const RightPanel: React.FC<RightPanelProps> = ({
                         const year = date.getFullYear()
                         return `${day}/${month}/${year}`
                       }
-                      const formatTime = (date: Date | null) => {
-                        if (!date) return '—'
-                        const hours = String(date.getHours()).padStart(2, '0')
-                        const minutes = String(date.getMinutes()).padStart(2, '0')
-                        return `${hours}:${minutes}`
-                      }
+                      // const formatTime = (date: Date | null) => { // Unused
+                      //   if (!date) return '—'
+                      //   const hours = String(date.getHours()).padStart(2, '0')
+                      //   const minutes = String(date.getMinutes()).padStart(2, '0')
+                      //   return `${hours}:${minutes}`
+                      // }
 
                       return (
                         <div

@@ -389,7 +389,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
         
         // Clear cached customer insights to trigger refresh in right panel
         // Don't update _lastKnownStatus yet - let the right panel detect the change
-        if (currentTab.orderData?._relatedData) {
+        if (currentTab?.orderData?._relatedData && currentTab?.id) {
           const updatedOrderData = {
             ...currentTab.orderData,
             _relatedData: {

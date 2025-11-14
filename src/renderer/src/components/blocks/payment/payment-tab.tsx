@@ -55,7 +55,7 @@ const PaymentTab: React.FC = () => {
   const [paymentType, setPaymentType] = useState<string>('Receive')
   const [partyType, setPartyType] = useState<string>('Customer')
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
-  const [customers, setCustomers] = useState<Customer[]>([])
+  const [_customers, setCustomers] = useState<Customer[]>([])
   const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([])
   const [customerPage, setCustomerPage] = useState(1)
   const [customerHasMore, setCustomerHasMore] = useState(true)
@@ -78,7 +78,7 @@ const PaymentTab: React.FC = () => {
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState<string>('')
   const [selectedCustomerIndex, setSelectedCustomerIndex] = useState<number>(0)
-  const [paymentVouchers, setPaymentVouchers] = useState<PaymentVoucher[]>([])
+  const [_paymentVouchers, setPaymentVouchers] = useState<PaymentVoucher[]>([])
   const [filteredVouchers, setFilteredVouchers] = useState<PaymentVoucher[]>([])
   const [voucherSearchTerm, setVoucherSearchTerm] = useState<string>('')
   const [voucherPage, setVoucherPage] = useState(1)
@@ -95,7 +95,7 @@ const PaymentTab: React.FC = () => {
     'Cheque'
   ])
   const [currencySymbol, setCurrencySymbol] = useState('$')
-  const [vatPercentage, setVatPercentage] = useState(10)
+  const [_vatPercentage, setVatPercentage] = useState(10)
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
   const [isVoucherViewModalOpen, setIsVoucherViewModalOpen] = useState(false)
   const [voucherViewData, setVoucherViewData] = useState<any>(null)
@@ -113,7 +113,7 @@ const PaymentTab: React.FC = () => {
     try {
       console.log('📋 Loading POS profile...')
       
-      const response = await window.electronAPI.proxy.request({
+      const response = await window.electronAPI?.proxy?.request({
         url: '/api/method/centro_pos_apis.api.profile.get_pos_profile'
       })
 
@@ -295,7 +295,7 @@ const PaymentTab: React.FC = () => {
       const limit_page_length = page * 10
       if (page > 1) setIsFetchingMoreCustomers(true)
       console.log('👥 Fetch customers', { term, limit_start, limit_page_length })
-      const response = await window.electronAPI.proxy.request({
+      const response = await window.electronAPI?.proxy?.request({
         url: '/api/method/centro_pos_apis.api.customer.customer_list',
         params: { search_term: term, limit_start, limit_page_length }
       })
@@ -344,7 +344,7 @@ const PaymentTab: React.FC = () => {
 
       console.log('📄 Payment vouchers API request params:', params)
 
-      const response = await window.electronAPI.proxy.request({
+      const response = await window.electronAPI?.proxy?.request({
         url: '/api/method/centro_pos_apis.api.order.list_payment_vouchers',
         params
       })
@@ -379,8 +379,8 @@ const PaymentTab: React.FC = () => {
       }
     } catch (error) {
       console.error('📄 Error loading payment vouchers:', error)
-      console.error('📄 Error response:', error?.response)
-      console.error('📄 Error data:', error?.response?.data)
+      console.error('📄 Error response:', (error as any)?.response)
+      console.error('📄 Error data:', (error as any)?.response?.data)
 
       setVoucherError(error instanceof Error ? error.message : 'Failed to load payment vouchers')
       setPaymentVouchers([])
@@ -397,7 +397,7 @@ const PaymentTab: React.FC = () => {
     try {
       console.log('📋 Loading payment voucher details for viewing:', voucherName)
 
-      const response = await window.electronAPI.proxy.request({
+      const response = await window.electronAPI?.proxy?.request({
         url: `/api/resource/Payment Entry/${voucherName}`
       })
 
@@ -424,7 +424,7 @@ const PaymentTab: React.FC = () => {
     try {
       console.log('📋 Loading due invoices for customer:', customerId)
 
-      const response = await window.electronAPI.proxy.request({
+      const response = await window.electronAPI?.proxy?.request({
         url: '/api/method/centro_pos_apis.api.order.due_invoice_list',
         params: { customer_id: customerId }
       })
@@ -544,11 +544,11 @@ const PaymentTab: React.FC = () => {
       }
     } catch (error) {
       console.error('📋 Error loading due invoices:', error)
-      console.error('📋 Error response:', error?.response)
-      console.error('📋 Error data:', error?.response?.data)
+      console.error('📋 Error response:', (error as any)?.response)
+      console.error('📋 Error data:', (error as any)?.response?.data)
 
-      if (error?.response?.data?.message) {
-        toast.error(error.response.data.message)
+      if ((error as any)?.response?.data?.message) {
+        toast.error((error as any).response.data.message)
       } else {
         toast.error('Failed to load due invoices')
       }
@@ -716,7 +716,7 @@ const PaymentTab: React.FC = () => {
       console.log('💳 ===== END REQUEST BODY PARAMETERS =====')
 
       // Call payment API
-      const response = await window.electronAPI.proxy.request({
+      const response = await window.electronAPI?.proxy?.request({
         url: '/api/method/centro_pos_apis.api.order.create_payment_entry',
         method: 'POST',
         data: paymentData
@@ -758,8 +758,8 @@ const PaymentTab: React.FC = () => {
     } catch (error) {
       console.error('❌ ===== PAYMENT ERROR =====')
       console.error('❌ Error processing payment:', error)
-      console.error('❌ Error response:', error?.response)
-      console.error('❌ Error data:', error?.response?.data)
+      console.error('❌ Error response:', (error as any)?.response)
+      console.error('❌ Error data:', (error as any)?.response?.data)
       console.error('❌ Error message:', (error as any)?.message)
       console.error('❌ Error stack:', (error as any)?.stack)
       console.error('❌ ===== END PAYMENT ERROR =====')
@@ -791,8 +791,8 @@ const PaymentTab: React.FC = () => {
         console.log('🔍 Error message that was handled:', errorMessage)
       } else {
         // Show generic error for other types of errors
-        if (error?.response?.data?.message) {
-          toast.error(error.response.data.message)
+        if ((error as any)?.response?.data?.message) {
+          toast.error((error as any).response.data.message)
         } else {
           toast.error('Failed to process payment')
         }
@@ -1025,7 +1025,7 @@ const PaymentTab: React.FC = () => {
           )}
           {!voucherLoading && !voucherError && filteredVouchers.length > 0 ? (
             <div className="space-y-2">
-              {filteredVouchers.map((voucher, index) => (
+              {filteredVouchers.map((voucher, _index) => (
                 <div
                   key={voucher.name}
                   onClick={() => loadPaymentVoucherDetails(voucher.name)}

@@ -78,7 +78,7 @@ const DiscountSection: React.FC<Props> = ({
   const loadPOSProfile = async () => {
     try {
       console.log('📋 Loading POS profile in DiscountSection...')
-      const response = await window.electronAPI.proxy.request({
+      const response = await window.electronAPI?.proxy?.request({
         url: '/api/method/centro_pos_apis.api.profile.get_pos_profile'
       })
 

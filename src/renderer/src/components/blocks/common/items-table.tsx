@@ -147,7 +147,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   }
 
   // Up/Down navigation to same field on previous/next row
-  const handleVerticalNavigation = (e: React.KeyboardEvent, currentField: EditField, itemCode: string) => {
+  const handleVerticalNavigation = (e: React.KeyboardEvent, currentField: EditField, _itemCode: string) => {
     if (showDeleteConfirm) return
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
     e.preventDefault()
@@ -273,7 +273,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   
   // Warehouse popup state
   const [showWarehousePopup, setShowWarehousePopup] = useState(false)
-  const [warehousePopupData, setWarehousePopupData] = useState<{
+  const [warehousePopupData, _setWarehousePopupData] = useState<{
     itemCode: string
     itemName: string
     requiredQty: number
@@ -473,8 +473,9 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     }
   }
 
-  // Quantity validation function for warehouse popup
-  const validateQuantityAndShowPopup = async (item: any, quantity: number, uom: string) => {
+  // Quantity validation function for warehouse popup (unused - commented out)
+  /*
+  const _validateQuantityAndShowPopup = async (item: any, quantity: number, uom: string) => {
     // Skip popup if this item has already been warehouse-allocated
     if (warehouseAllocatedItems.has(item.item_code)) {
       console.log('⏭️ Skipping warehouse popup for already allocated item:', item.item_code)
@@ -539,7 +540,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         // Find the index of this item in the items array (important for duplicate items)
         const itemIndex = items.findIndex((i: any) => i === item)
         
-        setWarehousePopupData({
+        _setWarehousePopupData({
           itemCode: item.item_code,
           itemName: item.item_name || item.label || 'Unknown Product',
           requiredQty,
@@ -557,6 +558,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     }
     return false // No popup needed
   }
+  */
 
   const handleSaveEdit = async () => {
     if (!isEditing || !selectedItemId || !activeTabId) return
@@ -703,7 +705,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         
         // Refresh item data to ensure UI is updated
         setTimeout(() => {
-          refreshItemData(item.item_code, next.uom)
+          refreshItemData(item.item_code, uomInfo.uom)
         }, 100)
         finalValue = uomInfo.uom
       } catch (error) {
@@ -869,13 +871,13 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         })
         const allItems = Array.isArray(resp?.data?.data) ? resp.data.data : []
         const exactItem = allItems.find((i: any) => i.item_id === item.item_code)
-        const details: Array<{ uom: string; rate: number; qty?: number }> = Array.isArray(exactItem?.uom_details)
+        const details: Array<{ uom: string; rate: number; qty?: number; min_price?: number; max_price?: number }> = Array.isArray(exactItem?.uom_details)
           ? exactItem.uom_details
           : []
         if (details.length === 0) return
 
         // Build ordered UOM list
-        const orderedUoms = details.map((d) => ({
+        const orderedUoms = details.map((d: any) => ({
           uom: String(d.uom || '').trim(),
           rate: Number(d.rate ?? d.min_price ?? 0),
           min_price: Number(d.min_price ?? 0),
@@ -1203,7 +1205,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   }
 
   const { profile } = usePOSProfileStore();
-  const allowDuplicateItems = Boolean(profile?.custom_allow_duplicate_items_in_cart === 1);
+  // const _allowDuplicateItems = Boolean(profile?.custom_allow_duplicate_items_in_cart === 1); // Unused
   const allowLabelEditing = Boolean(profile?.custom_allow_item_label_editing === 1);
 
   // Get current date in local timezone (YYYY-MM-DD format)
@@ -1543,7 +1545,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                 setIsEditing(false)
                               }
                             }}
-                            onBlur={(e) => {
+                            onBlur={(_e) => {
                               if (navigatingRef.current) return
                               handleSaveEdit()
                             }}
@@ -1688,7 +1690,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                     })
                                     const allItems = Array.isArray(resp?.data?.data) ? resp.data.data : []
                                     const exactItem = allItems.find((i: any) => i.item_id === item.item_code)
-                                    const details: Array<{ uom: string; rate: number; qty?: number }> = Array.isArray(exactItem?.uom_details)
+                                    const details: Array<{ uom: string; rate: number; qty?: number; min_price?: number; max_price?: number }> = Array.isArray(exactItem?.uom_details)
                                       ? exactItem.uom_details
                                       : []
                                     
@@ -1698,7 +1700,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                     }
 
                                     // Build ordered UOM list
-                                    const orderedUoms = details.map((d) => ({
+                                    const orderedUoms = details.map((d: any) => ({
                                       uom: String(d.uom || '').trim(),
                                       rate: Number(d.rate ?? d.min_price ?? 0),
                                       min_price: Number(d.min_price ?? 0),

@@ -1,6 +1,7 @@
 import { app, shell, BrowserWindow, ipcMain, session, safeStorage } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { autoUpdater } from 'electron-updater'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import { fileURLToPath } from 'url'
@@ -629,6 +630,121 @@ function setupAuthHandlers(): void {
   ipcMain.handle('get-user-data-path', () => {
     return app.getPath('userData')
   })
+
+  // Auto-updater handlers
+  ipcMain.handle('check-for-updates', async () => {
+    try {
+      if (is.dev) {
+        console.log('⚠️ Auto-updater disabled in development mode')
+        return { success: false, error: 'Auto-updater disabled in development' }
+      }
+      await autoUpdater.checkForUpdates()
+      return { success: true }
+    } catch (error: any) {
+      console.error('Failed to check for updates:', error)
+      return { success: false, error: error?.message || 'Unknown error' }
+    }
+  })
+
+  ipcMain.handle('download-update', async () => {
+    try {
+      if (is.dev) {
+        return { success: false, error: 'Auto-updater disabled in development' }
+      }
+      const result = await autoUpdater.downloadUpdate()
+      return { success: true, result }
+    } catch (error: any) {
+      console.error('Failed to download update:', error)
+      return { success: false, error: error?.message || 'Unknown error' }
+    }
+  })
+
+  ipcMain.handle('quit-and-install', () => {
+    try {
+      autoUpdater.quitAndInstall(false)
+      return { success: true }
+    } catch (error: any) {
+      console.error('Failed to quit and install:', error)
+      return { success: false, error: error?.message || 'Unknown error' }
+    }
+  })
+}
+
+// Setup auto-updater
+function setupAutoUpdater(): void {
+  if (is.dev) {
+    console.log('⚠️ Auto-updater disabled in development mode')
+    return
+  }
+
+  // Configure auto-updater
+  autoUpdater.autoDownload = false // Manual download
+  autoUpdater.autoInstallOnAppQuit = true
+
+  // Update server URL - you'll need to configure this in electron-builder.yml
+  // For now, it will use the publish.url from electron-builder.yml
+
+  autoUpdater.on('checking-for-update', () => {
+    console.log('🔍 Checking for updates...')
+    const mainWindow = global.mainWindow
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update-checking')
+    }
+  })
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('✅ Update available:', info.version)
+    const mainWindow = global.mainWindow
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update-available', {
+        version: info.version,
+        releaseDate: info.releaseDate,
+        releaseNotes: info.releaseNotes
+      })
+    }
+  })
+
+  autoUpdater.on('update-not-available', () => {
+    console.log('✅ App is up to date')
+    const mainWindow = global.mainWindow
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update-not-available')
+    }
+  })
+
+  autoUpdater.on('error', (error) => {
+    console.error('❌ Update error:', error)
+    const mainWindow = global.mainWindow
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update-error', {
+        message: error.message
+      })
+    }
+  })
+
+  autoUpdater.on('download-progress', (progress) => {
+    console.log('📥 Download progress:', Math.round(progress.percent), '%')
+    const mainWindow = global.mainWindow
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update-download-progress', {
+        percent: Math.round(progress.percent),
+        transferred: progress.transferred,
+        total: progress.total
+      })
+    }
+  })
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('✅ Update downloaded:', info.version)
+    const mainWindow = global.mainWindow
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update-downloaded', {
+        version: info.version,
+        releaseDate: info.releaseDate,
+        releaseNotes: info.releaseNotes
+      })
+    }
+  })
 }
 
 // This method will be called when Electron has finished
@@ -643,6 +759,9 @@ app.whenReady().then(() => {
 
   // Setup auth handlers before creating window
   setupAuthHandlers()
+
+  // Setup auto-updater
+  setupAutoUpdater()
 
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.

@@ -23,15 +23,16 @@ export const apiDebug = {
         user: authData.user,
         sessionId: authData.sessionId ? 'present' : 'missing',
         csrfToken: authData.csrfToken ? 'present' : 'missing',
-        apiKey: authData.apiKey ? 'present' : 'missing'
+        // apiKey: authData.apiKey ? 'present' : 'missing' // Not in AuthData interface
       })
       
       // Log to terminal
       try { 
-        window.electronAPI?.log?.logError({ 
-          debug: 'apiDebug:authCheck', 
-          authData 
-        }) 
+        // window.electronAPI?.log?.logError({ 
+        //   debug: 'apiDebug:authCheck', 
+        //   authData 
+        // }) 
+        console.log('apiDebug:authCheck', authData)
       } catch {}
     } catch (error) {
       console.error('❌ Auth check failed:', error)
@@ -56,7 +57,10 @@ export const apiDebug = {
       console.log('2️⃣ Testing API key login...')
       try {
         const { authAPI } = await import('../api/auth')
-        const result = await authAPI.loginWithApiKey(credentials)
+        const result = await authAPI.loginWithApiKey({
+          username: credentials.usr,
+          password: credentials.pwd
+        })
         console.log('✅ API key login result:', result)
       } catch (e) {
         console.log('❌ API key login failed:', e)
@@ -82,7 +86,7 @@ export const apiDebug = {
       const fn = (centro[name] as unknown) as AnyFn
       if (typeof fn !== 'function') throw new Error(`Unknown API: ${String(name)}`)
       const res = await fn(...args)
-      try { window.electronAPI?.log?.logError({ debug: 'apiDebug:success', name, args, data: res?.data ?? res }) } catch {}
+      try { console.log('apiDebug:success', { name, args, data: res?.data ?? res }) } catch {}
       return res?.data ?? res
     } catch (error: any) {
       const payload = {
@@ -95,7 +99,7 @@ export const apiDebug = {
         data: error?.response?.data
       }
       // Log to Electron terminal
-      try { window.electronAPI?.log?.logError(payload) } catch {}
+      try { console.error('apiDebug:error', payload) } catch {}
       // Also log to browser console for quick view
       // eslint-disable-next-line no-console
       console.error('API Debug Error:', safeStringify(payload))
