@@ -327,13 +327,13 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({
 
 
   const ribbonClipPath = 'polygon(12% 0%, 88% 0%, 100% 50%, 88% 100%, 12% 100%, 0% 50%)'
-  const orderStatusText =
-    currentTab?.orderData?.order_status || currentTab?.invoiceStatus || 'N/A'
-  const returnStatusText =
-    currentTab?.invoiceCustomReverseStatus ||
-    (Array.isArray(currentTab?.orderData?.linked_invoices) &&
-      currentTab?.orderData?.linked_invoices[0]?.custom_reverse_status) ||
-    'N/A'
+  
+  // Get main_status and sub_status from order detail API
+  const mainStatus = currentTab?.orderData?.main_status || 'N/A'
+  const subStatus = currentTab?.orderData?.sub_status || 'N/A'
+  
+  // Get zatca_status from order detail API
+  const zatcaStatus = currentTab?.orderData?.zatca_status || 'N/A'
 
   return (
     <div className="relative p-3 bg-white/60 backdrop-blur border-b border-white/20">
@@ -348,26 +348,31 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({
         </button>
       )}
       {/* Order & Return ribbons */}
-      <div className="pointer-events-none absolute right-[28px] top-0 z-[60] flex flex-col gap-3 items-end">
+      <div className="pointer-events-none absolute right-[28px] top-0 z-[60] flex flex-col gap-5 items-end">
+        {/* First ribbon - Order Status (main_status and sub_status) */}
         <div
-          className="px-3 py-1 bg-gradient-to-r from-amber-400 to-orange-400 text-white text-[10px] font-semibold uppercase shadow-lg tracking-wide origin-top-right"
+          className="px-3 py-1 bg-gradient-to-r from-amber-400 to-orange-400 text-white font-semibold uppercase shadow-lg tracking-wide origin-top-right"
           style={{ 
             clipPath: ribbonClipPath, 
             transform: 'rotate(42deg) translateX(30px)',
             width: '160px',
-            height: '26px',
+            height: '40px',
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
-            justifyContent: 'center'
+            justifyContent: 'center',
+            gap: '2px'
           }}
         >
-          <span className="whitespace-nowrap overflow-hidden text-ellipsis">{orderStatusText}</span>
+          <span className="text-[11px] whitespace-nowrap overflow-hidden text-ellipsis">{mainStatus}</span>
+          <span className="text-[8px] whitespace-nowrap overflow-hidden text-ellipsis opacity-90">{subStatus}</span>
         </div>
+        {/* Second ribbon - Zatca Status */}
         <div
           className="px-3 py-1 bg-gradient-to-r from-purple-400 to-indigo-400 text-white text-[9px] font-semibold uppercase shadow-lg tracking-wide origin-top-right"
           style={{ 
             clipPath: ribbonClipPath, 
-            transform: 'rotate(42deg) translateX(30px) translateY(-6px)',
+            transform: 'rotate(42deg) translateX(30px) translateY(0px)',
             width: '160px',
             height: '26px',
             display: 'flex',
@@ -375,7 +380,7 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({
             justifyContent: 'center'
           }}
         >
-          <span className="whitespace-nowrap overflow-hidden text-ellipsis">{returnStatusText}</span>
+          <span className="whitespace-nowrap overflow-hidden text-ellipsis">{zatcaStatus}</span>
         </div>
       </div>
 

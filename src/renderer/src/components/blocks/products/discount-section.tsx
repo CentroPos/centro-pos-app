@@ -183,7 +183,15 @@ const DiscountSection: React.FC<Props> = ({
     let roundingAdj = useRounding ? roundingCandidate : 0
 
     // Prefer rounded_total returned from backend once the order exists
+    // For confirmed orders (docstatus = 1), always use API value
+    // For draft orders (docstatus != 1):
+    //   - If not edited (just saved), use API value
+    //   - If edited (user making changes), use real-time calculation
     const hasSavedOrder = Boolean(currentTab?.orderId)
+    const docstatus = currentTab?.orderData ? Number(currentTab.orderData.docstatus) : null
+    const isConfirmed = docstatus === 1
+    const isEdited = currentTab?.isEdited ?? false
+
     const roundedTotalFromOrder = currentTab?.orderData?.rounded_total
     const grandTotalFromOrder = currentTab?.orderData?.grand_total
 
@@ -211,7 +219,10 @@ const DiscountSection: React.FC<Props> = ({
       normalize(linkedInvoiceGrandTotal) ??
       normalize(grandTotalFromOrder)
 
-    if (hasSavedOrder && serverRoundedTotal !== null) {
+    // Use API value if:
+    // 1. Order is confirmed (docstatus = 1), OR
+    // 2. Order is saved and not edited (just saved/updated)
+    if (hasSavedOrder && serverRoundedTotal !== null && (isConfirmed || !isEdited)) {
       totalFinal = serverRoundedTotal
       roundingAdj = Number((serverRoundedTotal - totalRaw).toFixed(2))
     }
@@ -230,6 +241,7 @@ const DiscountSection: React.FC<Props> = ({
     isRoundingEnabled,
     currentTab?.orderData,
     currentTab?.orderId,
+    currentTab?.isEdited,
     vatPercentage
   ])
 

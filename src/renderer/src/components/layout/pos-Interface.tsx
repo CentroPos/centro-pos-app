@@ -98,7 +98,8 @@ const POSInterface: React.FC = () => {
     getCurrentTabCustomer,
     createNewTab,
     lastAction,
-    setLastAction
+    setLastAction,
+    updateItemInTabByIndex
   } = usePOSTabStore();
 
   // Get selected customer from store
@@ -217,22 +218,46 @@ const POSInterface: React.FC = () => {
       return;
     }
 
+    // Check if item already exists and show notification (but still allow adding)
+    if (itemExists(item.item_code)) {
+      toast.info('You are selecting an item already in the table', {
+        position: 'bottom-right',
+        duration: 3000
+      });
+    }
+
     const allowDuplicate = profile?.custom_allow_duplicate_items_in_cart === 1
     if (!allowDuplicate && itemExists(item.item_code)) {
-      toast.error('Item already in cart');
+      // If duplicates are not allowed, don't add the item
       return;
     }
 
+    // Always set quantity to 1 when adding an item, regardless of existing items
+    const itemToAdd = {
+      ...item,
+      quantity: 1
+    }
+
     console.log('🛒 Adding item to cart:', {
-      item_code: item.item_code,
-      item_name: item.item_name,
-      standard_rate: item.standard_rate,
-      uom: item.uom,
-      quantity: item.quantity,
-      fullItem: item
+      item_code: itemToAdd.item_code,
+      item_name: itemToAdd.item_name,
+      standard_rate: itemToAdd.standard_rate,
+      uom: itemToAdd.uom,
+      quantity: itemToAdd.quantity,
+      fullItem: itemToAdd
     });
 
-    addItemToTab(activeTabId, item);
+    addItemToTab(activeTabId, itemToAdd);
+    // Explicitly ensure quantity is 1 for the newly added item only (last item in array)
+    // Use setTimeout to ensure the item is added to the store first
+    setTimeout(() => {
+      const currentItems = getCurrentTabItems()
+      if (currentItems.length > 0) {
+        const lastItemIndex = currentItems.length - 1
+        // Only update the last item (newly added), not any existing duplicates
+        updateItemInTabByIndex(activeTabId, lastItemIndex, { quantity: 1 })
+      }
+    }, 0)
     setSelectedItemId(item.item_code);
     setRightPanelTab('product'); // Switch to product tab when item is added
 
