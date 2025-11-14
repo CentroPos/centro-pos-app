@@ -13,7 +13,7 @@ const ProductDetail: React.FC<Props> = () => {
   useEffect(() => {
     const loadPOSProfile = async () => {
       try {
-        const response = await window.electronAPI.proxy.request({
+        const response = await window.electronAPI?.proxy?.request({
           url: '/api/method/centro_pos_apis.api.profile.get_pos_profile'
         })
         

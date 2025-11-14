@@ -1,6 +1,5 @@
 
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
 import { authAPI, LoginCredentials, FrappeLoginResponse } from '../api/auth'
 
 interface User {
@@ -28,7 +27,7 @@ interface AuthStore {
 
 export const useAuthStore = create<AuthStore>()(
   // Remove persist wrapper completely - no persistence at all
-  (set, get) => {
+  (set) => {
     // Initialize from localStorage if available
     const initializeFromStorage = () => {
       try {

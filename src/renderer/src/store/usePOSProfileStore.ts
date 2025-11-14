@@ -17,6 +17,8 @@ interface POSProfile {
   custom_allow_duplicate_items_in_cart?: number
   custom_allow_item_label_editing?: number
   custom_allow_order_date_change?: number
+  warehouse?: string
+  custom_hide_cost_and_margin_info?: number
 }
 
 interface POSProfileStore {

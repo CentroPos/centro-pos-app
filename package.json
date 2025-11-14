@@ -17,8 +17,11 @@
     "postinstall": "electron-builder install-app-deps && node node_modules/electron/install.js",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
+    "build:win:publish": "npm run build && electron-builder --win --publish always",
     "build:mac": "electron-vite build && electron-builder --mac",
-    "build:linux": "electron-vite build && electron-builder --linux"
+    "build:mac:publish": "npm run build && electron-builder --mac --publish always",
+    "build:linux": "electron-vite build && electron-builder --linux",
+    "build:linux:publish": "npm run build && electron-builder --linux --publish always"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
@@ -68,6 +71,7 @@
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.7.0",
     "autoprefixer": "^10.4.21",
+    "cross-env": "^10.1.0",
     "electron": "37.6.0",
     "electron-builder": "^25.1.8",
     "electron-vite": "^4.0.0",

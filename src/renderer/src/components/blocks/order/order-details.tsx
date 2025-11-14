@@ -80,6 +80,7 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({
       if (orderData.customer) {
         updateTabCustomer(activeTabId, {
           name: orderData.customer_name,
+          gst: orderData.customer_gst || '',
           customer_id: orderData.customer
         })
         onCustomerSelect?.({

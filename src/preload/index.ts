@@ -18,7 +18,36 @@ const authAPI = {
 // App utility API
 const appAPI = {
   getVersion: () => ipcRenderer.invoke('get-app-version'),
-  getUserDataPath: () => ipcRenderer.invoke('get-user-data-path')
+  getUserDataPath: () => ipcRenderer.invoke('get-user-data-path'),
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  downloadUpdate: () => ipcRenderer.invoke('download-update'),
+  quitAndInstall: () => ipcRenderer.invoke('quit-and-install'),
+  onUpdateChecking: (callback: () => void) => {
+    ipcRenderer.on('update-checking', callback)
+  },
+  onUpdateAvailable: (callback: (info: { version: string; releaseDate?: string; releaseNotes?: string }) => void) => {
+    ipcRenderer.on('update-available', (_event, info) => callback(info))
+  },
+  onUpdateNotAvailable: (callback: () => void) => {
+    ipcRenderer.on('update-not-available', callback)
+  },
+  onUpdateError: (callback: (error: { message: string }) => void) => {
+    ipcRenderer.on('update-error', (_event, error) => callback(error))
+  },
+  onUpdateDownloadProgress: (callback: (progress: { percent: number; transferred: number; total: number }) => void) => {
+    ipcRenderer.on('update-download-progress', (_event, progress) => callback(progress))
+  },
+  onUpdateDownloaded: (callback: (info: { version: string; releaseDate?: string; releaseNotes?: string }) => void) => {
+    ipcRenderer.on('update-downloaded', (_event, info) => callback(info))
+  },
+  removeUpdateListeners: () => {
+    ipcRenderer.removeAllListeners('update-checking')
+    ipcRenderer.removeAllListeners('update-available')
+    ipcRenderer.removeAllListeners('update-not-available')
+    ipcRenderer.removeAllListeners('update-error')
+    ipcRenderer.removeAllListeners('update-download-progress')
+    ipcRenderer.removeAllListeners('update-downloaded')
+  }
 }
 
 // Event listeners API

@@ -8,7 +8,7 @@ import DiscountSection from '../blocks/products/discount-section'
 import ProductSearchModal from '../blocks/products/product-modal'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
-import { usePosProfile, useProfileDetails } from '@renderer/hooks/useProfile'
+import { usePosProfile } from '@renderer/hooks/useProfile'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 import { useAuthStore } from '@renderer/store/useAuthStore'
 import { toast } from 'sonner'
@@ -32,7 +32,7 @@ const POSInterface: React.FC = () => {
   }
 
   // Handle customer selection - switch to customer tab and unselect all items
-  const handleCustomerSelect = (customer: any) => {
+  const handleCustomerSelect = (_customer: any) => {
     setSelectedItemId(undefined) // Unselect all items
     setRightPanelTab('customer')
   }
@@ -105,7 +105,7 @@ const POSInterface: React.FC = () => {
   const selectedCustomer = getCurrentTabCustomer()
 
   const items = getCurrentTabItems();
-  const currentTab = getCurrentTab();
+  // const currentTab = getCurrentTab(); // Unused
   
   // Clear selected item when no active tab
   React.useEffect(() => {
@@ -123,7 +123,7 @@ const POSInterface: React.FC = () => {
   }, [activeTabId, lastAction, setLastAction])
 
   // Load POS profile and user profile details once POS loads
-  const { data: profileDetails } = useProfileDetails()
+  // const { data: profileDetails } = useProfileDetails() // Unused
   const { data: posProfile } = usePosProfile()
   const { user, isAuthenticated } = useAuthStore()
   const { setProfile, setCurrentUserPrivileges } = usePOSProfileStore()
@@ -252,42 +252,42 @@ const POSInterface: React.FC = () => {
   };
 
   // Select item
-  const selectItem = (itemCode: string) => {
-    setSelectedItemId(itemCode);
-  };
+  // const selectItem = (itemCode: string) => { // Unused
+  //   setSelectedItemId(itemCode);
+  // };
 
-  // Navigate items (up/down)
-  const navigateItem = (direction: 'up' | 'down') => {
-    if (items.length === 0) return;
+  // Navigate items (up/down) - Unused
+  // const navigateItem = (direction: 'up' | 'down') => {
+  //   if (items.length === 0) return;
 
-    const currentIndex = selectedItemId
-      ? items.findIndex(item => item.item_code === selectedItemId)
-      : -1;
+  //   const currentIndex = selectedItemId
+  //     ? items.findIndex(item => item.item_code === selectedItemId)
+  //     : -1;
 
-    let newIndex;
-    if (direction === 'down') {
-      newIndex = currentIndex < items.length - 1 ? currentIndex + 1 : 0;
-    } else {
-      newIndex = currentIndex > 0 ? currentIndex - 1 : items.length - 1;
-    }
+  //   let newIndex;
+  //   if (direction === 'down') {
+  //     newIndex = currentIndex < items.length - 1 ? currentIndex + 1 : 0;
+  //   } else {
+  //     newIndex = currentIndex > 0 ? currentIndex - 1 : items.length - 1;
+  //   }
 
-    console.log('🔄 Navigation:', { 
-      direction, 
-      currentIndex, 
-      newIndex, 
-      totalItems: items.length, 
-      selectedItemId, 
-      newItemCode: items[newIndex]?.item_code,
-      items: items.map(item => item.item_code)
-    });
+  //   console.log('🔄 Navigation:', { 
+  //     direction, 
+  //     currentIndex, 
+  //     newIndex, 
+  //     totalItems: items.length, 
+  //     selectedItemId, 
+  //     newItemCode: items[newIndex]?.item_code,
+  //     items: items.map(item => item.item_code)
+  //   });
     
-    // Ensure we have a valid item at the new index
-    if (items[newIndex]) {
-      setSelectedItemId(items[newIndex].item_code);
-    } else {
-      console.error('❌ Invalid navigation index:', newIndex, 'items length:', items.length);
-    }
-  };
+  //   // Ensure we have a valid item at the new index
+  //   if (items[newIndex]) {
+  //     setSelectedItemId(items[newIndex].item_code);
+  //   } else {
+  //     console.error('❌ Invalid navigation index:', newIndex, 'items length:', items.length);
+  //   }
+  // };
 
   useHotkeys('backspace', () => {
     if (selectedItemId) {
@@ -426,7 +426,7 @@ const POSInterface: React.FC = () => {
           items={items} 
           selectedCustomer={selectedCustomer}
           activeTab={rightPanelTab}
-          onTabChange={setRightPanelTab}
+          onTabChange={(tab) => setRightPanelTab(tab as typeof rightPanelTab)}
         />
       </div>
       <ProductSearchModal

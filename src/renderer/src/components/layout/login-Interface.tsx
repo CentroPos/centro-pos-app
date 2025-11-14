@@ -32,8 +32,12 @@ const schema = Yup.object().shape({
 type FormData = Yup.InferType<typeof schema>
 
 const LoginPage: React.FC = () => {
-
   const defaultBaseUrl = React.useMemo(() => getApiBaseUrl(), [])
+  const [appVersion, setAppVersion] = React.useState<string>('')
+  const [updateStatus, setUpdateStatus] = React.useState<'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error'>('idle')
+  const [updateMessage, setUpdateMessage] = React.useState<string>('')
+  const [availableVersion, setAvailableVersion] = React.useState<string | null>(null)
+  const [downloadProgress, setDownloadProgress] = React.useState<number>(0)
 
   const form = useForm<FormData>({
     resolver: yupResolver(schema),
@@ -46,6 +50,67 @@ const LoginPage: React.FC = () => {
 
   const { isLoading, login: storeLogin } = useAuthStore()
   const navigate = useNavigate()
+
+  React.useEffect(() => {
+    const loadAppVersion = async () => {
+      try {
+        const version = await window.electronAPI?.app?.getVersion?.()
+        if (version) {
+          setAppVersion(version)
+        }
+      } catch (error) {
+        console.warn('Failed to load app version', error)
+      }
+    }
+
+    const setupUpdateListeners = () => {
+      const appAPI = window.electronAPI?.app
+      if (!appAPI) return
+
+      appAPI.onUpdateChecking?.(() => {
+        setUpdateStatus('checking')
+        setUpdateMessage('Checking for updates...')
+        setAvailableVersion(null)
+      })
+
+      appAPI.onUpdateAvailable?.((info) => {
+        setUpdateStatus('available')
+        setUpdateMessage(`Update ${info.version} available`)
+        setAvailableVersion(info.version || null)
+      })
+
+      appAPI.onUpdateNotAvailable?.(() => {
+        setUpdateStatus('idle')
+        setUpdateMessage('Application is up to date')
+        setAvailableVersion(null)
+        setDownloadProgress(0)
+      })
+
+      appAPI.onUpdateError?.((error) => {
+        setUpdateStatus('error')
+        setUpdateMessage(error.message || 'Update failed')
+      })
+
+      appAPI.onUpdateDownloadProgress?.((progress) => {
+        setUpdateStatus('downloading')
+        setDownloadProgress(progress.percent || 0)
+        setUpdateMessage(`Downloading update... ${Math.round(progress.percent)}%`)
+      })
+
+      appAPI.onUpdateDownloaded?.((info) => {
+        setUpdateStatus('downloaded')
+        setUpdateMessage(`Update ${info.version} downloaded. Click install to finish.`)
+        setAvailableVersion(info.version || null)
+      })
+    }
+
+    loadAppVersion()
+    setupUpdateListeners()
+
+    return () => {
+      window.electronAPI?.app?.removeUpdateListeners?.()
+    }
+  }, [])
 
   React.useEffect(() => {
     let isMounted = true
@@ -130,6 +195,69 @@ const LoginPage: React.FC = () => {
     }
   }
 
+  const handleCheckForUpdates = async () => {
+    try {
+      const appAPI = window.electronAPI?.app
+      if (!appAPI?.checkForUpdates) {
+        toast.error('Update feature not available')
+        return
+      }
+      setUpdateStatus('checking')
+      setUpdateMessage('Checking for updates...')
+      const result = await appAPI.checkForUpdates()
+      if (result && !result.success) {
+        setUpdateStatus('error')
+        setUpdateMessage(result.error || 'Failed to check for updates')
+        if (result.error && !result.error.includes('development')) {
+          toast.error(result.error)
+        }
+      }
+    } catch (error: any) {
+      setUpdateStatus('error')
+      setUpdateMessage(error?.message || 'Failed to check for updates')
+      toast.error('Failed to check for updates')
+    }
+  }
+
+  const handleDownloadUpdate = async () => {
+    try {
+      const appAPI = window.electronAPI?.app
+      if (!appAPI?.downloadUpdate) {
+        toast.error('Update feature not available')
+        return
+      }
+      setUpdateStatus('downloading')
+      setUpdateMessage('Downloading update...')
+      const result = await appAPI.downloadUpdate()
+      if (result && !result.success) {
+        setUpdateStatus('error')
+        setUpdateMessage(result.error || 'Failed to download update')
+        toast.error(result.error || 'Failed to download update')
+      }
+    } catch (error: any) {
+      setUpdateStatus('error')
+      setUpdateMessage(error?.message || 'Failed to download update')
+      toast.error('Failed to download update')
+    }
+  }
+
+  const handleInstallUpdate = async () => {
+    try {
+      const appAPI = window.electronAPI?.app
+      if (!appAPI?.quitAndInstall) {
+        toast.error('Update feature not available')
+        return
+      }
+      setUpdateStatus('downloaded')
+      setUpdateMessage('Installing update...')
+      await appAPI.quitAndInstall()
+    } catch (error: any) {
+      setUpdateStatus('error')
+      setUpdateMessage(error?.message || 'Failed to install update')
+      toast.error('Failed to install update')
+    }
+  }
+
   return (
     <div>
       <div className="bg-gradient-to-br from-slate-50 to-gray-100 min-h-screen flex items-center justify-center p-6 font-sans relative">
@@ -152,6 +280,9 @@ const LoginPage: React.FC = () => {
             </div>
             <h1 className="text-3xl font-bold text-primary mb-2">CentroERP POS</h1>
             <p className="text-gray-600 text-sm">Point of Sale for Traders</p>
+            {appVersion && (
+              <div className="text-xs text-gray-500 mt-3">Version {appVersion}</div>
+            )}
           </div>
 
           {/* Login Form */}
@@ -207,6 +338,51 @@ const LoginPage: React.FC = () => {
                 </Button>
               </form>
             </Form>
+          </div>
+
+          <div className="mt-6 space-y-3">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={handleCheckForUpdates}
+              disabled={updateStatus === 'checking' || updateStatus === 'downloading'}
+            >
+              {updateStatus === 'checking' ? 'Checking for updates…' : 'Check for Updates'}
+            </Button>
+            {updateMessage && (
+              <div className="text-xs text-gray-600 text-center px-2">
+                {updateMessage}
+              </div>
+            )}
+            {updateStatus === 'available' && (
+              <Button
+                type="button"
+                className="w-full bg-blue-500 hover:bg-blue-600"
+                onClick={handleDownloadUpdate}
+              >
+                Download Update {availableVersion ? `(${availableVersion})` : ''}
+              </Button>
+            )}
+            {updateStatus === 'downloading' && (
+              <div className="space-y-1">
+                <div className="w-full bg-gray-200 rounded-full h-1.5">
+                  <div
+                    className="bg-blue-500 h-1.5 rounded-full transition-all"
+                    style={{ width: `${Math.round(downloadProgress)}%` }}
+                  />
+                </div>
+              </div>
+            )}
+            {updateStatus === 'downloaded' && (
+              <Button
+                type="button"
+                className="w-full bg-green-500 hover:bg-green-600"
+                onClick={handleInstallUpdate}
+              >
+                Install Update & Restart
+              </Button>
+            )}
           </div>
 
           <div className="flex items-center my-6">

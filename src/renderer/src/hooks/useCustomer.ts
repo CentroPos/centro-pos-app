@@ -24,13 +24,7 @@ export const useCustomers = (params = {}) => {
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
     enabled: true, // Explicitly enable the query
-    retry: 1,
-    onSuccess: (data) => {
-      console.log('🪝 useCustomers onSuccess:', data)
-    },
-    onError: (error) => {
-      console.error('🪝 useCustomers onError:', error)
-    }
+    retry: 1
   })
   
   console.log('🪝 useCustomers query state:', {
