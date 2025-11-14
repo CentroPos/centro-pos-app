@@ -60,6 +60,9 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
   const [loading, setLoading] = useState(false)
   const [returnLoading, setReturnLoading] = useState(false)
   const [selectedItems, setSelectedItems] = useState<{ [key: string]: { selected: boolean; qty: number; originalQty: number } }>({})
+  
+  // Calculate selected items count
+  const selectedItemsCount = Object.values(selectedItems).filter(item => item.selected).length
 
   // Reset state when modal opens/closes and set invoice number from store
   useEffect(() => {
@@ -282,6 +285,20 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
 
   // Handle item selection checkbox
   const handleItemSelect = (itemCode: string, selected: boolean) => {
+    // If trying to select, check if returnable_qty is 0
+    if (selected) {
+      const item = invoiceData?.items?.find((it: InvoiceItem) => it.item_code === itemCode)
+      const returnableQty = typeof item?.returnable_qty === 'number' ? item.returnable_qty : 0
+      
+      if (returnableQty === 0) {
+        // Show error message and prevent selection
+        toast.error('Cannot select item with zero returnable quantity', {
+          position: 'bottom-right'
+        })
+        return
+      }
+    }
+    
     setSelectedItems(prev => {
       const currentItem = prev[itemCode]
       // Get returnable_qty from the item in invoiceData
@@ -293,8 +310,9 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
         ...prev[itemCode],
           selected,
           originalQty: returnableQty,
-          // When selected, set return qty to returnable qty if not already set
-          qty: selected && (!currentItem?.qty || currentItem.qty === 0) ? returnableQty : (currentItem?.qty ?? returnableQty)
+          // When selected, always auto-fill with returnable qty
+          // When deselected, keep the current qty (or returnableQty if not set)
+          qty: selected ? returnableQty : (currentItem?.qty ?? returnableQty)
         }
       }
     })
@@ -304,14 +322,30 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
   const handleSelectAll = (checked: boolean) => {
     if (!invoiceData) return
     
+    // If trying to select all, check if any items have returnable_qty = 0
+    if (checked) {
+      const itemsWithZeroQty = invoiceData.items.filter((item: InvoiceItem) => {
+        const returnableQty = typeof item.returnable_qty === 'number' ? item.returnable_qty : 0
+        return returnableQty === 0
+      })
+      
+      if (itemsWithZeroQty.length > 0) {
+        toast.error(`Cannot select ${itemsWithZeroQty.length} item(s) with zero returnable quantity`, {
+          position: 'bottom-right'
+        })
+      }
+    }
+    
     setSelectedItems(prev => {
       const updated: { [key: string]: { selected: boolean; qty: number; originalQty: number } } = { ...prev }
       invoiceData.items.forEach((item: InvoiceItem) => {
         if (item.item_code) {
           const returnableQty = typeof item.returnable_qty === 'number' ? item.returnable_qty : 0
+          // Only select items with returnable_qty > 0
+          const shouldSelect = checked && returnableQty > 0
           updated[item.item_code] = {
-            selected: checked,
-            qty: checked ? returnableQty : (updated[item.item_code]?.qty ?? returnableQty),
+            selected: shouldSelect,
+            qty: shouldSelect ? returnableQty : (updated[item.item_code]?.qty ?? returnableQty),
             originalQty: returnableQty
           }
         }
@@ -491,7 +525,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-[1800px] w-[98vw] h-[85vh] max-h-[900px] bg-white border-2 border-gray-200 shadow-2xl flex flex-col">
+      <DialogContent className="!max-w-[2625px] sm:!max-w-[800px] w-[98vw] h-[85vh] max-h-[900px] bg-white border-2 border-gray-200 shadow-2xl flex flex-col">
         <DialogHeader className="pb-4 border-b border-gray-200">
           <DialogTitle className="text-xl font-semibold text-gray-800 font-sans">
             Process Return Order
@@ -560,8 +594,8 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
               {/* Items Table with Tabs */}
               <div className="flex-1 flex flex-col space-y-2 overflow-hidden min-h-0">
                 <h3 className="text-base font-bold text-gray-800 font-sans">Select Items to Return</h3>
-                <Tabs defaultValue="items" className="flex-1 flex flex-col overflow-hidden min-h-0">
-                  <TabsList className="grid w-full grid-cols-2 bg-gray-100 p-1 rounded-lg">
+                <Tabs defaultValue="items" className="flex-1 flex flex-col overflow-hidden min-h-0 relative">
+                  <TabsList className="grid w-full grid-cols-2 bg-gray-100 p-1 rounded-lg flex-shrink-0">
                     <TabsTrigger 
                       value="items"
                       className="data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm font-sans"
@@ -570,18 +604,23 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                     </TabsTrigger>
                     <TabsTrigger 
                       value="selected"
-                      className="data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm font-sans"
+                      className="data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm font-sans relative"
                     >
                       Selected Items
+                      {selectedItemsCount > 0 && (
+                        <span className="ml-2 min-w-[18px] h-[18px] px-1.5 rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center">
+                          {selectedItemsCount}
+                        </span>
+                      )}
                     </TabsTrigger>
                   </TabsList>
                   
                   {/* Items Tab */}
-                  <TabsContent value="items" className="mt-2">
-                    <div className="border-2 border-gray-200 rounded-lg overflow-hidden bg-white min-h-[400px]">
-                      <div className="overflow-y-auto max-h-[500px] overflow-x-hidden">
+                  <TabsContent value="items" className="mt-2 flex-1 flex flex-col overflow-hidden min-h-0 data-[state=inactive]:hidden !relative">
+                    <div className="border-2 border-gray-200 rounded-lg overflow-hidden bg-white flex-1 flex flex-col min-h-0">
+                      <div className="overflow-y-auto overflow-x-hidden flex-1 min-h-0">
                         <Table className="w-full">
-                    <TableHeader>
+                    <TableHeader className="sticky top-0 bg-gray-100 z-10">
                       <TableRow className="bg-gray-100 border-b-2 border-gray-200">
                               <TableHead className="w-16 font-sans font-semibold text-gray-700">
                                 <Checkbox
@@ -591,6 +630,8 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                               </TableHead>
                               <TableHead className="font-sans font-semibold text-gray-700 w-[250px]">Item Code</TableHead>
                         <TableHead className="font-sans font-semibold text-gray-700">Item Name</TableHead>
+                        <TableHead className="font-sans font-semibold text-gray-700 w-[120px]">UOM</TableHead>
+                        <TableHead className="text-right font-sans font-semibold text-gray-700 w-[180px]">Returnable Qty</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -598,6 +639,8 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                         // Safely extract item data with fallbacks
                         const itemCode = item.item_code || `item-${index}`
                         const itemName = item.item_name || 'Unknown Item'
+                        const uom = item.uom || 'Nos'
+                        const returnableQty = typeof item.returnable_qty === 'number' ? item.returnable_qty : 0
                         
                         return (
                           <TableRow key={index} className="hover:bg-gray-50 border-b border-gray-100">
@@ -613,6 +656,8 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                                   <TableCell className="font-sans text-gray-700" title={itemName}>
                                     {itemName}
                                   </TableCell>
+                                  <TableCell className="font-sans text-gray-700">{uom}</TableCell>
+                                  <TableCell className="text-right font-sans text-gray-700">{returnableQty}</TableCell>
                                 </TableRow>
                               )
                             })}
@@ -623,11 +668,11 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                   </TabsContent>
                   
                   {/* Selected Items Tab */}
-                  <TabsContent value="selected" className="mt-2">
-                    <div className="border-2 border-gray-200 rounded-lg overflow-hidden bg-white min-h-[400px]">
-                      <div className="overflow-y-auto max-h-[500px] overflow-x-hidden">
+                  <TabsContent value="selected" className="mt-2 flex-1 flex flex-col overflow-hidden min-h-0 data-[state=inactive]:hidden !relative">
+                    <div className="border-2 border-gray-200 rounded-lg overflow-hidden bg-white flex-1 flex flex-col min-h-0">
+                      <div className="overflow-y-auto overflow-x-hidden flex-1 min-h-0">
                         <Table className="w-full">
-                          <TableHeader>
+                          <TableHeader className="sticky top-0 bg-gray-100 z-10">
                             <TableRow className="bg-gray-100 border-b-2 border-gray-200">
                               <TableHead className="font-sans font-semibold text-gray-700 w-[250px]">Item Code</TableHead>
                               <TableHead className="font-sans font-semibold text-gray-700">Item Name</TableHead>
@@ -659,33 +704,35 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                                     <TableCell className="font-sans text-gray-700">{uom}</TableCell>
                                     <TableCell className="text-right font-sans text-gray-700">{returnableQty}</TableCell>
                             <TableCell className="text-right">
-                              <Input
-                                type="number"
-                                min="0"
-                                        max={returnableQty}
-                                        value={returnQty.toString()}
-                                onChange={(e) => {
-                                  const inputValue = e.target.value
-                                  // Allow empty string for clearing, or parse as number
-                                  if (inputValue === '') {
-                                    handleQuantityChange(itemCode, 0)
-                                  } else {
-                                    const numericValue = parseFloat(inputValue)
-                                    if (!isNaN(numericValue)) {
-                                      handleQuantityChange(itemCode, numericValue)
+                              <div className="flex justify-end">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                          max={returnableQty}
+                                          value={returnQty.toString()}
+                                  onChange={(e) => {
+                                    const inputValue = e.target.value
+                                    // Allow empty string for clearing, or parse as number
+                                    if (inputValue === '') {
+                                      handleQuantityChange(itemCode, 0)
+                                    } else {
+                                      const numericValue = parseFloat(inputValue)
+                                      if (!isNaN(numericValue)) {
+                                        handleQuantityChange(itemCode, numericValue)
+                                      }
                                     }
-                                  }
-                                }}
-                                onBlur={(e) => {
-                                  // Ensure we have a valid number on blur
-                                  const value = parseFloat(e.target.value) || 0
-                                          // Ensure value doesn't exceed returnable qty
-                                          const validValue = Math.min(value, returnableQty)
-                                          handleQuantityChange(itemCode, validValue)
-                                }}
-                                        className="w-20 text-right font-sans border-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                                placeholder="0"
-                              />
+                                  }}
+                                  onBlur={(e) => {
+                                    // Ensure we have a valid number on blur
+                                    const value = parseFloat(e.target.value) || 0
+                                            // Ensure value doesn't exceed returnable qty
+                                            const validValue = Math.min(value, returnableQty)
+                                            handleQuantityChange(itemCode, validValue)
+                                  }}
+                                          className="w-20 text-right font-sans border-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                                  placeholder="0"
+                                />
+                              </div>
                             </TableCell>
                           </TableRow>
                         )

@@ -789,6 +789,162 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const { tabs, setActiveTab } = usePOSTabStore()
   const currentTab = getCurrentTab()
   const [isOpeningOrder, setIsOpeningOrder] = useState(false)
+  
+  // Function to open order (reusable)
+  const handleOpenOrder = async (orderId: string, skipConfirm: boolean = false) => {
+    if (!orderId) return
+    
+    // Check if order is already open
+    const existing = tabs.find(t => t.orderId === String(orderId))
+    if (existing) {
+      setActiveTab(existing.id)
+      return
+    }
+    
+    // Show confirmation dialog if not skipping (for sales/customer/recent orders)
+    if (!skipConfirm) {
+      setPendingOrderData({ orderId, orderName: orderId })
+      setShowOpenOrderConfirm(true)
+      return
+    }
+    
+    // Open order directly (from orders tab)
+    setIsOpeningOrder(true)
+    try {
+      console.log('📦 Opening order:', orderId)
+      const res = await window.electronAPI?.proxy.request({
+        url: '/api/method/centro_pos_apis.api.order.get_sales_order_details',
+        params: {
+          sales_order_id: String(orderId)
+        }
+      })
+      const orderData = res?.data?.data || null
+      
+      if (orderData) {
+        const customerId = orderData.customer || null
+        
+        // Fetch all related data in parallel
+        const [customerDetailsRes, customerInsightsRes, recentOrdersRes, mostOrderedRes] = await Promise.allSettled([
+          customerId ? window.electronAPI?.proxy?.request({
+            url: `/api/resource/Customer/${customerId}`,
+            params: {}
+          }) : Promise.resolve(null),
+          customerId ? window.electronAPI?.proxy?.request({
+            url: '/api/method/centro_pos_apis.api.customer.customer_amount_insights',
+            params: { customer_id: customerId, limit_start: 1, limit_page_length: 4 }
+          }) : Promise.resolve(null),
+          customerId ? window.electronAPI?.proxy?.request({
+            url: '/api/method/centro_pos_apis.api.customer.get_customer_recent_orders',
+            params: { customer_id: customerId, limit_start: 1, limit_page_length: 3 }
+          }) : Promise.resolve(null),
+          customerId ? window.electronAPI?.proxy?.request({
+            url: '/api/method/centro_pos_apis.api.customer.get_customer_most_ordered_products',
+            params: { customer_id: customerId, limit_start: 1, limit_page_length: 3 }
+          }) : Promise.resolve(null)
+        ])
+        
+        // Fetch sales/purchase history for each item
+        const itemHistories = await Promise.allSettled(
+          (orderData.items || []).map(async (item: any) => {
+            const itemCode = item.item_code || item.item_id
+            if (!itemCode) return null
+            
+            const [salesHistoryRes, purchaseHistoryRes] = await Promise.allSettled([
+              window.electronAPI?.proxy?.request({
+                url: '/api/method/centro_pos_apis.api.product.get_product_sales_history',
+                params: { item_id: itemCode, limit_start: 1, limit_page_length: 4 }
+              }),
+              window.electronAPI?.proxy?.request({
+                url: '/api/method/centro_pos_apis.api.product.get_product_purchase_history',
+                params: { item_id: itemCode, limit_start: 1, limit_page_length: 4 }
+              })
+            ])
+            
+            return {
+              item_code: itemCode,
+              sales_history: salesHistoryRes.status === 'fulfilled' ? salesHistoryRes.value?.data?.data : null,
+              purchase_history: purchaseHistoryRes.status === 'fulfilled' ? purchaseHistoryRes.value?.data?.data : null
+            }
+          })
+        )
+        
+        // Fetch print items
+        let printItemsData = null
+        try {
+          const printRes = await window.electronAPI?.proxy?.request({
+            url: '/api/method/centro_pos_apis.api.print.print_items_list',
+            params: { order_id: String(orderId) }
+          })
+          printItemsData = printRes?.data?.data || null
+        } catch (printErr) {
+          console.warn('⚠️ Failed to fetch print items:', printErr)
+        }
+        
+        const isConfirmed = Number(orderData.docstatus) === 1
+        const orderStatus = isConfirmed ? 'confirmed' : 'draft'
+        
+        // Extract invoice info
+        let invoiceNumber = null
+        let invoiceStatus = null
+        let invoiceCustomReverseStatus = null
+        const linkedInvoices = orderData.linked_invoices
+        
+        if (linkedInvoices) {
+          if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
+            const firstInvoice = linkedInvoices[0]
+            invoiceNumber = firstInvoice?.name || null
+            invoiceStatus = firstInvoice?.status || null
+            invoiceCustomReverseStatus = firstInvoice?.custom_reverse_status || null
+          } else if (linkedInvoices && typeof linkedInvoices === 'object' && !Array.isArray(linkedInvoices)) {
+            invoiceNumber = linkedInvoices.name || null
+            invoiceStatus = linkedInvoices.status || null
+            invoiceCustomReverseStatus = linkedInvoices.custom_reverse_status || null
+          }
+        }
+        
+        const enrichedOrderData = {
+          ...orderData,
+          _relatedData: {
+            customerDetails: customerDetailsRes.status === 'fulfilled' ? customerDetailsRes.value?.data?.data : null,
+            customerInsights: customerInsightsRes.status === 'fulfilled' ? customerInsightsRes.value?.data?.data : null,
+            recentOrders: recentOrdersRes.status === 'fulfilled' ? recentOrdersRes.value?.data?.data : null,
+            mostOrdered: mostOrderedRes.status === 'fulfilled' ? mostOrderedRes.value?.data?.data : null,
+            itemHistories: itemHistories
+              .filter((h: any) => h.status === 'fulfilled' && h.value)
+              .map((h: any) => h.value),
+            printItems: printItemsData
+          }
+        }
+        
+        openTab(String(orderId), enrichedOrderData, orderStatus)
+        
+        // Update invoice number if available
+        if (invoiceNumber) {
+          const { updateTabInvoiceNumber } = usePOSTabStore.getState()
+          const openedTab = usePOSTabStore.getState().tabs.find(tab => tab.orderId === String(orderId))
+          if (openedTab) {
+            updateTabInvoiceNumber(openedTab.id, invoiceNumber, invoiceStatus, invoiceCustomReverseStatus)
+          }
+        }
+      } else {
+        openTab(String(orderId))
+      }
+    } catch (e) {
+      console.error('Failed to fetch order details:', e)
+      openTab(String(orderId))
+    } finally {
+      setIsOpeningOrder(false)
+    }
+  }
+  
+  // Handle confirmed order open
+  const handleConfirmOpenOrder = () => {
+    if (pendingOrderData) {
+      handleOpenOrder(pendingOrderData.orderId, true)
+    }
+    setShowOpenOrderConfirm(false)
+    setPendingOrderData(null)
+  }
 
   // Multi-warehouse popup state
   const [showWarehousePopup, setShowWarehousePopup] = useState(false)
@@ -1540,6 +1696,19 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [salesHistoryLoading, setSalesHistoryLoading] = useState(false)
   const [customerHistoryLoading, setCustomerHistoryLoading] = useState(false)
   const [purchaseHistoryLoading, setPurchaseHistoryLoading] = useState(false)
+  
+  // Order open confirmation dialog state (moved before handleOpenOrder to avoid hoisting issues)
+  const [showOpenOrderConfirm, setShowOpenOrderConfirm] = useState(false)
+  const [pendingOrderData, setPendingOrderData] = useState<{ orderId: string; orderName?: string } | null>(null)
+  const openOrderConfirmBtnRef = useRef<HTMLButtonElement>(null)
+  const openOrderCancelBtnRef = useRef<HTMLButtonElement>(null)
+  
+  // Focus confirm button when dialog opens
+  useEffect(() => {
+    if (showOpenOrderConfirm) {
+      setTimeout(() => openOrderConfirmBtnRef.current?.focus(), 0)
+    }
+  }, [showOpenOrderConfirm])
 
   // Debounced search effects for product history tabs
   // Sales History search
@@ -3122,10 +3291,18 @@ const RightPanel: React.FC<RightPanelProps> = ({
                               }
                               // const totalAmount = (Number(item.qty || 0) * Number(item.unit_price || 0)).toFixed(2) // Unused
                               const unitPrice = Number(item.unit_price || 0).toFixed(2)
+                              // Extract order ID from item
+                              const orderId = item.sales_order_id || item.sales_order_no || item.invoice_no || item.name
+                              
                               return (
                                 <div
                                   key={index}
-                                  className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200"
+                                  className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200 cursor-pointer hover:shadow-sm transition"
+                                  onClick={() => {
+                                    if (orderId) {
+                                      handleOpenOrder(String(orderId), false)
+                                    }
+                                  }}
                                 >
                                   {/* Order No and Date Row */}
                                   <div className="flex justify-between items-center mb-2">
@@ -3267,11 +3444,19 @@ const RightPanel: React.FC<RightPanelProps> = ({
                               const year = date.getFullYear()
                               return `${day}/${month}/${year}`
                             }
-                            const totalAmount = (Number(item.quantity || item.qty || 0) * Number(item.unit_price || 0)).toFixed(2)
+                            const unitPrice = Number(item.unit_price || 0).toFixed(2)
+                            // Extract order ID from item
+                            const orderId = item.sales_order_id || item.sales_order_no || item.invoice_no || item.name
+                            
                             return (
                               <div
                                 key={index}
-                                className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200"
+                                className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200 cursor-pointer hover:shadow-sm transition"
+                                onClick={() => {
+                                  if (orderId) {
+                                    handleOpenOrder(String(orderId), false)
+                                  }
+                                }}
                               >
                                 {/* Order No and Date Row */}
                                 <div className="flex justify-between items-center mb-2">
@@ -3290,8 +3475,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
                                   <span className="text-gray-700 font-medium text-xs">
                                     {item.customer_name || item.customer || selectedCustomer?.name || '—'}
                                   </span>
-                                  <span className="font-bold text-green-600 text-sm">
-                                    {totalAmount} {currencySymbol}
+                                  <span className="text-gray-600 font-medium text-xs">
+                                    Unit: <span className="font-bold text-green-600">{unitPrice} {currencySymbol}</span>
                                   </span>
                                 </div>
 
@@ -4060,14 +4245,30 @@ const RightPanel: React.FC<RightPanelProps> = ({
                   {!ordersLoading &&
                     !ordersError &&
                     filteredRecentOrders.length > 0 &&
-                    filteredRecentOrders.map((order, index) => (
+                    filteredRecentOrders.map((order, index) => {
+                      // Extract order ID
+                      const orderId = order.sales_order_id || order.sales_order_no || order.invoice_no || order.name
+                      
+                      return (
                       <div
                         key={index}
-                        className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200"
+                        className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200 cursor-pointer hover:shadow-sm transition"
+                        onClick={() => {
+                          if (orderId) {
+                            handleOpenOrder(String(orderId), false)
+                          }
+                        }}
                       >
                         <div className="flex justify-between items-center mb-2">
-                          <div className="font-semibold text-primary text-sm">
-                            {order.invoice_no || order.sales_order_no}
+                          <div className="flex flex-col">
+                            <div className="font-semibold text-primary text-sm">
+                              {order.sales_order_no || order.sales_order_id || '—'}
+                            </div>
+                            {(order.invoice_no || order.sales_invoice_id) && (
+                              <div className="text-gray-700 text-[10px] mt-0.5">
+                                {order.invoice_no || order.sales_invoice_id}
+                              </div>
+                            )}
                           </div>
                           <div className="text-gray-600 text-xs">
                             {new Date(order.creation_datetime).toLocaleDateString('en-US', {
@@ -4105,7 +4306,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
                           </span>
                         </div>
                       </div>
-                    ))}
+                      )
+                    })}
                   {!ordersLoading &&
                     !ordersError &&
                     filteredRecentOrders.length === 0 &&
@@ -4411,173 +4613,10 @@ const RightPanel: React.FC<RightPanelProps> = ({
                         <div
                           key={index}
                           className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200 cursor-pointer hover:shadow-sm transition"
-                          onClick={async () => {
+                          onClick={() => {
                             const orderId = order.sales_order_id || order.sales_invoice_id || order.name
-                            if (!orderId) return
-                            const existing = tabs.find(t => t.orderId === String(orderId))
-                            if (existing) {
-                              setActiveTab(existing.id)
-                            } else {
-                              setIsOpeningOrder(true)
-                              try {
-                                console.log('📦 Opening order:', orderId)
-                                // Fetch order details using the new API endpoint
-                                const res = await window.electronAPI?.proxy.request({
-                                  url: '/api/method/centro_pos_apis.api.order.get_sales_order_details',
-                                  params: {
-                                    sales_order_id: String(orderId)
-                                  }
-                                })
-                                const orderData = res?.data?.data || null
-                                
-                                console.log('📋 [RightPanel] Order data fetched for tab opening:', JSON.stringify(orderData, null, 2))
-                                console.log('📋 [RightPanel] Linked invoices in fetched order data:', JSON.stringify(orderData?.linked_invoices, null, 2))
-                                console.log('📋 [RightPanel] Full API response:', JSON.stringify(res, null, 2))
-                                
-                                if (orderData) {
-                                  // Extract customer info from order
-                                  // const customerName = orderData.customer_name || orderData.customer // Unused
-                                  const customerId = orderData.customer || null
-                                  
-                                  // Fetch all related data in parallel
-                                  const [customerDetailsRes, customerInsightsRes, recentOrdersRes, mostOrderedRes] = await Promise.allSettled([
-                                    customerId ? window.electronAPI?.proxy?.request({
-                                      url: `/api/resource/Customer/${customerId}`,
-                                      params: {}
-                                    }) : Promise.resolve(null),
-                                    customerId ? window.electronAPI?.proxy?.request({
-                                      url: '/api/method/centro_pos_apis.api.customer.customer_amount_insights',
-                                      params: { customer_id: customerId, limit_start: 1, limit_page_length: 4 }
-                                    }) : Promise.resolve(null),
-                                    customerId ? window.electronAPI?.proxy?.request({
-                                      url: '/api/method/centro_pos_apis.api.customer.get_customer_recent_orders',
-                                      params: { customer_id: customerId, limit_start: 1, limit_page_length: 3 }
-                                    }) : Promise.resolve(null),
-                                    customerId ? window.electronAPI?.proxy?.request({
-                                      url: '/api/method/centro_pos_apis.api.customer.get_customer_most_ordered_products',
-                                      params: { customer_id: customerId, limit_start: 1, limit_page_length: 3 }
-                                    }) : Promise.resolve(null)
-                                  ])
-                                  
-                                  // Fetch sales/purchase history for each item in the order
-                                  const itemHistories = await Promise.allSettled(
-                                    (orderData.items || []).map(async (item: any) => {
-                                      const itemCode = item.item_code || item.item_id
-                                      if (!itemCode) return null
-                                      
-                                      const [salesHistoryRes, purchaseHistoryRes] = await Promise.allSettled([
-                                        window.electronAPI?.proxy?.request({
-                                          url: '/api/method/centro_pos_apis.api.product.get_product_sales_history',
-                                          params: { item_id: itemCode, limit_start: 1, limit_page_length: 4 }
-                                        }),
-                                        window.electronAPI?.proxy?.request({
-                                          url: '/api/method/centro_pos_apis.api.product.get_product_purchase_history',
-                                          params: { item_id: itemCode, limit_start: 1, limit_page_length: 4 }
-                                        })
-                                      ])
-                                      
-                                      return {
-                                        item_code: itemCode,
-                                        sales_history: salesHistoryRes.status === 'fulfilled' ? salesHistoryRes.value?.data?.data : null,
-                                        purchase_history: purchaseHistoryRes.status === 'fulfilled' ? purchaseHistoryRes.value?.data?.data : null
-                                      }
-                                    })
-                                  )
-                                  
-                                  // Fetch print items list for the order
-                                  let printItemsData = null
-                                  try {
-                                    const printRes = await window.electronAPI?.proxy?.request({
-                                      url: '/api/method/centro_pos_apis.api.print.print_items_list',
-                                      params: { order_id: String(orderId) }
-                                    })
-                                    printItemsData = printRes?.data?.data || null
-                                    console.log('🖨️ Fetched print items for order:', printItemsData)
-                                  } catch (printErr) {
-                                    console.warn('⚠️ Failed to fetch print items:', printErr)
-                                  }
-                                  
-                                  // Check docstatus - if 1, order is confirmed
-                                  const isConfirmed = Number(orderData.docstatus) === 1
-                                  const orderStatus = isConfirmed ? 'confirmed' : 'draft'
-                                  
-                                  // Extract invoice number, status, and custom_reverse_status from linked_invoices if available
-                                  let invoiceNumber = null
-                                  let invoiceStatus = null
-                                  let invoiceCustomReverseStatus = null
-                                  const linkedInvoices = orderData.linked_invoices
-                                  
-                                  console.log('📋 [RightPanel] Processing linked_invoices when opening order tab:', JSON.stringify(linkedInvoices, null, 2))
-                                  
-                                  if (linkedInvoices) {
-                                    if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
-                                      const firstInvoice = linkedInvoices[0]
-                                      invoiceNumber = firstInvoice?.name || null
-                                      invoiceStatus = firstInvoice?.status || null
-                                      invoiceCustomReverseStatus = firstInvoice?.custom_reverse_status || null
-                                      console.log('📋 [RightPanel] Invoice number extracted from array:', invoiceNumber)
-                                      console.log('📋 [RightPanel] Invoice status:', invoiceStatus)
-                                      console.log('📋 [RightPanel] Invoice custom_reverse_status:', invoiceCustomReverseStatus)
-                                    } else if (linkedInvoices && typeof linkedInvoices === 'object' && !Array.isArray(linkedInvoices)) {
-                                      invoiceNumber = linkedInvoices.name || null
-                                      invoiceStatus = linkedInvoices.status || null
-                                      invoiceCustomReverseStatus = linkedInvoices.custom_reverse_status || null
-                                      console.log('📋 [RightPanel] Invoice number extracted from object:', invoiceNumber)
-                                      console.log('📋 [RightPanel] Invoice status:', invoiceStatus)
-                                      console.log('📋 [RightPanel] Invoice custom_reverse_status:', invoiceCustomReverseStatus)
-                                    }
-                                  } else {
-                                    console.log('⚠️ [RightPanel] No linked_invoices found in order data when opening tab')
-                                  }
-                                  
-                                  // Attach all fetched data to orderData
-                                  const enrichedOrderData = {
-                                    ...orderData,
-                                    _relatedData: {
-                                      customerDetails: customerDetailsRes.status === 'fulfilled' ? customerDetailsRes.value?.data?.data : null,
-                                      customerInsights: customerInsightsRes.status === 'fulfilled' ? customerInsightsRes.value?.data?.data : null,
-                                      recentOrders: recentOrdersRes.status === 'fulfilled' ? recentOrdersRes.value?.data?.data : null,
-                                      mostOrdered: mostOrderedRes.status === 'fulfilled' ? mostOrderedRes.value?.data?.data : null,
-                                      itemHistories: itemHistories
-                                        .filter((h: any) => h.status === 'fulfilled' && h.value)
-                                        .map((h: any) => h.value),
-                                      printItems: printItemsData
-                                    }
-                                  }
-                                  
-                                  console.log('✅ Order data enriched with all related APIs, status:', orderStatus)
-                                  console.log('📋 Invoice number to be stored:', invoiceNumber)
-                                  openTab(String(orderId), enrichedOrderData, orderStatus)
-                                  
-                                  // If invoice number was extracted, update it in the tab
-                                  if (invoiceNumber) {
-                                    console.log('📋 [RightPanel] Invoice number extracted when opening order tab:', invoiceNumber)
-                                    const { updateTabInvoiceNumber } = usePOSTabStore.getState()
-                                    const openedTab = usePOSTabStore.getState().tabs.find(tab => tab.orderId === String(orderId))
-                                    if (openedTab) {
-                                      console.log('📋 [RightPanel] ✅ Updating invoice number in opened tab:', {
-                                        tabId: openedTab.id,
-                                        orderId: openedTab.orderId,
-                                        invoiceNumber: invoiceNumber,
-                                        invoiceStatus: invoiceStatus,
-                                        invoiceCustomReverseStatus: invoiceCustomReverseStatus
-                                      })
-                                      updateTabInvoiceNumber(openedTab.id, invoiceNumber, invoiceStatus, invoiceCustomReverseStatus)
-                                    } else {
-                                      console.log('📋 [RightPanel] ⚠️ Could not find opened tab to update invoice number')
-                                    }
-                                  } else {
-                                    console.log('📋 [RightPanel] ⚠️ No invoice number extracted when opening order tab')
-                                  }
-                                } else {
-                                  openTab(String(orderId))
-                                }
-                              } catch (e) {
-                                console.error('Failed to fetch order details:', e)
-                                openTab(String(orderId))
-                              } finally {
-                                setIsOpeningOrder(false)
-                              }
+                            if (orderId) {
+                              handleOpenOrder(String(orderId), true) // Skip confirm for orders tab
                             }
                           }}
                         >
@@ -4871,6 +4910,60 @@ const RightPanel: React.FC<RightPanelProps> = ({
           </div>
         </div>
       )}
+      
+      {/* Order open confirmation dialog */}
+      <Dialog open={showOpenOrderConfirm} onOpenChange={(v) => {
+        if (!v) {
+          setShowOpenOrderConfirm(false)
+          setPendingOrderData(null)
+        }
+      }}>
+        <DialogContent 
+          className="max-w-sm" 
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowLeft') {
+              e.preventDefault()
+              openOrderConfirmBtnRef.current?.focus()
+            } else if (e.key === 'ArrowRight') {
+              e.preventDefault()
+              openOrderCancelBtnRef.current?.focus()
+            } else if (e.key === 'Enter') {
+              e.preventDefault()
+              const activeElement = document.activeElement
+              if (activeElement instanceof HTMLButtonElement) {
+                activeElement.click()
+              }
+            }
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Open Order?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600">
+            Do you want to open order {pendingOrderData?.orderName || pendingOrderData?.orderId || ''}?
+          </p>
+          <DialogFooter>
+            <Button
+              ref={openOrderConfirmBtnRef}
+              onClick={handleConfirmOpenOrder}
+              autoFocus
+              className="flex items-center gap-2"
+            >
+              Confirm
+            </Button>
+            <Button 
+              ref={openOrderCancelBtnRef} 
+              variant="outline" 
+              onClick={() => {
+                setShowOpenOrderConfirm(false)
+                setPendingOrderData(null)
+              }}
+            >
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

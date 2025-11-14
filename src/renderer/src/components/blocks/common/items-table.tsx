@@ -94,8 +94,66 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     selectItem(itemCode)
     setActiveField(field)
     setIsEditing(true)
-    const rowItem = items.find((i) => i.item_code === itemCode)
+    
+    // Get the item from filteredItems using selectedRowIndex (handles duplicates correctly by S.No)
+    // This ensures we get the correct duplicate, not just the first one with that item_code
+    const filteredItem = selectedRowIndex >= 0 ? filteredItems[selectedRowIndex] : null
+    if (!filteredItem) {
+      // Fallback: try to find by item_code (for backwards compatibility)
+      const rowItem = items.find((i) => i.item_code === itemCode)
+      if (!rowItem) return
+      switch (field) {
+        case 'item_name':
+          setEditValue(String(rowItem.item_name ?? ''))
+          break
+        case 'item_description':
+          setEditValue(String(rowItem.item_description ?? rowItem.item_name ?? ''))
+          break
+        case 'quantity':
+          setEditValue(String(rowItem.quantity ?? ''))
+          break
+        case 'uom':
+          setEditValue(String(rowItem.uom ?? 'Nos'))
+          break
+        case 'discount_percentage':
+          setEditValue(String(rowItem.discount_percentage ?? '0'))
+          break
+        case 'standard_rate':
+          setEditValue(String(rowItem.standard_rate ?? ''))
+          break
+      }
+      return
+    }
+    
+    // Find the actual index in items array by matching position
+    // Count occurrences in filteredItems to find the correct duplicate in items
+    let countBefore = 0
+    for (let j = 0; j < selectedRowIndex; j++) {
+      if (filteredItems[j]?.item_code === filteredItem.item_code) {
+        countBefore++
+      }
+    }
+    
+    // Find the nth occurrence in items array
+    let found = 0
+    let actualIndex = -1
+    for (let i = 0; i < items.length; i++) {
+      if (items[i]?.item_code === filteredItem.item_code) {
+        if (found === countBefore) {
+          actualIndex = i
+          break
+        }
+        found++
+      }
+    }
+    
+    // Use the item from the correct index, or fallback to filteredItem
+    const rowItem = actualIndex >= 0 ? items[actualIndex] : filteredItem
     if (!rowItem) return
+    
+    // Check if this is the last item (newly added) by actual index
+    const isLastItem = actualIndex === items.length - 1
+    
     switch (field) {
       case 'item_name':
         setEditValue(String(rowItem.item_name ?? ''))
@@ -104,7 +162,14 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         setEditValue(String(rowItem.item_description ?? rowItem.item_name ?? ''))
         break
       case 'quantity':
-        setEditValue(String(rowItem.quantity ?? ''))
+        // For quantity: if it's the last item (newly added) and store value is 1/undefined/null, use '1'
+        // Otherwise, use the store value for this specific item (by index)
+        const storeQty = rowItem.quantity
+        if (isLastItem && (storeQty === 1 || storeQty === undefined || storeQty === null)) {
+          setEditValue('1')
+        } else {
+          setEditValue(String(storeQty ?? '1'))
+        }
         break
       case 'uom':
         setEditValue(String(rowItem.uom ?? 'Nos'))
@@ -219,6 +284,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   const [invalidUomMessage, setInvalidUomMessage] = useState<string>('')
   const [warehouseAllocatedItems, setWarehouseAllocatedItems] = useState<Set<string>>(new Set())
   const inputRef = useRef<HTMLInputElement>(null)
+  const quantityInitializedRef = useRef<{ index: number; field: string } | null>(null)
+  const lastItemQtyEditedRef = useRef<number | null>(null) // Track if last item's quantity has been edited by user
   const tableScrollRef = useRef<HTMLDivElement>(null)
   const localKeyHandlingRef = useRef(false)
   const navigatingRef = useRef(false)
@@ -310,23 +377,34 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   }
 
   useEffect(() => {
-    if (shouldStartEditing && selectedItemId && !isEditing) {
-      // Determine the last visible row index in the current filtered view
-      const targetIndex = Math.max(0, filteredItems.length - 1)
-      const targetItemCode = filteredItems[targetIndex]?.item_code || selectedItemId
+    if (shouldStartEditing && selectedItemId && !isEditing && !isReadOnly) {
+      // The newly added item is always the last item in the items array (by index/S.No)
+      // Use items.length - 1 to get the actual last index, not filteredItems
+      if (activeTabId && items.length > 0) {
+        const lastItemIndex = items.length - 1
+        const lastItem = items[lastItemIndex]
+        const targetItemCode = lastItem?.item_code || selectedItemId
 
-      // Ensure the newly added/selected row is scrolled into view
-      scrollToSelectedItem(targetItemCode, targetIndex)
-      setSelectedRowIndex(targetIndex)
+        // Ensure the newly added/selected row is scrolled into view
+        // Find the index in filteredItems for scrolling
+        const filteredIndex = filteredItems.findIndex((item) => item.item_code === targetItemCode)
+        const scrollIndex = filteredIndex >= 0 ? filteredIndex : Math.max(0, filteredItems.length - 1)
+        scrollToSelectedItem(targetItemCode, scrollIndex)
+        
+        // Use the actual items array index (S.No) for tracking
+        setSelectedRowIndex(lastItemIndex)
 
-      // Begin editing at Qty with the current value
-      const item = items.find((i) => i.item_code === targetItemCode) || items[items.length - 1]
-      setActiveField('quantity')
-      setEditValue(String(item?.quantity ?? ''))
-      setIsEditing(true)
-      onEditingStarted?.()
+        // Begin editing at Qty - always start with 1 for newly added items
+        setActiveField('quantity')
+        // Always set quantity to 1 for newly added items, regardless of existing duplicates
+        setEditValue('1')
+        // Update the last item (the newly added one) to ensure it has quantity 1 in the store
+        updateItemInTabByIndex(activeTabId, lastItemIndex, { quantity: 1 })
+        setIsEditing(true)
+        onEditingStarted?.()
+      }
     }
-  }, [shouldStartEditing, selectedItemId, isEditing, onEditingStarted, items, filteredItems])
+  }, [shouldStartEditing, selectedItemId, isEditing, isReadOnly, onEditingStarted, items, filteredItems, activeTabId, updateItemInTabByIndex])
 
   // Prefill label editor when entering item_description edit mode
   useEffect(() => {
@@ -339,6 +417,50 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       // Do not auto-select all text on open
     }
   }, [isEditing, activeField, selectedItemId, selectedRowIndex, filteredItems, items])
+
+  // Ensure quantity is 1 for newly added items when editing starts
+  // Use index (S.No) instead of item_code to track, so duplicates are handled correctly
+  useEffect(() => {
+    if (isEditing && activeField === 'quantity' && selectedRowIndex >= 0 && activeTabId && !isReadOnly) {
+      // Check if this is the last item (newly added) using index
+      const isLastItem = selectedRowIndex === items.length - 1
+      
+      // Check if we've already initialized quantity for this index/field combination
+      const alreadyInitialized = quantityInitializedRef.current?.index === selectedRowIndex && 
+                                  quantityInitializedRef.current?.field === activeField
+      
+      // Only fix quantity once per editing session for newly added items
+      // But only if the store value is still 1 (hasn't been edited by user)
+      if (isLastItem && !alreadyInitialized) {
+        const selectedItem = items[selectedRowIndex]
+        const storeQty = selectedItem?.quantity
+        
+        // Only set to 1 if store quantity is 1, undefined, or null (not yet edited)
+        // If user has already edited it (storeQty !== 1), use the store value
+        if (storeQty === 1 || storeQty === undefined || storeQty === null) {
+          // Mark as initialized using index (S.No)
+          quantityInitializedRef.current = { index: selectedRowIndex, field: activeField }
+          
+          console.log('🔧 Setting quantity to 1 for newly added item at index:', selectedRowIndex, 'item_code:', selectedItem?.item_code, 'store quantity was:', storeQty)
+          setEditValue('1')
+          updateItemInTabByIndex(activeTabId, selectedRowIndex, { quantity: 1 })
+        } else {
+          // Store has a custom value (user has edited), use that instead
+          console.log('🔧 Using existing store quantity for item at index:', selectedRowIndex, 'store quantity:', storeQty)
+          setEditValue(String(storeQty))
+          // Mark as initialized so we don't overwrite it
+          quantityInitializedRef.current = { index: selectedRowIndex, field: activeField }
+        }
+      }
+    } else {
+      // Reset initialization tracking when editing stops or field changes
+      if (!isEditing || activeField !== 'quantity') {
+        quantityInitializedRef.current = null
+        // Don't reset lastItemQtyEditedRef when editing stops - keep it so we remember user has edited
+        // Only reset when a new item is added (when selectedRowIndex changes to a different last item)
+      }
+    }
+  }, [isEditing, activeField, selectedRowIndex, activeTabId, items, isReadOnly, updateItemInTabByIndex])
 
   // Ensure the scroll container has keyboard focus when a row is selected without editing
   useEffect(() => {
@@ -362,23 +484,66 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   }, [isEditing, activeField, selectedItemId, forceFocus])
 
   // Set initial edit value when editing starts.
-  // Important: do NOT depend on items, or we may overwrite user typing after store updates.
+  // Important: Use selectedRowIndex to get the correct item (handles duplicates correctly by S.No)
   useEffect(() => {
-    if (!isEditing || !selectedItemId) return
+    if (!isEditing || !selectedItemId || selectedRowIndex < 0) return
     // Avoid resetting value/caret when editing the label field
     if (activeField === 'item_description') return
-    const item = items.find((i) => i.item_code === selectedItemId)
+    
+    // Get the item from filteredItems using selectedRowIndex (handles duplicates correctly)
+    const filteredItem = filteredItems[selectedRowIndex]
+    if (!filteredItem) return
+    
+    // Find the actual index in items array by matching position
+    // Count occurrences in filteredItems to find the correct duplicate in items
+    let countBefore = 0
+    for (let j = 0; j < selectedRowIndex; j++) {
+      if (filteredItems[j]?.item_code === filteredItem.item_code) {
+        countBefore++
+      }
+    }
+    
+    // Find the nth occurrence in items array
+    let found = 0
+    let actualIndex = -1
+    for (let i = 0; i < items.length; i++) {
+      if (items[i]?.item_code === filteredItem.item_code) {
+        if (found === countBefore) {
+          actualIndex = i
+          break
+        }
+        found++
+      }
+    }
+    
+    // Use the item from the correct index, or fallback to filteredItem
+    const item = actualIndex >= 0 ? items[actualIndex] : filteredItem
     if (!item) return
+    
+    // Check if this is the last item (newly added) by actual index
+    const isLastItem = actualIndex === items.length - 1
+    
     // Only set if editValue is empty or we switched fields
     if (editValue === '' || (activeField && String(item[activeField]) !== editValue)) {
-        const value = item[activeField]
+        // For quantity field: 
+        // - If it's the last item (newly added) and store value is 1/undefined/null, use '1'
+        // - Otherwise, use the store value for this specific item (by index)
+        let value = item[activeField]
+        if (activeField === 'quantity') {
+          const storeQty = item.quantity
+          if (isLastItem && (storeQty === 1 || storeQty === undefined || storeQty === null)) {
+            value = 1
+          } else {
+            value = storeQty ?? item[activeField]
+          }
+        }
         setEditValue(value?.toString() || '')
       }
     // Clear invalid UOM message when starting to edit
     if (activeField === 'uom') {
       setInvalidUomMessage('')
     }
-  }, [isEditing, activeField, selectedItemId])
+  }, [isEditing, activeField, selectedItemId, selectedRowIndex, filteredItems, items, editValue])
 
   // Handle focus after revert - more robust approach
   useEffect(() => {
@@ -971,7 +1136,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     'ArrowLeft',
     () => {
       if (isProductModalOpen) return // Disable when product modal is open
-      if (isEditing && selectedItemId && activeField === 'standard_rate') {
+      if (isEditing && selectedItemId && activeField === 'standard_rate' && !isReadOnly) {
         // Save current value and navigate from unit price back to quantity
         const item = items.find((i) => i.item_code === selectedItemId)
         if (item && activeTabId) {
@@ -982,15 +1147,23 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
           }
           // Navigate to quantity and keep editing
         setActiveField('quantity')
-          setEditValue(String(item.quantity ?? ''))
+          // Check if this is the last item (newly added) - use '1' instead of item.quantity
+          const itemIndex = items.findIndex((i) => i.item_code === selectedItemId)
+          const isLastItem = itemIndex === items.length - 1
+          const qtyValue = (isLastItem) ? '1' : String(item.quantity ?? '')
+          setEditValue(qtyValue)
         setIsEditing(true)
         }
-      } else if (isEditing && selectedItemId && activeField === 'quantity') {
+      } else if (isEditing && selectedItemId && activeField === 'quantity' && !isReadOnly) {
         // If already at quantity, stay at quantity but keep editing
         const item = items.find((i) => i.item_code === selectedItemId)
         if (item) {
           setActiveField('quantity')
-          setEditValue(String(item.quantity ?? ''))
+          // Check if this is the last item (newly added) - use '1' instead of item.quantity
+          const itemIndex = items.findIndex((i) => i.item_code === selectedItemId)
+          const isLastItem = itemIndex === items.length - 1
+          const qtyValue = (isLastItem) ? '1' : String(item.quantity ?? '')
+          setEditValue(qtyValue)
           setIsEditing(true)
         }
       }
@@ -1002,14 +1175,40 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     'ArrowRight',
     async () => {
       if (isProductModalOpen) return // Disable when product modal is open
-      if (isEditing && selectedItemId && activeField === 'quantity') {
+      if (isEditing && selectedItemId && activeField === 'quantity' && !isReadOnly) {
         // Save current value and navigate from quantity to unit price
         const item = items.find((i) => i.item_code === selectedItemId)
-        if (item && activeTabId) {
+        if (item && activeTabId && selectedRowIndex >= 0) {
           // Save current quantity value
+          // Use selectedRowIndex to find the correct item index for duplicates
+          const currentRef = filteredItems[selectedRowIndex]
+          const absoluteIndex = items.indexOf(currentRef)
+          // For duplicates, find the correct instance by counting occurrences
+          let actualIndex = absoluteIndex
+          if (absoluteIndex >= 0 && items[absoluteIndex]?.item_code === selectedItemId) {
+            // Count how many items with this code come before the selected one in filteredItems
+            let countBefore = 0
+            for (let i = 0; i < selectedRowIndex; i++) {
+              if (filteredItems[i]?.item_code === selectedItemId) {
+                countBefore++
+              }
+            }
+            // Find the nth occurrence in items array
+            let found = 0
+            for (let i = 0; i < items.length; i++) {
+              if (items[i]?.item_code === selectedItemId) {
+                if (found === countBefore) {
+                  actualIndex = i
+                  break
+                }
+                found++
+              }
+            }
+          }
           const numValue = parseFloat(editValue)
-          if (!isNaN(numValue) && numValue >= 0) {
-            updateItemAndMarkEdited(selectedItemId, { quantity: numValue })
+          if (!isNaN(numValue) && numValue >= 0 && actualIndex >= 0) {
+            updateItemInTabByIndex(activeTabId, actualIndex, { quantity: numValue })
+            setTabEdited(activeTabId, true)
             
             // Warehouse popup is now only triggered manually via Ctrl+Shift+W
             // Removed automatic popup trigger on quantity change
@@ -1031,7 +1230,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       if (isErrorBoxFocused) return // Disable when error box is focused
       // Avoid double-handling when container already processed the key
       if (document.activeElement === tableScrollRef.current || localKeyHandlingRef.current) return
-      if (selectedItemId && !isReadOnly) {
+      if (selectedItemId) {
         const currentIndex = selectedRowIndex
         if (currentIndex > 0) {
           const prevItem = filteredItems[currentIndex - 1]
@@ -1039,17 +1238,20 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
           selectItem(prevItem.item_code)
           setSelectedRowIndex(currentIndex - 1)
           scrollToSelectedItem(prevItem.item_code, currentIndex - 1)
-          if (isEditing) {
-            // Keep editing mode but switch to the previous item
+          if (isEditing && !isReadOnly) {
+            // Keep editing mode but switch to the previous item (only if not read-only)
             setTimeout(() => {
               const item = items.find((i) => i.item_code === prevItem.item_code)
               if (item) {
                 setEditValue(String(item[activeField] ?? ''))
               }
             }, 10)
+          } else if (isEditing && isReadOnly) {
+            // Exit editing mode if read-only
+            resetEditingState()
           }
         }
-      } else if (filteredItems.length > 0 && !isReadOnly) {
+      } else if (filteredItems.length > 0) {
         // No item selected, select the last item
         console.log('⬆️ Arrow Up: No item selected, selecting last item')
         selectItem(filteredItems[filteredItems.length - 1].item_code)
@@ -1066,7 +1268,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       if (isProductModalOpen) return // Disable when product modal is open
       if (isErrorBoxFocused) return // Disable when error box is focused
       if (document.activeElement === tableScrollRef.current || localKeyHandlingRef.current) return
-      if (selectedItemId && !isReadOnly) {
+      if (selectedItemId) {
         const currentIndex = selectedRowIndex
         if (currentIndex < filteredItems.length - 1) {
           const nextItem = filteredItems[currentIndex + 1]
@@ -1074,17 +1276,20 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
           selectItem(nextItem.item_code)
           setSelectedRowIndex(currentIndex + 1)
           scrollToSelectedItem(nextItem.item_code, currentIndex + 1)
-          if (isEditing) {
-            // Keep editing mode but switch to the next item
+          if (isEditing && !isReadOnly) {
+            // Keep editing mode but switch to the next item (only if not read-only)
             setTimeout(() => {
               const item = items.find((i) => i.item_code === nextItem.item_code)
               if (item) {
                 setEditValue(String(item[activeField] ?? ''))
               }
             }, 10)
+          } else if (isEditing && isReadOnly) {
+            // Exit editing mode if read-only
+            resetEditingState()
           }
         }
-      } else if (filteredItems.length > 0 && !isReadOnly) {
+      } else if (filteredItems.length > 0) {
         // No item selected, select the first item
         console.log('⬇️ Arrow Down: No item selected, selecting first item')
         selectItem(filteredItems[0].item_code)
@@ -1100,7 +1305,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     'enter',
     () => {
       if (isProductModalOpen) return // Disable when product modal is open
-      if (selectedItemId && !isReadOnly && !isEditing) {
+      if (selectedItemId && !isEditing) {
         const currentIndex = items.findIndex((i) => i.item_code === selectedItemId)
         if (currentIndex < items.length - 1) {
           const nextItem = items[currentIndex + 1]
@@ -1113,7 +1318,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
           selectItem(items[0].item_code)
           scrollToSelectedItem(items[0].item_code)
         }
-      } else if (items.length > 0 && !isReadOnly && !selectedItemId) {
+      } else if (items.length > 0 && !selectedItemId) {
         // No item selected, select the first item
         console.log('⏎ Enter: No item selected, selecting first item')
         selectItem(items[0].item_code)
@@ -1427,12 +1632,12 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                 <TableBody>
                   {filteredItems.map((item, index) => {
                     const isSelected = item.item_code === selectedItemId && index === selectedRowIndex
-                  const isEditingQuantity = isSelected && isEditing && activeField === 'quantity'
-                  const isEditingRate = isSelected && isEditing && activeField === 'standard_rate'
-                  const isEditingUom = isSelected && isEditing && activeField === 'uom'
+                  const isEditingQuantity = isSelected && isEditing && activeField === 'quantity' && !isReadOnly
+                  const isEditingRate = isSelected && isEditing && activeField === 'standard_rate' && !isReadOnly
+                  const isEditingUom = isSelected && isEditing && activeField === 'uom' && !isReadOnly
                   const isEditingDiscount =
-                    isSelected && isEditing && activeField === 'discount_percentage'
-                  const isEditingItemName = isSelected && isEditing && activeField === 'item_description'
+                    isSelected && isEditing && activeField === 'discount_percentage' && !isReadOnly
+                  const isEditingItemName = isSelected && isEditing && activeField === 'item_description' && !isReadOnly
                   const hasError = hasItemError(item.item_code)
                   const hasSplitWarehouse = item.warehouseAllocations && Array.isArray(item.warehouseAllocations) && item.warehouseAllocations.length > 0
 
@@ -1448,7 +1653,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                       onClick={(e) => {
                         e.stopPropagation()
                         console.log('🖱️ Row clicked:', item.item_code, 'isEditing:', isEditing, 'isReadOnly:', isReadOnly)
-                        if (!isEditing && !isReadOnly) {
+                        if (!isEditing) {
                           selectItem(item.item_code)
                           setSelectedRowIndex(index)
                           // Focus container so Arrow keys work when not editing
@@ -1580,8 +1785,38 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                               setSelectedRowIndex(index)
                             setActiveField('quantity')
                             setIsEditing(true)
-                            setEditValue(String(item.quantity ?? ''))
-                            console.log('✅ Started editing quantity for:', item.item_code)
+                            // If this is a newly added item (last item in array), check store value first
+                            // Newly added items are always at the end of the items array
+                            // Check if this specific item (by index) is the last item, not just if item_code matches
+                            const isLastItem = index === items.length - 1
+                            const storeQty = item.quantity
+                            
+                            // For last item: use store value if it exists and is not 1 (user has edited)
+                            // Otherwise use '1' for first time
+                            const initialValue = isLastItem 
+                              ? (storeQty !== undefined && storeQty !== null && storeQty !== 1 ? String(storeQty) : '1')
+                              : String(item.quantity ?? '1')
+                            setEditValue(initialValue)
+                            
+                            // Only reset the edited ref if this is truly a new item (first time editing)
+                            // If store already has a custom value, don't reset - user has edited before
+                            if (isLastItem) {
+                              // Only reset if store quantity is 1 or undefined/null (not yet edited)
+                              // If store has a different value, user has edited before, keep the ref
+                              if (storeQty === 1 || storeQty === undefined || storeQty === null) {
+                                lastItemQtyEditedRef.current = null
+                              } else {
+                                // User has edited before, mark as edited so input shows store value
+                                lastItemQtyEditedRef.current = index
+                              }
+                            }
+                            
+                            // If it's a newly added item and store doesn't have a value yet, set to 1
+                            // Use updateItemInTabByIndex to only update this specific item, not all items with same item_code
+                            if (isLastItem && activeTabId && (storeQty === undefined || storeQty === null || storeQty === 1)) {
+                              updateItemInTabByIndex(activeTabId, index, { quantity: 1 })
+                            }
+                            console.log('✅ Started editing quantity for:', item.item_code, 'isLastItem:', isLastItem, 'initialValue:', initialValue)
                             }, 50)
                           }
                         }}
@@ -1593,18 +1828,56 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             type="number"
                             data-item-code={item.item_code}
                             data-field="quantity"
-                            value={editValue}
+                            value={(() => {
+                              // For the last item (newly added), check store value first
+                              // Once user has set a value, always use that value (from store or editValue)
+                              const isLastItem = index === items.length - 1
+                              if (isLastItem) {
+                                const storeQty = item.quantity
+                                
+                                // Check if user has already edited this item (ref matches index)
+                                const hasBeenEdited = lastItemQtyEditedRef.current === index
+                                
+                                // If user has edited in this session, use editValue
+                                if (hasBeenEdited) {
+                                  return editValue || String(storeQty ?? '1')
+                                }
+                                
+                                // If store has a custom value (not 1, undefined, or null), user has edited before
+                                // Use the store value instead of forcing '1'
+                                if (storeQty !== undefined && storeQty !== null && storeQty !== 1) {
+                                  // Store has a custom value, user has edited before, use it
+                                  // Also set editValue to match so it displays correctly
+                                  if (editValue === '' || editValue === '1') {
+                                    return String(storeQty)
+                                  }
+                                  return editValue
+                                }
+                                
+                                // First time focus and store is 1 or empty, show '1'
+                                return editValue || '1'
+                              }
+                              return editValue
+                            })()}
                             onChange={(e) => {
                               const newValue = e.target.value
                               setEditValue(newValue)
+                              // Mark that user has edited the last item's quantity
+                              const isLastItem = index === items.length - 1
+                              if (isLastItem) {
+                                lastItemQtyEditedRef.current = index
+                              }
                               // Real-time update for quantity
-                              if (selectedItemId && activeTabId) {
+                              // Use index directly to handle duplicates correctly
+                              if (activeTabId) {
                                 const numValue = parseFloat(newValue)
                                 if (!isNaN(numValue) && numValue >= 0) {
-                                  updateItemAndMarkEdited(selectedItemId, { quantity: numValue })
+                                  // Use updateItemInTabByIndex with the actual index to handle duplicates
+                                  updateItemInTabByIndex(activeTabId, index, { quantity: numValue })
+                                  setTabEdited(activeTabId, true)
                                   
                                   // Clear warehouse-allocated status when quantity changes
-                                  if (warehouseAllocatedItems.has(selectedItemId)) {
+                                  if (selectedItemId && warehouseAllocatedItems.has(selectedItemId)) {
                                     console.log('🔄 Quantity changed for warehouse-allocated item, clearing allocation status:', selectedItemId)
                                     setWarehouseAllocatedItems(prev => {
                                       const newSet = new Set(prev)
@@ -1613,7 +1886,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                     })
                                     
                                     // Clear warehouse allocation data from the item
-                                    updateItemInTab(activeTabId, selectedItemId, { 
+                                    // Use index directly to handle duplicates correctly
+                                    updateItemInTabByIndex(activeTabId, index, { 
                                       warehouseAllocations: [] // Clear previous warehouse allocations
                                     })
                                     console.log('🧹 Cleared warehouse allocation data for item:', selectedItemId)
@@ -1628,9 +1902,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                 e.preventDefault()
                                 e.stopPropagation()
                                 // Save qty value directly without ending editing
+                                // Use index directly to handle duplicates correctly
                                 const numValue = parseFloat(editValue)
-                                if (!isNaN(numValue) && numValue >= 0 && activeTabId && selectedItemId) {
-                                  updateItemAndMarkEdited(selectedItemId, { quantity: numValue })
+                                if (!isNaN(numValue) && numValue >= 0 && activeTabId) {
+                                  updateItemInTabByIndex(activeTabId, index, { quantity: numValue })
+                                  setTabEdited(activeTabId, true)
                                   
                                   // Warehouse popup is now only triggered manually via Ctrl+Shift+W
                                   // Removed automatic popup trigger on quantity change
@@ -1654,7 +1930,9 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             step="0.01"
                           />
                         ) : (
-                          <div className={`px-2 py-1 ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>{item.quantity}</div>
+                          <div className={`px-2 py-1 ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>
+                            {item.quantity}
+                          </div>
                         )}
                       </TableCell>
 

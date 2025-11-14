@@ -325,6 +325,10 @@ const ActionButtons: React.FC<Props> = ({
   }
 
   // Calculate order total - use rounded_total from order detail API if available
+  // For confirmed orders (docstatus = 1), always use API value
+  // For draft orders (docstatus != 1):
+  //   - If not edited (just saved), use API value
+  //   - If edited (user making changes), use real-time calculation
   const calculateOrderTotal = useCallback(() => {
     const normalize = (value: any) => {
       const num = Number(value)
@@ -332,6 +336,10 @@ const ActionButtons: React.FC<Props> = ({
     }
 
     const hasSavedOrder = Boolean(currentTab?.orderId)
+    const docstatus = currentTab?.orderData ? Number(currentTab.orderData.docstatus) : null
+    const isConfirmed = docstatus === 1
+    const isEdited = currentTab?.isEdited ?? false
+
     const roundedTotal = normalize(currentTab?.orderData?.rounded_total)
     const docGrandTotal = normalize(currentTab?.orderData?.grand_total)
 
@@ -346,8 +354,11 @@ const ActionButtons: React.FC<Props> = ({
     }
 
     const serverTotal = roundedTotal ?? linkedGrandTotal ?? docGrandTotal
-    if (hasSavedOrder && serverTotal !== null) {
-      console.log('📋 Using server-provided rounded total:', serverTotal)
+    // Use API value if:
+    // 1. Order is confirmed (docstatus = 1), OR
+    // 2. Order is saved and not edited (just saved/updated)
+    if (hasSavedOrder && serverTotal !== null && (isConfirmed || !isEdited)) {
+      console.log('📋 Using server-provided rounded total:', serverTotal, isConfirmed ? '(confirmed)' : '(not edited)')
       return serverTotal.toFixed(2)
     }
 
@@ -382,7 +393,8 @@ const ActionButtons: React.FC<Props> = ({
     vatPercentage,
     isRoundingEnabled,
     currentTab?.orderData,
-    currentTab?.orderId
+    currentTab?.orderId,
+    currentTab?.isEdited
   ])
 
   // Update order amount when items, discount, or VAT changes
@@ -1815,7 +1827,7 @@ const ActionButtons: React.FC<Props> = ({
                 className="relative px-2 py-2 bg-gradient-to-r from-orange-500 to-orange-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs"
                 onClick={handleReturn}
               >
-                {typeof currentTab?.orderData?.return_count === 'number' && (
+                {typeof currentTab?.orderData?.return_count === 'number' && currentTab.orderData.return_count > 0 && (
                   <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-white text-orange-600 text-[10px] font-bold flex items-center justify-center shadow">
                     {currentTab.orderData.return_count}
                   </span>
