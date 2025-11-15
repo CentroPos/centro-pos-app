@@ -197,6 +197,7 @@ const ActionButtons: React.FC<Props> = ({
     setTabStatus,
     getCurrentTabCustomer,
     getCurrentTabGlobalDiscount,
+    getCurrentTabReservation,
     setTabEdited,
     updateTabInstantPrintUrl,
     getCurrentTabRoundingEnabled,
@@ -683,6 +684,9 @@ const ActionButtons: React.FC<Props> = ({
       const postingDate = selectedPostingDate || getCurrentDate() // Use selected date or fallback to system date
       console.log('📅 Using posting date:', postingDate, 'from store:', selectedPostingDate)
 
+      // Get reservation status
+      const isReserved = getCurrentTabReservation()
+
       // Prepare order data
       const orderData: any = {
         customer: finalCustomerId,
@@ -691,7 +695,8 @@ const ActionButtons: React.FC<Props> = ({
         taxes_and_charges: 'VAT 15% - NAB', // Default tax, can be made configurable
         additional_discount_percentage: globalDiscountPercent, // Global discount from bottom section
         items: mappedItems,
-        custom_stock_adjustment_sources: customStockAdjustmentSources
+        custom_stock_adjustment_sources: customStockAdjustmentSources,
+        is_reserved: isReserved
       }
 
       // Add Other Details fields if present
@@ -772,8 +777,15 @@ const ActionButtons: React.FC<Props> = ({
                 method: 'GET'
               })
               if (res?.data?.data && currentTab.id) {
-                updateTabOrderData(currentTab.id, res.data.data)
-                console.log('📋 Order details refreshed after edit. Order status:', res.data.data?.order_status, 'Return status:', res.data.data?.linked_invoices?.[0]?.custom_reverse_status)
+                const orderData = res.data.data
+                console.log('🎨 Order details after edit - Status colors:', {
+                  status_color: orderData.status_color,
+                  zatca_color: orderData.zatca_color,
+                  main_status: orderData.main_status,
+                  zatca_status: orderData.zatca_status
+                })
+                updateTabOrderData(currentTab.id, orderData)
+                console.log('📋 Order details refreshed after edit. Order status:', orderData?.order_status, 'Return status:', orderData?.linked_invoices?.[0]?.custom_reverse_status)
               }
             }
           } catch (e) {
@@ -888,8 +900,15 @@ const ActionButtons: React.FC<Props> = ({
                 method: 'GET'
               })
               if (res?.data?.data && currentTab.id) {
-                updateTabOrderData(currentTab.id, res.data.data)
-                console.log('📋 Order details refreshed after create. Order status:', res.data.data?.order_status, 'Return status:', res.data.data?.linked_invoices?.[0]?.custom_reverse_status)
+                const orderData = res.data.data
+                console.log('🎨 Order details after create - Status colors:', {
+                  status_color: orderData.status_color,
+                  zatca_color: orderData.zatca_color,
+                  main_status: orderData.main_status,
+                  zatca_status: orderData.zatca_status
+                })
+                updateTabOrderData(currentTab.id, orderData)
+                console.log('📋 Order details refreshed after create. Order status:', orderData?.order_status, 'Return status:', orderData?.linked_invoices?.[0]?.custom_reverse_status)
               }
             } catch (e) {
               console.error('Failed to refresh order details after create:', e)
@@ -1022,6 +1041,12 @@ const ActionButtons: React.FC<Props> = ({
           })
           const orderData = res?.data?.data
           if (orderData) {
+            console.log('🎨 Order details after save - Status colors:', {
+              status_color: orderData.status_color,
+              zatca_color: orderData.zatca_color,
+              main_status: orderData.main_status,
+              zatca_status: orderData.zatca_status
+            })
             updateTabOrderData(currentTab.id, orderData)
             // Also persist invoice number/status/reverse status if available
             const linked = orderData.linked_invoices
@@ -1186,8 +1211,15 @@ const ActionButtons: React.FC<Props> = ({
                 method: 'GET'
               })
               if (orderDetailsRes?.data?.data && currentTab.id) {
-                updateTabOrderData(currentTab.id, orderDetailsRes.data.data)
-                console.log('📋 Order details refreshed after payment. Outstanding amount:', orderDetailsRes.data.data?.linked_invoices?.[0]?.outstanding_amount)
+                const orderData = orderDetailsRes.data.data
+                console.log('🎨 Order details after payment - Status colors:', {
+                  status_color: orderData.status_color,
+                  zatca_color: orderData.zatca_color,
+                  main_status: orderData.main_status,
+                  zatca_status: orderData.zatca_status
+                })
+                updateTabOrderData(currentTab.id, orderData)
+                console.log('📋 Order details refreshed after payment. Outstanding amount:', orderData?.linked_invoices?.[0]?.outstanding_amount)
               }
             }
           } catch (e) {
@@ -1343,10 +1375,27 @@ const ActionButtons: React.FC<Props> = ({
             console.log('📋 Order Status:', orderData.status)
             console.log('📋 Order Grand Total:', orderData.grand_total)
             console.log('📋 Linked Invoices:', orderData.linked_invoices)
+            console.log('🎨 Status colors from API:', {
+              status_color: orderData.status_color,
+              zatca_color: orderData.zatca_color,
+              main_status: orderData.main_status,
+              sub_status: orderData.sub_status,
+              zatca_status: orderData.zatca_status
+            })
             
-            // Update orderData in the tab
-            updateTabOrderData(currentTab.id, orderData)
-            console.log('✅ Order data updated in tab')
+            // Prepare fresh orderData with _relatedData preserved and cleared
+            const freshOrderData = {
+              ...orderData, // Fresh data from API (includes status_color, zatca_color, etc.)
+              _relatedData: currentTab.orderData?._relatedData ? {
+                ...currentTab.orderData._relatedData,
+                customerInsights: null, // Clear cached insights to trigger refresh
+                customerDetails: null
+              } : undefined
+            }
+            
+            // Update orderData in the tab with fresh data (preserving _relatedData structure but clearing cache)
+            updateTabOrderData(currentTab.id, freshOrderData)
+            console.log('✅ Order data updated in tab with fresh status colors')
             
             // Extract invoice number, status, and custom_reverse_status from linked_invoices
             const linkedInvoices = orderData.linked_invoices
@@ -1461,8 +1510,15 @@ const ActionButtons: React.FC<Props> = ({
                           method: 'GET'
                         })
                         if (orderDetailsRes?.data?.data && currentTab.id) {
-                          updateTabOrderData(currentTab.id, orderDetailsRes.data.data)
-                          console.log('📋 Order details refreshed after payment (confirmed order). Outstanding amount:', orderDetailsRes.data.data?.linked_invoices?.[0]?.outstanding_amount)
+                          const orderData = orderDetailsRes.data.data
+                          console.log('🎨 Order details after payment (confirmed) - Status colors:', {
+                            status_color: orderData.status_color,
+                            zatca_color: orderData.zatca_color,
+                            main_status: orderData.main_status,
+                            zatca_status: orderData.zatca_status
+                          })
+                          updateTabOrderData(currentTab.id, orderData)
+                          console.log('📋 Order details refreshed after payment (confirmed order). Outstanding amount:', orderData?.linked_invoices?.[0]?.outstanding_amount)
                         }
                       }
                     } catch (e) {
@@ -1513,21 +1569,8 @@ const ActionButtons: React.FC<Props> = ({
         setTabStatus(currentTab.id, newStatus)
         console.log('✅ Tab status updated')
         
-        // Clear cached customer insights to trigger refresh in right panel
-        // Don't update _lastKnownStatus yet - let the right panel detect the status change
-        if (currentTab.orderData?._relatedData) {
-          const updatedOrderData = {
-            ...currentTab.orderData,
-            _relatedData: {
-              ...currentTab.orderData._relatedData,
-              customerInsights: null,
-              customerDetails: null
-            }
-            // Keep _lastKnownStatus as is so right panel can detect the change
-          }
-          updateTabOrderData(currentTab.id, updatedOrderData)
-          console.log('🔄 Cleared cached customer insights to trigger refresh after confirm/pay')
-        }
+        // Note: _relatedData clearing is now done in the order details update above
+        // to preserve status colors from the fresh API response
 
         const action = paymentAmount > 0 ? 'paid' : 'confirmed'
         console.log('✅ Showing success toast for action:', action)

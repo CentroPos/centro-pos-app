@@ -52,7 +52,8 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({
     setTabEdited,
     updateTabPostingDate,
     updateTabOtherDetails,
-    updateTabOrderData
+    updateTabOrderData,
+    updateTabReservation
   } = usePOSTabStore()
   const { profile } = usePOSProfileStore()
 
@@ -97,13 +98,33 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({
         internal_note: orderData.custom_internal_note || orderData.internal_note || null
       })
 
+      // Update reservation status
+      if (orderData.is_reserved !== undefined) {
+        updateTabReservation(activeTabId, Number(orderData.is_reserved))
+      }
+
       const defaultPriceList =
         orderData.items?.[0]?.price_list || orderData.price_list || 'Standard Selling'
       setSelectedPriceList(defaultPriceList)
       onPriceListChange?.(defaultPriceList)
 
       toast.success('Order refreshed successfully')
-      updateTabOrderData(activeTabId, orderData)
+      
+      // Preserve _relatedData when updating orderData (includes status_color and zatca_color)
+      const enrichedOrderData = {
+        ...orderData, // Fresh data from API (includes status_color, zatca_color, main_status, zatca_status, etc.)
+        _relatedData: currentTab?.orderData?._relatedData // Preserve existing _relatedData if it exists
+      }
+      
+      console.log('🎨 Order refreshed - Status colors from API:', {
+        status_color: orderData.status_color,
+        zatca_color: orderData.zatca_color,
+        main_status: orderData.main_status,
+        sub_status: orderData.sub_status,
+        zatca_status: orderData.zatca_status
+      })
+      
+      updateTabOrderData(activeTabId, enrichedOrderData)
       window.dispatchEvent(new CustomEvent('pos-refresh'))
     } catch (error) {
       console.error('Failed to refresh order data:', error)
@@ -334,6 +355,48 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({
   
   // Get zatca_status from order detail API
   const zatcaStatus = currentTab?.orderData?.zatca_status || 'N/A'
+  
+  // Get status colors from order detail API - default to yellow (golden) if null/missing
+  const statusColor = currentTab?.orderData?.status_color || 'yellow'
+  const zatcaColor = currentTab?.orderData?.zatca_color || 'yellow'
+  
+  // Debug: Log colors when they change to verify updates
+  useEffect(() => {
+    if (currentTab?.orderId) {
+      console.log('🎨 Ribbon colors updated:', {
+        orderId: currentTab.orderId,
+        status_color: currentTab.orderData?.status_color,
+        zatca_color: currentTab.orderData?.zatca_color,
+        status_color_used: statusColor,
+        zatca_color_used: zatcaColor,
+        main_status: currentTab.orderData?.main_status,
+        sub_status: currentTab.orderData?.sub_status,
+        zatca_status: currentTab.orderData?.zatca_status,
+        hasOrderData: !!currentTab.orderData,
+        fullOrderDataKeys: currentTab.orderData ? Object.keys(currentTab.orderData) : []
+      })
+    }
+  }, [currentTab?.orderId, statusColor, zatcaColor, currentTab?.orderData])
+  
+  // Map color names to gradient styles
+  const getStatusRibbonStyle = (color: string) => {
+    const colorMap: { [key: string]: string } = {
+      grey: 'from-gray-400 to-gray-500',
+      green: 'from-green-400 to-green-500',
+      yellow: 'from-amber-400 to-orange-400',
+      red: 'from-red-400 to-red-500'
+    }
+    return colorMap[color.toLowerCase()] || colorMap.yellow
+  }
+  
+  const getZatcaRibbonStyle = (color: string) => {
+    const colorMap: { [key: string]: string } = {
+      green: 'from-green-400 to-green-500',
+      red: 'from-red-400 to-red-500',
+      yellow: 'from-amber-400 to-orange-400'
+    }
+    return colorMap[color.toLowerCase()] || colorMap.green
+  }
 
   return (
     <div className="relative p-3 bg-white/60 backdrop-blur border-b border-white/20">
@@ -341,7 +404,7 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({
         <button
           type="button"
           onClick={handleGlobalRefresh}
-          className="absolute right-[28px] top-[58px] z-[70] pointer-events-auto inline-flex items-center justify-center rounded-full border border-gray-200 bg-white p-2 text-gray-600 shadow hover-border-blue-300 hover:text-blue-600"
+          className="absolute right-[70px] top-[58px] z-[70] pointer-events-auto inline-flex items-center justify-center rounded-full border border-gray-200 bg-white p-2 text-gray-600 shadow hover-border-blue-300 hover:text-blue-600"
           title="Refresh order data in POS"
         >
           <RefreshCcw className="h-4 w-4" />
@@ -351,7 +414,7 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({
       <div className="pointer-events-none absolute right-[28px] top-0 z-[60] flex flex-col gap-5 items-end">
         {/* First ribbon - Order Status (main_status and sub_status) */}
         <div
-          className="px-3 py-1 bg-gradient-to-r from-amber-400 to-orange-400 text-white font-semibold uppercase shadow-lg tracking-wide origin-top-right"
+          className={`px-3 py-1 bg-gradient-to-r ${getStatusRibbonStyle(statusColor)} text-white font-semibold uppercase shadow-lg tracking-wide origin-top-right`}
           style={{ 
             clipPath: ribbonClipPath, 
             transform: 'rotate(42deg) translateX(30px)',
@@ -369,7 +432,7 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({
         </div>
         {/* Second ribbon - Zatca Status */}
         <div
-          className="px-3 py-1 bg-gradient-to-r from-purple-400 to-indigo-400 text-white text-[9px] font-semibold uppercase shadow-lg tracking-wide origin-top-right"
+          className={`px-3 py-1 bg-gradient-to-r ${getZatcaRibbonStyle(zatcaColor)} text-white text-[9px] font-semibold uppercase shadow-lg tracking-wide origin-top-right`}
           style={{ 
             clipPath: ribbonClipPath, 
             transform: 'rotate(42deg) translateX(30px) translateY(0px)',

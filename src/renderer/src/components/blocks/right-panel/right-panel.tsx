@@ -1096,17 +1096,17 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
   const triggerTabRefresh = useCallback(
     (tab: 'product' | 'customer' | 'prints' | 'payments' | 'orders') => {
-      setRefreshTokens((prev) => {
-        const next = {
-          ...prev,
-          [tab]: prev[tab] + 1
-        }
-        if (tab === 'customer') {
-          refreshBypassRef.current.token = next.customer
-          refreshBypassRef.current.pending = new Set(['recent', 'most', 'details'])
-        }
-        return next
-      })
+    setRefreshTokens((prev) => {
+      const next = {
+        ...prev,
+        [tab]: prev[tab] + 1
+      }
+      if (tab === 'customer') {
+        refreshBypassRef.current.token = next.customer
+        refreshBypassRef.current.pending = new Set(['recent', 'most', 'details'])
+      }
+      return next
+    })
     },
     []
   )
@@ -1158,7 +1158,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
         logApiCall(stage, method, payload)
         const resp = await window.electronAPI?.proxy?.request({
           method,
-          url: '/api/method/centro_pos_apis.api.product.product_list',
+        url: '/api/method/centro_pos_apis.api.product.product_list',
           ...(useParams ? { params: payload } : { data: payload })
         })
         console.log(`📡 Product list API response (${stage}):`, resp)
@@ -1190,9 +1190,9 @@ const RightPanel: React.FC<RightPanelProps> = ({
           'search-text-get',
           'GET',
           {
-            price_list: 'Standard Selling',
-            search_text: itemCode,
-            limit_start: 0,
+          price_list: 'Standard Selling',
+          search_text: itemCode,
+          limit_start: 0,
             limit_page_length: 100
           },
           true
@@ -1234,12 +1234,12 @@ const RightPanel: React.FC<RightPanelProps> = ({
         productData = findProduct(list)
       }
 
-      if (productData) {
-        console.log('✅ Product list data set:', productData)
-        console.log('📊 UOM details:', productData.uom_details)
+        if (productData) {
+          console.log('✅ Product list data set:', productData)
+          console.log('📊 UOM details:', productData.uom_details)
         setProductListData(productData)
-      } else {
-        console.log('❌ No product data found for item:', itemCode)
+        } else {
+          console.log('❌ No product data found for item:', itemCode)
         console.log('🔍 Available items:', list.map((item: any) => item.item_id))
       }
     } catch (error) {
@@ -1907,9 +1907,10 @@ const RightPanel: React.FC<RightPanelProps> = ({
     customer_id_number_for_zatca: '',
     address_line1: '',
     address_line2: '',
+    building_number: '',
     city: '',
-    state: '',
-    pincode: ''
+    pincode: '',
+    country: ''
   })
 
   // Orders/Returns lists with pagination
@@ -3739,9 +3740,10 @@ const RightPanel: React.FC<RightPanelProps> = ({
                           customer_id_number_for_zatca: customerDetails.customer_id_number_for_zatca || '',
                           address_line1: customerDetails.address_line1 || '',
                           address_line2: customerDetails.address_line2 || '',
+                          building_number: customerDetails.building_number || customerDetails.state || '',
                           city: customerDetails.city || '',
-                          state: customerDetails.state || '',
-                          pincode: customerDetails.pincode || ''
+                          pincode: customerDetails.pincode || '',
+                          country: customerDetails.country || ''
                         })
                         setEditOpen(true)
                       }}
@@ -4037,8 +4039,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
                   <div className="space-y-1">
                     <label className="text-sm font-medium">Building No.{editForm.customer_type === 'Company' ? ' *' : ''}</label>
                     <Input
-                      value={editForm.state}
-                      onChange={(e) => setEditForm({ ...editForm, state: e.target.value })}
+                      value={editForm.building_number}
+                      onChange={(e) => setEditForm({ ...editForm, building_number: e.target.value })}
                       onKeyDown={(e) => {
                         if (e.key === ' ') {
                           e.stopPropagation()
@@ -4057,6 +4059,14 @@ const RightPanel: React.FC<RightPanelProps> = ({
                   </div>
                 </div>
               </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Country</label>
+                <Input
+                  value={editForm.country}
+                  onChange={(e) => setEditForm({ ...editForm, country: e.target.value })}
+                  placeholder="Saudi Arabia"
+                />
+              </div>
               <DialogFooter className="gap-2 mt-4">
                 <Button variant="outline" onClick={()=>setEditOpen(false)}>Cancel</Button>
                 <Button disabled={editSubmitting} onClick={async()=>{
@@ -4073,13 +4083,35 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       }
                       if(!editForm.address_line1){ toast.error('Address Line 1 is required for Company'); setEditSubmitting(false); return }
                       if(!editForm.city){ toast.error('City/Town is required for Company'); setEditSubmitting(false); return }
-                      if(!editForm.state){ toast.error('Building No. is required for Company'); setEditSubmitting(false); return }
+                      if(!editForm.building_number){ toast.error('Building No. is required for Company'); setEditSubmitting(false); return }
                       if(!editForm.pincode){ toast.error('Pincode is required for Company'); setEditSubmitting(false); return }
                     }
+                    
+                    // Prepare API payload with all required fields, ensuring empty values are sent as empty strings
+                    const apiPayload = {
+                      customer_id: editForm.customer_id || '',
+                      customer_name: editForm.customer_name || '',
+                      customer_name_arabic: editForm.customer_name_arabic || '',
+                      email: editForm.email || '',
+                      mobile: editForm.mobile || '',
+                      customer_type: editForm.customer_type || 'Individual',
+                      tax_id: editForm.tax_id || '',
+                      customer_id_type_for_zatca: editForm.customer_id_type_for_zatca || '',
+                      customer_id_number_for_zatca: editForm.customer_id_number_for_zatca || '',
+                      address_line1: editForm.address_line1 || '',
+                      address_line2: editForm.address_line2 || '',
+                      building_number: editForm.building_number || '',
+                      city: editForm.city || '',
+                      pincode: editForm.pincode || '',
+                      country: editForm.country || ''
+                    }
+                    
+                    console.log('📝 Editing customer - API payload:', apiPayload)
+                    
                     const res = await (window as any).electronAPI?.proxy?.request({
                       method:'POST',
                       url:'/api/method/centro_pos_apis.api.customer.edit_customer',
-                      data: editForm
+                      data: apiPayload
                     })
                     console.log('✅ Edit customer response:', res)
                     const serverMsg = res?.data?.data?.message || res?.data?.message
@@ -4261,7 +4293,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       >
                         <div className="flex justify-between items-center mb-2">
                           <div className="flex flex-col">
-                            <div className="font-semibold text-primary text-sm">
+                          <div className="font-semibold text-primary text-sm">
                               {order.sales_order_no || order.sales_order_id || '—'}
                             </div>
                             {(order.invoice_no || order.sales_invoice_id) && (
