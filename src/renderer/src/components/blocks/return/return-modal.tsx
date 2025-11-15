@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs'
 import { toast } from 'sonner'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
+import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 
 interface InvoiceItem {
   original_sales_invoice_item?: string
@@ -40,8 +41,10 @@ interface ReturnModalProps {
 
 const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSuccess }) => {
   const { getCurrentTab, updateTabInstantPrintUrl, getCurrentTabInvoiceNumber, updateTabOrderData, updateTabInvoiceNumber, activeTabId } = usePOSTabStore()
+  const { profile } = usePOSProfileStore()
   const currentTab = getCurrentTab()
   const storedInvoiceNumber = getCurrentTabInvoiceNumber()
+  const currencySymbol = profile?.custom_currency_symbol || profile?.currency_symbol || profile?.currency || 'SAR'
   const [invoiceNumber, setInvoiceNumber] = useState('')
   
   // Log invoice number state
@@ -387,7 +390,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
 
     // Get selected items with quantities
     const itemsToReturn = Object.entries(selectedItems)
-      .filter(([_, itemData]) => itemData.selected && itemData.qty > 0)
+      .filter(([, itemData]) => itemData.selected && itemData.qty > 0)
       .map(([itemCode, itemData]) => ({
         item_code: itemCode,
         qty: typeof itemData.qty === 'number' ? itemData.qty : 0
@@ -458,6 +461,12 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
               console.log('📋 Order details fetched after return:', {
                 order_status: orderData.order_status,
                 linked_invoices: orderData.linked_invoices
+              })
+              console.log('🎨 Order details after return - Status colors:', {
+                status_color: orderData.status_color,
+                zatca_color: orderData.zatca_color,
+                main_status: orderData.main_status,
+                zatca_status: orderData.zatca_status
               })
               
               // Update order data
@@ -578,7 +587,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                   </div>
                   <div>
                     <span className="font-medium text-gray-600">Total:</span>
-                    <span className="ml-2 text-gray-800 font-medium">SAR {(invoiceData.grand_total || 0).toFixed(2)}</span>
+                    <span className="ml-2 text-gray-800 font-medium">{currencySymbol} {(invoiceData.grand_total || 0).toFixed(2)}</span>
                   </div>
                   <div>
                     <span className="font-medium text-gray-600">Total Qty:</span>
@@ -593,7 +602,28 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
 
               {/* Items Table with Tabs */}
               <div className="flex-1 flex flex-col space-y-2 overflow-hidden min-h-0">
-                <h3 className="text-base font-bold text-gray-800 font-sans">Select Items to Return</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-bold text-gray-800 font-sans">Select Items to Return</h3>
+                  {(() => {
+                    // Calculate total amount for selected items
+                    const totalAmount = invoiceData.items
+                      .filter((item) => {
+                        const itemCode = item.item_code || ''
+                        return selectedItems[itemCode]?.selected === true
+                      })
+                      .reduce((sum, item) => {
+                        const itemCode = item.item_code || ''
+                        const rate = typeof item.rate === 'number' ? item.rate : 0
+                        const qty = selectedItems[itemCode]?.qty ?? 0
+                        return sum + (rate * qty)
+                      }, 0)
+                    return (
+                      <span className="text-base font-bold text-gray-800 font-sans">
+                        Total Selected Amount: {currencySymbol} {totalAmount.toFixed(2)}
+                      </span>
+                    )
+                  })()}
+                </div>
                 <Tabs defaultValue="items" className="flex-1 flex flex-col overflow-hidden min-h-0 relative">
                   <TabsList className="grid w-full grid-cols-2 bg-gray-100 p-1 rounded-lg flex-shrink-0">
                     <TabsTrigger 
@@ -628,10 +658,11 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                                   onCheckedChange={(checked) => handleSelectAll(checked as boolean)}
                                 />
                               </TableHead>
-                              <TableHead className="font-sans font-semibold text-gray-700 w-[250px]">Item Code</TableHead>
-                        <TableHead className="font-sans font-semibold text-gray-700">Item Name</TableHead>
-                        <TableHead className="font-sans font-semibold text-gray-700 w-[120px]">UOM</TableHead>
-                        <TableHead className="text-right font-sans font-semibold text-gray-700 w-[180px]">Returnable Qty</TableHead>
+                              <TableHead className="font-sans font-semibold text-gray-700 w-[180px]">Item Code</TableHead>
+                        <TableHead className="font-sans font-semibold text-gray-700 min-w-[300px]">Item Name</TableHead>
+                        <TableHead className="font-sans font-semibold text-gray-700 w-[100px]">UOM</TableHead>
+                        <TableHead className="text-right font-sans font-semibold text-gray-700 w-[130px]">Rate</TableHead>
+                        <TableHead className="text-right font-sans font-semibold text-gray-700 w-[150px]">Returnable Qty</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -640,6 +671,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                         const itemCode = item.item_code || `item-${index}`
                         const itemName = item.item_name || 'Unknown Item'
                         const uom = item.uom || 'Nos'
+                        const rate = typeof item.rate === 'number' ? item.rate : 0
                         const returnableQty = typeof item.returnable_qty === 'number' ? item.returnable_qty : 0
                         
                         return (
@@ -656,7 +688,8 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                                   <TableCell className="font-sans text-gray-700" title={itemName}>
                                     {itemName}
                                   </TableCell>
-                                  <TableCell className="font-sans text-gray-700">{uom}</TableCell>
+                                  <TableCell className="font-sans text-gray-700 text-left">{uom}</TableCell>
+                                  <TableCell className="text-right font-sans text-gray-700">{rate.toFixed(2)}</TableCell>
                                   <TableCell className="text-right font-sans text-gray-700">{returnableQty}</TableCell>
                                 </TableRow>
                               )
@@ -674,11 +707,12 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                         <Table className="w-full">
                           <TableHeader className="sticky top-0 bg-gray-100 z-10">
                             <TableRow className="bg-gray-100 border-b-2 border-gray-200">
-                              <TableHead className="font-sans font-semibold text-gray-700 w-[250px]">Item Code</TableHead>
-                              <TableHead className="font-sans font-semibold text-gray-700">Item Name</TableHead>
-                              <TableHead className="font-sans font-semibold text-gray-700 w-[120px]">UOM</TableHead>
-                              <TableHead className="text-right font-sans font-semibold text-gray-700 w-[180px]">Returnable Qty</TableHead>
-                              <TableHead className="text-right font-sans font-semibold text-gray-700 w-[180px]">Qty</TableHead>
+                              <TableHead className="font-sans font-semibold text-gray-700 w-[180px]">Item Code</TableHead>
+                              <TableHead className="font-sans font-semibold text-gray-700 min-w-[300px]">Item Name</TableHead>
+                              <TableHead className="font-sans font-semibold text-gray-700 w-[100px]">UOM</TableHead>
+                              <TableHead className="text-right font-sans font-semibold text-gray-700 w-[130px]">Rate</TableHead>
+                              <TableHead className="text-right font-sans font-semibold text-gray-700 w-[150px]">Returnable Qty</TableHead>
+                              <TableHead className="text-right font-sans font-semibold text-gray-700 w-[150px]">Qty</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -692,16 +726,18 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                                 const itemCode = item.item_code || `item-${index}`
                                 const itemName = item.item_name || 'Unknown Item'
                                 const uom = item.uom || 'Nos'
+                                const rate = typeof item.rate === 'number' ? item.rate : 0
                                 const returnableQty = typeof item.returnable_qty === 'number' ? item.returnable_qty : (selectedItems[itemCode]?.originalQty ?? 0)
                                 const returnQty = selectedItems[itemCode]?.qty ?? returnableQty
                                 
                                 return (
                                   <TableRow key={index} className="hover:bg-gray-50 border-b border-gray-100">
                                     <TableCell className="font-medium font-sans text-gray-800">{itemCode}</TableCell>
-                                    <TableCell className="font-sans text-gray-700 truncate max-w-[300px]" title={itemName}>
+                                    <TableCell className="font-sans text-gray-700" title={itemName}>
                                       {itemName}
                                     </TableCell>
-                                    <TableCell className="font-sans text-gray-700">{uom}</TableCell>
+                                    <TableCell className="font-sans text-gray-700 text-left">{uom}</TableCell>
+                                    <TableCell className="text-right font-sans text-gray-700">{rate.toFixed(2)}</TableCell>
                                     <TableCell className="text-right font-sans text-gray-700">{returnableQty}</TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end">
@@ -742,8 +778,8 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                               return selectedItems[itemCode]?.selected === true
                             }).length === 0 && (
                               <TableRow>
-                                <TableCell colSpan={5} className="text-center py-8 text-gray-500 font-sans">
-                                  No items selected. Please select items from the "Items" tab.
+                                <TableCell colSpan={6} className="text-center py-8 text-gray-500 font-sans">
+                                  No items selected. Please select items from the &quot;Items&quot; tab.
                                 </TableCell>
                               </TableRow>
                             )}

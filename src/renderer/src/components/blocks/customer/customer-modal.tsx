@@ -55,9 +55,10 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
     customer_id_number_for_zatca: '',
     address_line1: '',
     address_line2: '',
+    building_number: '',
     city: '',
-    state: '',
-    pincode: ''
+    pincode: '',
+    country: ''
   })
 
   // Loading state for create customer
@@ -208,12 +209,57 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
 
   // Keyboard scroll support (UI-only)
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
+  const customerListRef = useRef<HTMLDivElement | null>(null)
+  
   useEffect(() => {
     if (lastInteraction !== 'keyboard') return
     if (selectedIndex >= 0 && itemRefs.current[selectedIndex]) {
       itemRefs.current[selectedIndex]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }
   }, [selectedIndex, lastInteraction])
+
+  // Auto-focus search input when modal opens
+  useEffect(() => {
+    if (open && view === 'search') {
+      // Multiple attempts to ensure focus is set
+      const attemptFocus = () => {
+        if (searchInputRef.current) {
+          searchInputRef.current.focus()
+          // Also blur any active element in the item table
+          const activeElement = document.activeElement
+          if (activeElement && activeElement !== searchInputRef.current) {
+            ;(activeElement as HTMLElement).blur()
+          }
+          return true
+        } else if (customerListRef.current) {
+          // Fallback: focus the list container so arrow keys work
+          customerListRef.current.focus()
+          const activeElement = document.activeElement
+          if (activeElement && activeElement !== customerListRef.current) {
+            ;(activeElement as HTMLElement).blur()
+          }
+          return true
+        }
+        return false
+      }
+      
+      // Try immediately
+      if (!attemptFocus()) {
+        // Try after a short delay
+        const timer1 = setTimeout(() => {
+          if (!attemptFocus()) {
+            // Try one more time after longer delay
+            const timer2 = setTimeout(() => {
+              attemptFocus()
+            }, 200)
+            return () => clearTimeout(timer2)
+          }
+        }, 50)
+        return () => clearTimeout(timer1)
+      }
+    }
+  }, [open, view])
 
   // Handlers (logic kept)
   const handleSelect = () => {
@@ -281,11 +327,31 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
       // Set loading state
       setIsCreatingCustomer(true)
 
+      // Prepare API payload with all required fields, ensuring empty values are sent as empty strings
+      const apiPayload = {
+        customer_name: newCustomer.customer_name || '',
+        customer_name_arabic: newCustomer.customer_name_arabic || '',
+        email: newCustomer.email || '',
+        mobile: newCustomer.mobile || '',
+        customer_type: newCustomer.customer_type || 'Individual',
+        tax_id: newCustomer.tax_id || '',
+        customer_id_type_for_zatca: newCustomer.customer_id_type_for_zatca || '',
+        customer_id_number_for_zatca: newCustomer.customer_id_number_for_zatca || '',
+        address_line1: newCustomer.address_line1 || '',
+        address_line2: newCustomer.address_line2 || '',
+        building_number: newCustomer.building_number || '',
+        city: newCustomer.city || '',
+        pincode: newCustomer.pincode || '',
+        country: newCustomer.country || ''
+      }
+
+      console.log('📝 Creating customer - API payload:', apiPayload)
+
       // Call the API directly using proxy
       const response = await window.electronAPI?.proxy?.request({
         method: 'POST',
         url: '/api/method/centro_pos_apis.api.customer.create_customer',
-        data: newCustomer
+        data: apiPayload
       })
 
       console.log('Create customer response:', response)
@@ -309,9 +375,10 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
           customer_id_number_for_zatca: '',
           address_line1: '',
           address_line2: '',
+          building_number: '',
           city: '',
-          state: '',
-          pincode: ''
+          pincode: '',
+          country: ''
         })
 
         // Auto-select newly created
@@ -386,8 +453,8 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
 
   return createPortal(
     <Dialog open={open} onOpenChange={(isOpen) => (isOpen ? undefined : resetAndClose())}>
-      <DialogContent className="max-w-5xl max-h-[90vh] bg-white m-4">
-        <DialogHeader>
+      <DialogContent className="max-w-5xl max-h-[75vh] bg-white m-4 flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <div className="flex items-center justify-between">
             <DialogTitle className="flex items-center gap-2">
               <User className="h-5 w-5" />
@@ -402,11 +469,12 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
         </DialogHeader>
 
         {view === 'search' ? (
-          <>
+          <div className="flex flex-col flex-1 min-h-0">
             {/* Search Bar with New button (Refresh removed) */}
-            <div className="relative mb-4">
+            <div className="relative mb-4 flex-shrink-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
+                ref={searchInputRef}
                 placeholder="Search customers..."
                 value={search}
                 onChange={(e) => {
@@ -416,16 +484,23 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                 onKeyDown={(e) => {
                   if (e.key === 'ArrowDown') {
                     e.preventDefault()
+                    e.stopPropagation()
                     setLastInteraction('keyboard')
-                    setSelectedIndex((prev) => Math.min(prev + 1, customersForDisplay.length - 1))
+                    if (customersForDisplay.length > 0) {
+                      setSelectedIndex((prev) => Math.min(prev + 1, customersForDisplay.length - 1))
+                    }
                   } else if (e.key === 'ArrowUp') {
                     e.preventDefault()
+                    e.stopPropagation()
                     setLastInteraction('keyboard')
                     setSelectedIndex((prev) => Math.max(prev - 1, 0))
                   } else if (e.key === 'Enter') {
                     e.preventDefault()
+                    e.stopPropagation()
                     handleSelect()
                   } else if (e.key === 'Escape') {
+                    e.preventDefault()
+                    e.stopPropagation()
                     resetAndClose()
                   }
                 }}
@@ -447,7 +522,33 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
 
             {/* Results */}
             <div
-              className="h-[300px] overflow-y-auto"
+              ref={customerListRef}
+              className="flex-1 overflow-y-auto min-h-0"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                // Handle arrow keys when list container has focus
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setLastInteraction('keyboard')
+                  if (customersForDisplay.length > 0) {
+                    setSelectedIndex((prev) => Math.min(prev + 1, customersForDisplay.length - 1))
+                  }
+                } else if (e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setLastInteraction('keyboard')
+                  setSelectedIndex((prev) => Math.max(prev - 1, 0))
+                } else if (e.key === 'Enter') {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  handleSelect()
+                } else if (e.key === 'Escape') {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  resetAndClose()
+                }
+              }}
               onScroll={(e) => {
                 const el = e.currentTarget as HTMLDivElement
                 const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 120
@@ -529,12 +630,12 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
               )}
             </div>
 
-            <DialogFooter className="mt-4">
+            <DialogFooter className="mt-4 flex-shrink-0">
               <Button variant="outline" onClick={resetAndClose}>
                 Cancel
               </Button>
             </DialogFooter>
-          </>
+          </div>
         ) : (
           <>
             {/* Create Header */}
@@ -762,11 +863,11 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                 <div className="space-y-1">
                   <label className="text-sm font-medium">Building No.{newCustomer.customer_type === 'Company' ? ' *' : ''}</label>
                   <Input
-                    value={newCustomer.state}
+                    value={newCustomer.building_number}
                     onChange={(e) =>
                       setNewCustomer((p) => ({
                         ...p,
-                        state: e.target.value
+                        building_number: e.target.value
                       }))
                     }
                     onKeyDown={(e) => {
@@ -791,6 +892,21 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                   />
                 </div>
               </div>
+
+              {/* Row 7: Country */}
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Country</label>
+                <Input
+                  value={newCustomer.country}
+                  onChange={(e) =>
+                    setNewCustomer((p) => ({
+                      ...p,
+                      country: e.target.value
+                    }))
+                  }
+                  placeholder="Saudi Arabia"
+                />
+              </div>
             </div>
 
             <DialogFooter className="gap-2 mt-4">
@@ -813,7 +929,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     !newCustomer.customer_id_number_for_zatca.trim() ||
                     !newCustomer.address_line1.trim() ||
                     !newCustomer.city.trim() ||
-                    !newCustomer.state.trim() ||
+                    !newCustomer.building_number.trim() ||
                     !newCustomer.pincode.trim()
                   ))
                 }

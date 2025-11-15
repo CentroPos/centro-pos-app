@@ -38,6 +38,7 @@ interface Tab {
   invoiceNumber?: string | null
   invoiceStatus?: string | null
   invoiceCustomReverseStatus?: string | null
+  is_reserved?: number
 }
 
 interface POSTabStore {
@@ -92,6 +93,10 @@ interface POSTabStore {
   getCurrentTabInvoiceNumber: () => string | null
   getCurrentTabInvoiceStatus: () => string | null
   getCurrentTabInvoiceCustomReverseStatus: () => string | null
+  
+  // Reservation methods
+  updateTabReservation: (tabId: string, is_reserved: number) => void
+  getCurrentTabReservation: () => number
   
   // Helper methods
   getCurrentTab: () => Tab | undefined
@@ -209,7 +214,8 @@ export const usePOSTabStore = create<POSTabStore>()(
               return linkedInvoices.custom_reverse_status || null
             }
             return null
-          })()
+          })(),
+          is_reserved: orderData?.is_reserved !== undefined ? Number(orderData.is_reserved) : 1
         }
 
         console.log('📋 [openTab] New tab created:', {
@@ -286,7 +292,8 @@ export const usePOSTabStore = create<POSTabStore>()(
           posting_date: null,
           instantPrintUrl: null,
           isRoundingEnabled: true,
-          invoiceNumber: null
+          invoiceNumber: null,
+          is_reserved: 1
         }
 
         set((state) => ({
@@ -642,6 +649,26 @@ export const usePOSTabStore = create<POSTabStore>()(
         const state = get()
         const currentTab = state.tabs.find(tab => tab.id === state.activeTabId)
         return currentTab?.invoiceCustomReverseStatus || null
+      },
+
+      updateTabReservation: (tabId: string, is_reserved: number) => {
+        set((state) => ({
+          tabs: state.tabs.map((tab) =>
+            tab.id === tabId
+              ? {
+                  ...tab,
+                  is_reserved: is_reserved,
+                  isEdited: true
+                }
+              : tab
+          )
+        }))
+      },
+
+      getCurrentTabReservation: () => {
+        const state = get()
+        const currentTab = state.tabs.find(tab => tab.id === state.activeTabId)
+        return currentTab?.is_reserved !== undefined ? currentTab.is_reserved : 1
       },
 
       itemExistsInTab: (tabId: string, itemCode: string) => {

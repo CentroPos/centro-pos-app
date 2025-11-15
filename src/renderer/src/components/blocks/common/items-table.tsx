@@ -2,6 +2,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/u
 import { Input } from '@renderer/components/ui/input'
 import { Textarea } from '@renderer/components/ui/textarea'
 import { Search as SearchIcon } from 'lucide-react'
+import { Checkbox } from '@renderer/components/ui/checkbox'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@renderer/components/ui/dialog'
 import { Button } from '@renderer/components/ui/button'
 import {
@@ -38,10 +39,11 @@ type Props = {
 }
 
 const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem, shouldStartEditing = false, onEditingStarted, onAddItemClick, onSaveCompleted, isProductModalOpen = false, isCustomerModalOpen = false, isErrorBoxFocused = false, onEditingStateChange, errorItems = [] }) => {
-  const { getCurrentTabItems, activeTabId, updateItemInTab, updateItemInTabByIndex, getCurrentTab, setTabEdited, removeItemFromTabByIndex, updateTabOtherDetails } = usePOSTabStore();
+  const { getCurrentTabItems, activeTabId, updateItemInTab, updateItemInTabByIndex, getCurrentTab, setTabEdited, removeItemFromTabByIndex, updateTabOtherDetails, updateTabReservation, getCurrentTabReservation } = usePOSTabStore();
   const items = getCurrentTabItems();
   const hasBottomErrors = Array.isArray(errorItems) && errorItems.length > 0;
   const [tableSearch, setTableSearch] = useState('')
+  const isReserved = getCurrentTabReservation()
   const filteredItems = items.filter((it) => {
     const term = tableSearch.trim().toLowerCase()
     if (!term) return true
@@ -1227,6 +1229,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     'ArrowUp',
     () => {
       if (isProductModalOpen) return // Disable when product modal is open
+      if (isCustomerModalOpen) return // Disable when customer modal is open
       if (isErrorBoxFocused) return // Disable when error box is focused
       // Avoid double-handling when container already processed the key
       if (document.activeElement === tableScrollRef.current || localKeyHandlingRef.current) return
@@ -1266,6 +1269,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     'ArrowDown',
     () => {
       if (isProductModalOpen) return // Disable when product modal is open
+      if (isCustomerModalOpen) return // Disable when customer modal is open
       if (isErrorBoxFocused) return // Disable when error box is focused
       if (document.activeElement === tableScrollRef.current || localKeyHandlingRef.current) return
       if (selectedItemId) {
@@ -1500,20 +1504,41 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     <div className="px-4 pt-4 pb-0 bg-white h-full flex flex-col min-h-0 relative">
       <Tabs defaultValue="items" className="w-full h-full flex flex-col min-h-0">
         <div className="flex items-center justify-between flex-shrink-0 mb-0">
-        <TabsList className="bg-transparent p-0 border-b border-gray-200">
-          <TabsTrigger
-            value="items"
-            className="rounded-t-md px-4 py-2 text-gray-700 hover:text-black hover:bg-gray-50 data-[state=active]:text-blue-700 data-[state=active]:bg-white data-[state=active]:border-b-2 data-[state=active]:border-blue-600"
-          >
-            Items
-          </TabsTrigger>
-          <TabsTrigger
-            value="other"
-            className="rounded-t-md px-4 py-2 text-gray-700 hover:text-black hover:bg-gray-50 data-[state=active]:text-blue-700 data-[state=active]:bg-white data-[state=active]:border-b-2 data-[state=active]:border-blue-600"
-          >
-            Other Details
-          </TabsTrigger>
-        </TabsList>
+        <div className="flex items-center gap-4">
+          <TabsList className="bg-transparent p-0 border-b border-gray-200">
+            <TabsTrigger
+              value="items"
+              className="rounded-t-md px-4 py-2 text-gray-700 hover:text-black hover:bg-gray-50 data-[state=active]:text-blue-700 data-[state=active]:bg-white data-[state=active]:border-b-2 data-[state=active]:border-blue-600"
+            >
+              Items
+            </TabsTrigger>
+            <TabsTrigger
+              value="other"
+              className="rounded-t-md px-4 py-2 text-gray-700 hover:text-black hover:bg-gray-50 data-[state=active]:text-blue-700 data-[state=active]:bg-white data-[state=active]:border-b-2 data-[state=active]:border-blue-600"
+            >
+              Other Details
+            </TabsTrigger>
+          </TabsList>
+          {activeTabId && (
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="reservation-checkbox"
+                checked={isReserved === 1}
+                onCheckedChange={(checked) => {
+                  if (activeTabId) {
+                    updateTabReservation(activeTabId, checked ? 1 : 0)
+                  }
+                }}
+              />
+              <label
+                htmlFor="reservation-checkbox"
+                className="text-sm font-medium text-gray-700 cursor-pointer"
+              >
+                Reservation
+              </label>
+            </div>
+          )}
+        </div>
           <div className="relative w-1/4 min-w-[220px]">
             <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { RefreshCcw } from 'lucide-react'
+import { RefreshCcw, User, Search, Plus, X } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
 import { Label } from '@renderer/components/ui/label'
@@ -21,6 +21,7 @@ import {
   TableRow
 } from '@renderer/components/ui/table'
 import { Card, CardContent, CardHeader, CardTitle } from '@renderer/components/ui/card'
+import { Badge } from '@renderer/components/ui/badge'
 import { toast } from 'sonner'
 import { handleServerErrorMessages } from '@renderer/lib/error-handler'
 
@@ -28,6 +29,10 @@ interface Customer {
   id: string
   customer_name: string
   name: string
+  tax_id?: string
+  mobile_no?: string
+  phone?: string
+  gst?: string
 }
 
 interface DueInvoice {
@@ -58,9 +63,11 @@ const PaymentTab: React.FC = () => {
   const [_customers, setCustomers] = useState<Customer[]>([])
   const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([])
   const [customerPage, setCustomerPage] = useState(1)
-  const [customerHasMore, setCustomerHasMore] = useState(true)
+  const [customerHasMore, setCustomerHasMore] = useState(false) // Fixed page size, no more loads
   const [isFetchingMoreCustomers, setIsFetchingMoreCustomers] = useState(false)
+  const [isLoadingCustomers, setIsLoadingCustomers] = useState(false)
   const latestCustomerReq = React.useRef(0)
+  const customerPerPage = 15 // Fixed page size, same as main POS customer modal
   // Get current date in local timezone (YYYY-MM-DD format)
   const getCurrentDate = () => {
     const now = new Date()
@@ -229,13 +236,16 @@ const PaymentTab: React.FC = () => {
   // Use paymentVouchers directly - server handles all filtering via search_term and payment_type parameters
   // No client-side filtering needed since API already filters results
 
-  // Debounced server-side customer search
+  // Debounced server-side customer search (same as main POS customer modal)
   useEffect(() => {
     if (!isCustomerModalOpen) return
+    console.log('[PaymentTab CustomerModal] trigger load (debounced)', { searchTerm, isCustomerModalOpen })
+    setCustomers([])
+    setFilteredCustomers([])
+    setCustomerPage(1)
+    setCustomerHasMore(false)
     const handle = setTimeout(() => {
-      setCustomerPage(1)
-      setCustomerHasMore(true)
-      loadCustomers(searchTerm, 1)
+      loadCustomers(searchTerm, 1, false)
     }, 300)
     return () => clearTimeout(handle)
   }, [searchTerm, isCustomerModalOpen])
@@ -287,33 +297,71 @@ const PaymentTab: React.FC = () => {
     }
   }, [selectedCustomerIndex, isCustomerModalOpen, filteredCustomers.length])
 
-  // Load customers from API with cumulative pagination
-  const loadCustomers = async (term: string, page: number) => {
+  // Load customers from API with fixed page size (same as main POS customer modal)
+  const loadCustomers = async (term: string, pageToLoad = 1, append = false) => {
+    // Manage loading flags
+    if (append) setIsFetchingMoreCustomers(true)
+    else setIsLoadingCustomers(true)
+
+    const requestId = ++latestCustomerReq.current
     try {
-      const reqId = ++latestCustomerReq.current
+      // Fixed-size page: always request 1-15 (no cumulative growth)
       const limit_start = 1
-      const limit_page_length = page * 10
-      if (page > 1) setIsFetchingMoreCustomers(true)
-      console.log('👥 Fetch customers', { term, limit_start, limit_page_length })
+      const limit_page_length = customerPerPage
+      console.log('[PaymentTab CustomerModal] Fetching page', pageToLoad, {
+        search_term: term,
+        limit_start,
+        limit_page_length,
+        append
+      })
       const response = await window.electronAPI?.proxy?.request({
         url: '/api/method/centro_pos_apis.api.customer.customer_list',
-        params: { search_term: term, limit_start, limit_page_length }
+        params: {
+          search_term: term || '',  // Send empty string when no search term
+          limit_start,
+          limit_page_length
+        }
       })
-      if (reqId !== latestCustomerReq.current) return
-      const rows = Array.isArray(response?.data?.data) ? response.data.data : []
-      const mapped = rows.map((customer: any) => ({ id: customer.name, customer_name: customer.customer_name, name: customer.name }))
+
+      console.log('[PaymentTab CustomerModal] customer_list raw response:', response)
+
+      // Ignore if a newer request has been issued
+      if (requestId !== latestCustomerReq.current) return
+
+      const customers = Array.isArray(response?.data?.data) ? response.data.data : []
+      console.log(
+        '[PaymentTab CustomerModal] Received',
+        customers.length,
+        'rows for page',
+        pageToLoad
+      )
+
+      const mapped = customers.map((customer: any) => ({
+        id: customer.name,
+        customer_name: customer.customer_name || customer.name,
+        name: customer.name,
+        tax_id: customer.tax_id || null,
+        mobile_no: customer.mobile_no || null,
+        phone: customer.mobile_no || customer.phone || null,
+        gst: customer.tax_id || null
+      }))
+
+      // Fixed page size; disable further loads
+      setCustomerHasMore(false)
+      setCustomerPage(pageToLoad)
+      // Replace list with current page
       setCustomers(mapped)
       setFilteredCustomers(mapped)
-      setCustomerHasMore(mapped.length === limit_page_length)
-      setCustomerPage(page)
     } catch (error) {
+      if (requestId !== latestCustomerReq.current) return
       console.error('Error loading customers:', error)
       toast.error('Failed to load customers')
       setCustomers([])
       setFilteredCustomers([])
       setCustomerHasMore(false)
     } finally {
-      setIsFetchingMoreCustomers(false)
+      if (append) setIsFetchingMoreCustomers(false)
+      else setIsLoadingCustomers(false)
     }
   }
 
@@ -811,7 +859,7 @@ const PaymentTab: React.FC = () => {
         <div className="fixed inset-0 z-[100] flex items-center justify-center" onClick={(e) => { if (e.target === e.currentTarget) setIsPaymentModalOpen(false) }}>
           <div className="absolute inset-0 bg-black/40" />
           <div className="relative bg-white w-[800px] max-w-[90vw] h-[90vh] flex flex-col rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
-            <div className="px-6 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200 flex-shrink-0">
+            <div className="px-6 py-3 bg-white border-b border-gray-300 flex-shrink-0">
               <h2 className="text-lg font-bold text-gray-800">Make Payment</h2>
             </div>
             <div className="flex-1 flex flex-col min-h-0 p-6">
@@ -1128,28 +1176,112 @@ const PaymentTab: React.FC = () => {
           data-customer-modal
         >
           <div className="absolute inset-0 bg-black/50" />
-          <div className="relative bg-gray-50 border border-gray-200 rounded-lg p-4 w-[420px] max-h-[70vh] flex flex-col shadow-2xl">
-            <h3 className="text-lg font-semibold mb-4">Select Customer</h3>
-            <div className="mb-4">
-              <Input type="text" placeholder="Search customers..." value={searchTerm} onChange={handleSearchChange} className="w-full" autoFocus />
+          <div className="relative bg-white border border-gray-200 rounded-lg w-[500px] max-h-[80vh] flex flex-col shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <div className="flex items-center gap-2">
+                <User className="h-5 w-5 text-gray-700" />
+                <h3 className="text-lg font-semibold">Select Customer</h3>
+              </div>
+              <button
+                onClick={() => setIsCustomerModalOpen(false)}
+                className="p-1 hover:bg-gray-100 rounded transition-colors"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
             </div>
-            <div className="flex-1 overflow-y-auto space-y-1" onScroll={(e) => {
-              const el = e.currentTarget as HTMLDivElement
-              if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80 && customerHasMore && !isFetchingMoreCustomers) {
-                loadCustomers(searchTerm, customerPage + 1)
-              }
-            }}>
-              {filteredCustomers.length > 0 ? (
-                filteredCustomers.map((customer, index) => (
-                  <div key={customer.id} data-customer-index={index} className={`p-2 cursor-pointer rounded transition-colors ${index === selectedCustomerIndex ? 'bg-blue-100 border border-blue-300' : 'hover:bg-gray-100'}`} onClick={() => handleCustomerSelect(customer)}>
-                    <div className="font-medium">{customer.customer_name}</div>
-                    <div className="text-sm text-gray-500">{customer.name}</div>
-                  </div>
-                ))
+
+            {/* Search Bar with New button */}
+            <div className="relative p-4 border-b border-gray-200">
+              <Search className="absolute left-7 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+              <Input
+                type="text"
+                placeholder="Search customers..."
+                value={searchTerm}
+                onChange={handleSearchChange}
+                className="pl-10 pr-24"
+                autoFocus
+              />
+              <div className="absolute right-6 top-1/2 -translate-y-1/2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  disabled
+                  title="Create customer (not available in payment flow)"
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  New
+                </Button>
+              </div>
+            </div>
+
+            {/* Customer List */}
+            <div
+              className="flex-1 overflow-y-auto p-2"
+              onScroll={(e) => {
+                const el = e.currentTarget as HTMLDivElement
+                const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 120
+                // Fixed page size, no infinite scroll - pagination disabled
+                // if (nearBottom && customerHasMore && !isFetchingMoreCustomers) {
+                //   loadCustomers(searchTerm, customerPage + 1, true)
+                // }
+              }}
+            >
+              {isLoadingCustomers ? (
+                <div className="flex items-center justify-center h-32">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
+                  <span className="ml-2 text-sm text-muted-foreground">Loading customers...</span>
+                </div>
+              ) : filteredCustomers.length > 0 ? (
+                <div className="space-y-1">
+                  {filteredCustomers.map((customer, index) => (
+                    <div
+                      key={customer.id}
+                      data-customer-index={index}
+                      className={`p-3 rounded-lg cursor-pointer transition-all duration-200 ${
+                        index === selectedCustomerIndex
+                          ? 'bg-primary text-primary-foreground'
+                          : 'hover:bg-muted'
+                      }`}
+                      onClick={() => handleCustomerSelect(customer)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <h4 className="font-medium text-sm leading-tight">{customer.customer_name}</h4>
+                          <p
+                            className={`text-xs mt-1 ${
+                              index === selectedCustomerIndex
+                                ? 'text-primary-foreground/80'
+                                : 'text-muted-foreground'
+                            }`}
+                          >
+                            <span>Tax ID: {customer.gst || customer.tax_id || 'Not Available'}</span>
+                            <span className="mx-1">•</span>
+                            <span>Mobile: {customer.phone || customer.mobile_no || 'Not Available'}</span>
+                          </p>
+                        </div>
+                        <Badge variant={index === selectedCustomerIndex ? 'secondary' : 'outline'}>
+                          Customer
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               ) : (
-                <div className="text-center text-gray-500 py-4">No customers found</div>
+                <div className="text-center text-gray-500 py-8">No customers found</div>
               )}
-              {isFetchingMoreCustomers && <div className="text-center text-xs text-gray-500 py-2">Loading...</div>}
+              {isFetchingMoreCustomers && (
+                <div className="text-center text-xs text-gray-500 py-2">Loading more...</div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-gray-200 flex justify-end">
+              <Button variant="outline" onClick={() => setIsCustomerModalOpen(false)}>
+                Cancel
+              </Button>
             </div>
           </div>
         </div>,
