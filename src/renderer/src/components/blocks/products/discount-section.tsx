@@ -17,7 +17,7 @@ type Props = {
   errors?: ErrorMessage[]
   onCloseErrors?: () => void
   onErrorBoxFocusChange?: (isFocused: boolean) => void
-  onFocusItem?: (itemCode: string) => void
+  onFocusItem?: (itemCode: string, idx?: number) => void
 }
 
 function roundToNearest(value: number, step = 0.05) {

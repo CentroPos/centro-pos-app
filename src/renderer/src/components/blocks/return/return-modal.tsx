@@ -62,7 +62,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
   const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null)
   const [loading, setLoading] = useState(false)
   const [returnLoading, setReturnLoading] = useState(false)
-  const [selectedItems, setSelectedItems] = useState<{ [key: string]: { selected: boolean; qty: number; originalQty: number } }>({})
+  const [selectedItems, setSelectedItems] = useState<{ [key: string]: { selected: boolean; qty: number; originalQty: number; itemCode: string; originalSalesInvoiceItem: string } }>({})
   
   // Calculate selected items count
   const selectedItemsCount = Object.values(selectedItems).filter(item => item.selected).length
@@ -246,14 +246,19 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
         setInvoiceData(invoiceData)
 
         // Initialize selected items with checkboxes unchecked and returnable quantities
-        const initialSelectedItems: { [key: string]: { selected: boolean; qty: number; originalQty: number } } = {}
+        // Use original_sales_invoice_item as key to avoid multi-select issues with duplicate item codes
+        const initialSelectedItems: { [key: string]: { selected: boolean; qty: number; originalQty: number; itemCode: string; originalSalesInvoiceItem: string } } = {}
         items.forEach((item: InvoiceItem) => {
-          if (item.item_code) {
+          // Use original_sales_invoice_item as the key, fallback to item_code if not available
+          const key = item.original_sales_invoice_item || item.item_code
+          if (key) {
             const returnableQty = typeof item.returnable_qty === 'number' ? item.returnable_qty : 0
-            initialSelectedItems[item.item_code] = {
+            initialSelectedItems[key] = {
               selected: false,
               qty: returnableQty, // Pre-fill with returnable quantity
-              originalQty: returnableQty
+              originalQty: returnableQty,
+              itemCode: item.item_code || '',
+              originalSalesInvoiceItem: item.original_sales_invoice_item || ''
             }
           }
         })
@@ -287,10 +292,16 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
   }, [invoiceNumber])
 
   // Handle item selection checkbox
-  const handleItemSelect = (itemCode: string, selected: boolean) => {
+  // key is original_sales_invoice_item (or item_code as fallback)
+  const handleItemSelect = (key: string, selected: boolean) => {
+    // Find the item by original_sales_invoice_item or item_code
+    const item = invoiceData?.items?.find((it: InvoiceItem) => 
+      (it.original_sales_invoice_item && it.original_sales_invoice_item === key) ||
+      (!it.original_sales_invoice_item && it.item_code === key)
+    )
+    
     // If trying to select, check if returnable_qty is 0
     if (selected) {
-      const item = invoiceData?.items?.find((it: InvoiceItem) => it.item_code === itemCode)
       const returnableQty = typeof item?.returnable_qty === 'number' ? item.returnable_qty : 0
       
       if (returnableQty === 0) {
@@ -303,16 +314,17 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
     }
     
     setSelectedItems(prev => {
-      const currentItem = prev[itemCode]
+      const currentItem = prev[key]
       // Get returnable_qty from the item in invoiceData
-      const item = invoiceData?.items?.find((it: InvoiceItem) => it.item_code === itemCode)
       const returnableQty = typeof item?.returnable_qty === 'number' ? item.returnable_qty : (currentItem?.originalQty ?? 0)
       return {
       ...prev,
-      [itemCode]: {
-        ...prev[itemCode],
+      [key]: {
+        ...prev[key],
           selected,
           originalQty: returnableQty,
+          itemCode: item?.item_code || currentItem?.itemCode || '',
+          originalSalesInvoiceItem: item?.original_sales_invoice_item || currentItem?.originalSalesInvoiceItem || key,
           // When selected, always auto-fill with returnable qty
           // When deselected, keep the current qty (or returnableQty if not set)
           qty: selected ? returnableQty : (currentItem?.qty ?? returnableQty)
@@ -340,16 +352,20 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
     }
     
     setSelectedItems(prev => {
-      const updated: { [key: string]: { selected: boolean; qty: number; originalQty: number } } = { ...prev }
+      const updated: { [key: string]: { selected: boolean; qty: number; originalQty: number; itemCode: string; originalSalesInvoiceItem: string } } = { ...prev }
       invoiceData.items.forEach((item: InvoiceItem) => {
-        if (item.item_code) {
+        // Use original_sales_invoice_item as key, fallback to item_code
+        const key = item.original_sales_invoice_item || item.item_code
+        if (key) {
           const returnableQty = typeof item.returnable_qty === 'number' ? item.returnable_qty : 0
           // Only select items with returnable_qty > 0
           const shouldSelect = checked && returnableQty > 0
-          updated[item.item_code] = {
+          updated[key] = {
             selected: shouldSelect,
-            qty: shouldSelect ? returnableQty : (updated[item.item_code]?.qty ?? returnableQty),
-            originalQty: returnableQty
+            qty: shouldSelect ? returnableQty : (updated[key]?.qty ?? returnableQty),
+            originalQty: returnableQty,
+            itemCode: item.item_code || '',
+            originalSalesInvoiceItem: item.original_sales_invoice_item || ''
           }
         }
       })
@@ -361,21 +377,23 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
   const areAllItemsSelected = () => {
     if (!invoiceData || invoiceData.items.length === 0) return false
     return invoiceData.items.every((item: InvoiceItem) => {
-      if (!item.item_code) return true
-      return selectedItems[item.item_code]?.selected === true
+      const key = item.original_sales_invoice_item || item.item_code
+      if (!key) return true
+      return selectedItems[key]?.selected === true
     })
   }
 
   // Handle quantity change for selected items
-  const handleQuantityChange = (itemCode: string, qty: number) => {
+  // key is original_sales_invoice_item (or item_code as fallback)
+  const handleQuantityChange = (key: string, qty: number) => {
     // Convert to number and ensure it's not negative
     const numericQty = parseFloat(qty.toString()) || 0
     const validQty = Math.max(0, numericQty)
     
     setSelectedItems(prev => ({
       ...prev,
-      [itemCode]: {
-        ...prev[itemCode],
+      [key]: {
+        ...prev[key],
         qty: validQty
       }
     }))
@@ -389,10 +407,12 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
     }
 
     // Get selected items with quantities
+    // Include sales_invoice_item (original_sales_invoice_item) in the API call
     const itemsToReturn = Object.entries(selectedItems)
       .filter(([, itemData]) => itemData.selected && itemData.qty > 0)
-      .map(([itemCode, itemData]) => ({
-        item_code: itemCode,
+      .map(([, itemData]) => ({
+        sales_invoice_item: itemData.originalSalesInvoiceItem || '',
+        item_code: itemData.itemCode,
         qty: typeof itemData.qty === 'number' ? itemData.qty : 0
       }))
 
@@ -608,13 +628,13 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                     // Calculate total amount for selected items
                     const totalAmount = invoiceData.items
                       .filter((item) => {
-                        const itemCode = item.item_code || ''
-                        return selectedItems[itemCode]?.selected === true
+                        const selectionKey = item.original_sales_invoice_item || item.item_code || ''
+                        return selectedItems[selectionKey]?.selected === true
                       })
                       .reduce((sum, item) => {
-                        const itemCode = item.item_code || ''
+                        const selectionKey = item.original_sales_invoice_item || item.item_code || ''
                         const rate = typeof item.rate === 'number' ? item.rate : 0
-                        const qty = selectedItems[itemCode]?.qty ?? 0
+                        const qty = selectedItems[selectionKey]?.qty ?? 0
                         return sum + (rate * qty)
                       }, 0)
                     return (
@@ -673,14 +693,16 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                         const uom = item.uom || 'Nos'
                         const rate = typeof item.rate === 'number' ? item.rate : 0
                         const returnableQty = typeof item.returnable_qty === 'number' ? item.returnable_qty : 0
+                        // Use original_sales_invoice_item as key for selection, fallback to item_code
+                        const selectionKey = item.original_sales_invoice_item || itemCode
                         
                         return (
                           <TableRow key={index} className="hover:bg-gray-50 border-b border-gray-100">
                             <TableCell className="py-3">
                               <Checkbox
-                                checked={selectedItems[itemCode]?.selected || false}
+                                checked={selectedItems[selectionKey]?.selected || false}
                                 onCheckedChange={(checked) => 
-                                  handleItemSelect(itemCode, checked as boolean)
+                                  handleItemSelect(selectionKey, checked as boolean)
                                 }
                               />
                             </TableCell>
@@ -718,8 +740,8 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                           <TableBody>
                             {invoiceData.items
                               .filter((item) => {
-                                const itemCode = item.item_code || ''
-                                return selectedItems[itemCode]?.selected === true
+                                const selectionKey = item.original_sales_invoice_item || item.item_code || ''
+                                return selectedItems[selectionKey]?.selected === true
                               })
                               .map((item, index) => {
                                 // Safely extract item data with fallbacks
@@ -727,8 +749,10 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                                 const itemName = item.item_name || 'Unknown Item'
                                 const uom = item.uom || 'Nos'
                                 const rate = typeof item.rate === 'number' ? item.rate : 0
-                                const returnableQty = typeof item.returnable_qty === 'number' ? item.returnable_qty : (selectedItems[itemCode]?.originalQty ?? 0)
-                                const returnQty = selectedItems[itemCode]?.qty ?? returnableQty
+                                // Use original_sales_invoice_item as key for selection, fallback to item_code
+                                const selectionKey = item.original_sales_invoice_item || itemCode
+                                const returnableQty = typeof item.returnable_qty === 'number' ? item.returnable_qty : (selectedItems[selectionKey]?.originalQty ?? 0)
+                                const returnQty = selectedItems[selectionKey]?.qty ?? returnableQty
                                 
                                 return (
                                   <TableRow key={index} className="hover:bg-gray-50 border-b border-gray-100">
@@ -750,11 +774,11 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                                     const inputValue = e.target.value
                                     // Allow empty string for clearing, or parse as number
                                     if (inputValue === '') {
-                                      handleQuantityChange(itemCode, 0)
+                                      handleQuantityChange(selectionKey, 0)
                                     } else {
                                       const numericValue = parseFloat(inputValue)
                                       if (!isNaN(numericValue)) {
-                                        handleQuantityChange(itemCode, numericValue)
+                                        handleQuantityChange(selectionKey, numericValue)
                                       }
                                     }
                                   }}
@@ -763,7 +787,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                                     const value = parseFloat(e.target.value) || 0
                                             // Ensure value doesn't exceed returnable qty
                                             const validValue = Math.min(value, returnableQty)
-                                            handleQuantityChange(itemCode, validValue)
+                                            handleQuantityChange(selectionKey, validValue)
                                   }}
                                           className="w-20 text-right font-sans border-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                                   placeholder="0"
@@ -774,8 +798,8 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                         )
                       })}
                             {invoiceData.items.filter((item) => {
-                              const itemCode = item.item_code || ''
-                              return selectedItems[itemCode]?.selected === true
+                              const selectionKey = item.original_sales_invoice_item || item.item_code || ''
+                              return selectedItems[selectionKey]?.selected === true
                             }).length === 0 && (
                               <TableRow>
                                 <TableCell colSpan={6} className="text-center py-8 text-gray-500 font-sans">

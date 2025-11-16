@@ -1666,6 +1666,10 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                   const hasError = hasItemError(item.item_code)
                   const hasSplitWarehouse = item.warehouseAllocations && Array.isArray(item.warehouseAllocations) && item.warehouseAllocations.length > 0
 
+                  // Find the actual index in items array (Sno) for this item
+                  // This handles cases where there are duplicate items
+                  const actualItemIndex = items.findIndex((i) => i === item)
+
                   // Create unique key for each row (even for duplicate items)
                   // Include tab ID and index to ensure uniqueness across tab switches
                   const uniqueKey = `${activeTabId || 'no-tab'}-item-${index}-${item.item_code}`
@@ -1675,6 +1679,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                       key={uniqueKey}
                       data-item-code={item.item_code}
                       data-row-index={index}
+                      data-item-index={actualItemIndex >= 0 ? actualItemIndex : undefined}
                       onClick={(e) => {
                         e.stopPropagation()
                         console.log('🖱️ Row clicked:', item.item_code, 'isEditing:', isEditing, 'isReadOnly:', isReadOnly)
@@ -1796,6 +1801,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                       <TableCell
                         className={`${hasError ? 'text-red-600 font-medium' : hasSplitWarehouse ? 'text-yellow-600 font-medium' : isSelected ? 'font-medium' : ''} w-[70px] text-center`}
                         data-item-code={item.item_code}
+                        data-item-index={actualItemIndex >= 0 ? actualItemIndex : undefined}
                         data-field="quantity"
                         onClick={(e) => {
                           e.stopPropagation()
@@ -1852,6 +1858,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             ref={inputRef}
                             type="number"
                             data-item-code={item.item_code}
+                            data-item-index={actualItemIndex >= 0 ? actualItemIndex : undefined}
                             data-field="quantity"
                             value={(() => {
                               // For the last item (newly added), check store value first
