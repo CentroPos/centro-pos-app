@@ -5,6 +5,7 @@ interface ErrorMessage {
   title: string
   indicator: string
   itemCode: string
+  idx?: number
 }
 
 interface BottomErrorBoxProps {
@@ -12,7 +13,7 @@ interface BottomErrorBoxProps {
   isVisible: boolean
   onClose: () => void
   onFocusChange?: (isFocused: boolean) => void
-  onFocusItem?: (itemCode: string) => void
+  onFocusItem?: (itemCode: string, idx?: number) => void
 }
 
 const BottomErrorBox: React.FC<BottomErrorBoxProps> = ({
@@ -36,7 +37,7 @@ const BottomErrorBox: React.FC<BottomErrorBoxProps> = ({
   const handleErrorClick = useCallback(() => {
     const currentError = errors[currentErrorIndex]
     if (currentError?.itemCode && onFocusItem) {
-      onFocusItem(currentError.itemCode)
+      onFocusItem(currentError.itemCode, currentError.idx)
     }
   }, [currentErrorIndex, errors, onFocusItem])
 
@@ -117,6 +118,11 @@ const BottomErrorBox: React.FC<BottomErrorBoxProps> = ({
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-semibold text-red-800">
                 {currentError.title || 'Error'}
+                {currentError.idx !== undefined && (
+                  <span className="ml-2 text-xs font-normal text-red-600">
+                    (S.No: {currentError.idx})
+                  </span>
+                )}
               </h4>
               {hasMultipleErrors && (
                 <span className="text-xs text-red-700 bg-red-200 px-2 py-1 rounded-full font-medium">

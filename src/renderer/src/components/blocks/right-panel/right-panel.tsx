@@ -3330,7 +3330,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                                   {/* Total Qty Row */}
                                   <div className="mb-2">
                                     <span className="text-gray-600 font-medium text-xs">
-                                      Qty: {item.qty || 0}
+                                      Qty: {item.quantity || item.qty || 0}
                                     </span>
                                   </div>
 

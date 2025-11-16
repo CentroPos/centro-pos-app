@@ -43,47 +43,88 @@ const POSInterface: React.FC = () => {
   }
 
   // Handle focusing on a specific item from error box
-  const handleFocusItem = (itemCode: string) => {
-    console.log('🎯 Focusing on item:', itemCode)
-    // Find the item by code and select it
+  const handleFocusItem = (itemCode: string, idx?: number) => {
+    console.log('🎯 Focusing on item:', itemCode, 'idx:', idx)
     const items = getCurrentTabItems()
-    const item = items.find(item => item.item_code === itemCode || item.code === itemCode)
-    console.log('🔍 Found item:', item)
+    
+    // Use idx (Sno) if available, otherwise fallback to item_code search
+    // Note: idx from backend is 1-based (S.No), convert to 0-based array index
+    let item
+    let arrayIndex: number | undefined
+    if (idx !== undefined && idx >= 1 && idx <= items.length) {
+      // Convert 1-based S.No to 0-based array index
+      arrayIndex = idx - 1
+      item = items[arrayIndex]
+      console.log('🔍 Found item by idx (S.No):', idx, 'arrayIndex:', arrayIndex, item)
+    } else {
+      // Fallback to item_code search
+      item = items.find(item => item.item_code === itemCode || item.code === itemCode)
+      if (item) {
+        arrayIndex = items.findIndex(i => i === item)
+      }
+      console.log('🔍 Found item by code:', item, 'arrayIndex:', arrayIndex)
+    }
+    
     if (item) {
       setSelectedItemId(item.item_code) // Use item_code for consistency
       setRightPanelTab('product')
       console.log('✅ Selected item and switched to product tab')
       
-      // Trigger editing mode for the quantity field
+      // Find and scroll to the correct row using data-item-index
       setTimeout(() => {
-        // Find the quantity cell and click it to start editing
-        const quantityCell = document.querySelector(`[data-item-code="${item.item_code}"][data-field="quantity"]`) as HTMLElement
-        console.log('🔍 Found quantity cell:', quantityCell)
-        if (quantityCell) {
-          quantityCell.click()
-          console.log('🖱️ Clicked quantity cell')
+        // First, find the table row using data-item-index (actual items array index)
+        const rowSelector = arrayIndex !== undefined && arrayIndex >= 0
+          ? `tr[data-item-index="${arrayIndex}"]`
+          : `tr[data-item-code="${item.item_code}"]`
+        const tableRow = document.querySelector(rowSelector) as HTMLElement
+        console.log('🔍 Found table row:', tableRow, 'selector:', rowSelector)
+        
+        if (tableRow) {
+          // Scroll the row into view
+          tableRow.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          console.log('📜 Scrolled to row')
           
-          // Wait a bit more for the input to appear, then focus it
-          setTimeout(() => {
-            // Look for the specific input with data attributes
-            const quantityInput = document.querySelector(`input[data-item-code="${item.item_code}"][data-field="quantity"]`) as HTMLInputElement
-            console.log('🔍 Found quantity input:', quantityInput)
-            if (quantityInput) {
-              quantityInput.focus()
-              quantityInput.select()
-              console.log('✅ Focused and selected quantity input')
-            } else {
-              // Fallback: find any number input in the quantity cell
-              const fallbackInput = quantityCell.querySelector(`input[type="number"]`) as HTMLInputElement
-              console.log('🔍 Found fallback input:', fallbackInput)
-              if (fallbackInput) {
-                fallbackInput.focus()
-                fallbackInput.select()
-                console.log('✅ Focused and selected fallback input')
-              }
-            }
-          }, 150)
+          // Click the row to select it (this will trigger setSelectedRowIndex internally)
+          tableRow.click()
+          console.log('🖱️ Clicked table row to select')
         }
+        
+        // Then find and click the quantity cell
+        setTimeout(() => {
+          const quantityCellSelector = arrayIndex !== undefined && arrayIndex >= 0
+            ? `[data-item-index="${arrayIndex}"][data-field="quantity"]`
+            : `[data-item-code="${item.item_code}"][data-field="quantity"]`
+          const quantityCell = document.querySelector(quantityCellSelector) as HTMLElement
+          console.log('🔍 Found quantity cell:', quantityCell, 'selector:', quantityCellSelector)
+          if (quantityCell) {
+            quantityCell.click()
+            console.log('🖱️ Clicked quantity cell')
+            
+            // Wait a bit more for the input to appear, then focus it
+            setTimeout(() => {
+              // Look for the specific input with data attributes - use arrayIndex if available
+              const inputSelector = arrayIndex !== undefined && arrayIndex >= 0
+                ? `input[data-item-index="${arrayIndex}"][data-field="quantity"]`
+                : `input[data-item-code="${item.item_code}"][data-field="quantity"]`
+              const quantityInput = document.querySelector(inputSelector) as HTMLInputElement
+              console.log('🔍 Found quantity input:', quantityInput)
+              if (quantityInput) {
+                quantityInput.focus()
+                quantityInput.select()
+                console.log('✅ Focused and selected quantity input')
+              } else {
+                // Fallback: find any number input in the quantity cell
+                const fallbackInput = quantityCell.querySelector(`input[type="number"]`) as HTMLInputElement
+                console.log('🔍 Found fallback input:', fallbackInput)
+                if (fallbackInput) {
+                  fallbackInput.focus()
+                  fallbackInput.select()
+                  console.log('✅ Focused and selected fallback input')
+                }
+              }
+            }, 150)
+          }
+        }, 200)
       }, 100)
     }
   }
@@ -122,6 +163,17 @@ const POSInterface: React.FC = () => {
       setLastAction(null)
     }
   }, [activeTabId, lastAction, setLastAction])
+
+  // Clear error box when switching tabs or when a new order tab is opened
+  const prevActiveTabIdRef = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    // Clear errors whenever activeTabId changes (tab switch or new tab opened)
+    if (activeTabId !== prevActiveTabIdRef.current) {
+      setInsufficientStockErrors([])
+      setIsErrorBoxFocused(false)
+      prevActiveTabIdRef.current = activeTabId
+    }
+  }, [activeTabId])
 
   // Load POS profile and user profile details once POS loads
   // const { data: profileDetails } = useProfileDetails() // Unused

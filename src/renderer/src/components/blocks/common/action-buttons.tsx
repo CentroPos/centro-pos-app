@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { Button } from '@renderer/components/ui/button'
 import {
   Dialog,
@@ -27,9 +27,9 @@ type Props = {
   onSaveCompleted?: () => void
   isItemTableEditing?: boolean
   onInsufficientStockErrors?: (
-    errors: Array<{ message: string; title: string; indicator: string; itemCode: string }>
+    errors: Array<{ message: string; title: string; indicator: string; itemCode: string; idx?: number }>
   ) => void
-  onFocusItem?: (itemCode: string) => void
+  onFocusItem?: (itemCode: string, idx?: number) => void
 }
 
 // Helper function to format HTML content for display
@@ -188,6 +188,7 @@ const ActionButtons: React.FC<Props> = ({
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false)
   const [paymentModes, setPaymentModes] = useState<string[]>(['Cash', 'Card', 'UPI', 'Bank'])
+  const amountInputRef = useRef<HTMLInputElement>(null)
 
   // Get current tab data
   const {
@@ -292,6 +293,37 @@ const ActionButtons: React.FC<Props> = ({
   useEffect(() => {
     loadPOSProfile()
   }, [])
+
+  // Auto-focus Amount input when dialog opens
+  useEffect(() => {
+    if (open) {
+      // Focus function
+      const focusAmount = () => {
+        if (amountInputRef.current) {
+          amountInputRef.current.focus()
+          // Ensure focus is actually set
+          if (document.activeElement !== amountInputRef.current) {
+            amountInputRef.current.focus()
+          }
+        }
+      }
+      
+      // Try multiple times with increasing delays to ensure focus
+      const timer1 = setTimeout(() => {
+        focusAmount()
+      }, 100)
+      
+      const timer2 = setTimeout(() => {
+        focusAmount()
+      }, 250)
+      
+      return () => {
+        clearTimeout(timer1)
+        clearTimeout(timer2)
+      }
+    }
+    return undefined
+  }, [open])
 
   // Debug logging (commented out since working)
   // React.useEffect(() => {
@@ -793,7 +825,7 @@ const ActionButtons: React.FC<Props> = ({
           }
         } else {
           // Parse item_error array if present
-          const itemErrors: Array<{ message: string; title: string; indicator: string; itemCode: string }> = []
+          const itemErrors: Array<{ message: string; title: string; indicator: string; itemCode: string; idx?: number }> = []
           if (response?.data?.item_error && Array.isArray(response.data.item_error)) {
             response.data.item_error.forEach((itemErr: any) => {
               if (itemErr.item_code && itemErr.error) {
@@ -801,7 +833,8 @@ const ActionButtons: React.FC<Props> = ({
                   message: itemErr.error,
                   title: 'Item Validation Error',
                   indicator: 'red',
-                  itemCode: itemErr.item_code
+                  itemCode: itemErr.item_code,
+                  idx: itemErr.idx !== undefined ? Number(itemErr.idx) : undefined
                 })
               }
             })
@@ -931,7 +964,7 @@ const ActionButtons: React.FC<Props> = ({
           onNavigateToPrints?.()
         } else {
           // Parse item_error array if present
-          const itemErrors: Array<{ message: string; title: string; indicator: string; itemCode: string }> = []
+          const itemErrors: Array<{ message: string; title: string; indicator: string; itemCode: string; idx?: number }> = []
           if (response?.data?.item_error && Array.isArray(response.data.item_error)) {
             response.data.item_error.forEach((itemErr: any) => {
               if (itemErr.item_code && itemErr.error) {
@@ -939,7 +972,8 @@ const ActionButtons: React.FC<Props> = ({
                   message: itemErr.error,
                   title: 'Item Validation Error',
                   indicator: 'red',
-                  itemCode: itemErr.item_code
+                  itemCode: itemErr.item_code,
+                  idx: itemErr.idx !== undefined ? Number(itemErr.idx) : undefined
                 })
               }
             })
@@ -1796,14 +1830,13 @@ const ActionButtons: React.FC<Props> = ({
       <div className="p-3 bg-white/40 backdrop-blur border-b border-white/20">
         <div className="flex justify-between items-center">
           <div className="flex gap-4">
-            {/* Save Button - Show if user has sales privilege */}
-            {currentUserPrivileges?.sales && currentTab?.status !== 'confirmed' && currentTab?.status !== 'paid' && (
-              <Button
-                data-testid="save-button"
-                className="px-2 py-2 bg-gradient-to-r from-yellow-400 to-yellow-500 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs"
-                disabled={!currentTab?.isEdited || isSaving || isItemTableEditing}
-                onClick={handleSave}
-              >
+            {/* Save Button - Always show, disable based on conditions */}
+            <Button
+              data-testid="save-button"
+              className="px-2 py-2 bg-gradient-to-r from-yellow-400 to-yellow-500 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!currentUserPrivileges?.sales || currentTab?.status === 'confirmed' || currentTab?.status === 'paid' || !currentTab?.isEdited || isSaving || isItemTableEditing}
+              onClick={handleSave}
+            >
                 {isSaving ? (
                   <>
                     <i className="fas fa-spinner fa-spin text-lg"></i>
@@ -1820,38 +1853,33 @@ const ActionButtons: React.FC<Props> = ({
                     </span>
                   </>
                 )}
-              </Button>
-            )}
+            </Button>
 
-            {/* Confirm and Pay Buttons - Show if user has billing privilege */}
-            {currentUserPrivileges?.billing && currentTab?.status !== 'confirmed' && currentTab?.status !== 'paid' && (
-              <Button
-                className="px-2 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs"
-                disabled={isItemTableEditing}
-                onClick={handleConfirm}
-              >
+            {/* Confirm Button - Always show, disable based on conditions */}
+            <Button
+              className="px-2 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!currentUserPrivileges?.billing || currentTab?.status === 'confirmed' || currentTab?.status === 'paid' || isItemTableEditing}
+              onClick={handleConfirm}
+            >
                 <svg className="w-4 h-4" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="paper-plane" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="currentColor">
                   <path d="M498.1 5.6c10.1 7 15.4 19.1 13.5 31.2l-64 416c-1.5 9.7-7.4 18.2-16 23s-18.9 5.4-28 1.6L284 427.7l-68.5 74.1c-8.9 9.7-22.9 12.9-35.2 8.1S160 493.2 160 480V396.4c0-4 1.5-7.8 4.2-10.7L331.8 202.8c5.8-6.3 5.6-16-.4-22s-15.7-6.4-22-.7L106 360.8 17.7 316.6C7.1 311.3 .3 300.7 0 288.9s5.9-22.8 16.1-28.7l448-256c10.7-6.1 23.9-5.5 34 1.4z"></path>
                 </svg>
-                Confirm{' '}
-                <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+Shift+S</span>
-              </Button>
-            )}
-            {currentUserPrivileges?.billing && (() => {
+              Confirm{' '}
+              <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+Shift+S</span>
+            </Button>
+            
+            {/* Pay Button - Always show, disable based on conditions */}
+            {(() => {
               // Check if outstanding_amount is 0.0 in linked_invoices[0]
               const linkedInvoices = currentTab?.orderData?.linked_invoices
               const firstLinkedInvoice = Array.isArray(linkedInvoices) && linkedInvoices.length > 0 ? linkedInvoices[0] : null
               const outstandingAmount = firstLinkedInvoice?.outstanding_amount
-              const shouldHidePayButton = outstandingAmount === 0.0 || outstandingAmount === 0
-              
-              if (shouldHidePayButton) {
-                return null
-              }
+              const shouldDisablePayButton = !currentUserPrivileges?.billing || outstandingAmount === 0.0 || outstandingAmount === 0
               
               return (
                 <Button
-                  className="px-2 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs"
-                  disabled={isItemTableEditing}
+                  className="px-2 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={shouldDisablePayButton || isItemTableEditing}
                   onClick={handlePay}
                 >
                   <svg className="w-4 h-4" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="credit-card" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512" fill="currentColor">
@@ -1863,25 +1891,24 @@ const ActionButtons: React.FC<Props> = ({
               )
             })()}
 
-            {/* Return Button - Show if user has return privilege */}
-            {currentUserPrivileges?.return && currentTab?.orderData?.is_fully_returned !== 1 && (
-              <Button
-                data-testid="return-button"
-                className="relative px-2 py-2 bg-gradient-to-r from-orange-500 to-orange-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs"
-                onClick={handleReturn}
-              >
+            {/* Return Button - Always show, disable based on conditions */}
+            <Button
+              data-testid="return-button"
+              className="relative px-2 py-2 bg-gradient-to-r from-orange-500 to-orange-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!currentUserPrivileges?.return || currentTab?.orderData?.is_fully_returned === 1}
+              onClick={handleReturn}
+            >
                 {typeof currentTab?.orderData?.return_count === 'number' && currentTab.orderData.return_count > 0 && (
                   <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-white text-orange-600 text-[10px] font-bold flex items-center justify-center shadow">
                     {currentTab.orderData.return_count}
                   </span>
                 )}
-                <svg className="w-4 h-4" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="arrow-rotate-left" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="currentColor">
-                  <path d="M125.7 160H176c17.7 0 32 14.3 32 32s-14.3 32-32 32H48c-17.7 0-32-14.3-32-32V64c0-17.7 14.3-32 32-32s32 14.3 32 32v51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
-                </svg>
-                Return{' '}
-                <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+R</span>
-              </Button>
-            )}
+              <svg className="w-4 h-4" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="arrow-rotate-left" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="currentColor">
+                <path d="M125.7 160H176c17.7 0 32 14.3 32 32s-14.3 32-32 32H48c-17.7 0-32-14.3-32-32V64c0-17.7 14.3-32 32-32s32 14.3 32 32v51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+              </svg>
+              Return{' '}
+              <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+R</span>
+            </Button>
           </div>
           <div className="text-sm font-semibold text-gray-700">
             {/* Order #: {currentTab?.orderId || 'New Order'} | Items: {cartItems.length} */}
@@ -1891,7 +1918,13 @@ const ActionButtons: React.FC<Props> = ({
 
       {/* Payment / Confirm Dialog */}
       <Dialog open={!!open} onOpenChange={(v) => setOpen(v ? open || 'confirm' : false)}>
-        <DialogContent className="max-w-4xl w-[90vw] bg-white border-2 shadow-2xl">
+        <DialogContent 
+          className="max-w-4xl w-[90vw] bg-white border-2 shadow-2xl"
+          onOpenAutoFocus={(e) => {
+            e.preventDefault()
+            // Focus will be handled by useEffect
+          }}
+        >
           <DialogHeader className="pb-4">
             <DialogTitle className="text-xl font-bold text-gray-800">
               {open === 'pay' ? 'Payment' : 'Confirm'}
@@ -1928,7 +1961,7 @@ const ActionButtons: React.FC<Props> = ({
             <div>
               <div className="text-sm font-medium text-gray-700 mb-2">Payment Mode</div>
               <Select value={mode} onValueChange={setMode}>
-                <SelectTrigger className="w-full text-lg py-3">
+                <SelectTrigger className="w-full text-sm py-3">
                   <SelectValue placeholder="Select mode" />
                 </SelectTrigger>
                 <SelectContent className="bg-white border-gray-200 shadow-lg">
@@ -1943,6 +1976,7 @@ const ActionButtons: React.FC<Props> = ({
             <div>
               <div className="text-sm font-medium text-gray-700 mb-2">Amount</div>
               <Input
+                ref={amountInputRef}
                 type="number"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
