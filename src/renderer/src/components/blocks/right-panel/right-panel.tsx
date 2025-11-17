@@ -4464,7 +4464,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                           console.log('🔄 Refreshing customer details after edit - response:', detailsRes)
                           
                           // Safely extract customer data - ensure it's a proper customer object, not a response wrapper
-                          let customerData = null
+                          let customerData: any = null
                           if (detailsRes?.data?.data) {
                             // Check if data.data is a valid customer object (has customer_name or name property)
                             if (detailsRes.data.data && typeof detailsRes.data.data === 'object' && 
