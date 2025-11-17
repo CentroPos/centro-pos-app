@@ -49,6 +49,7 @@ interface DueInvoice {
 interface PaymentVoucher {
   name: string
   party: string
+  party_name?: string
   posting_date: string
   paid_amount: number
   status: string
@@ -404,6 +405,7 @@ const PaymentTab: React.FC = () => {
         const vouchers = response.data.data.map((voucher: any) => ({
           name: voucher.name || '',
           party: voucher.party || '',
+          party_name: voucher.party_name || voucher.party || '',
           posting_date: voucher.posting_date || '',
           paid_amount: voucher.paid_amount || 0,
           status: voucher.status || '',
@@ -1090,7 +1092,7 @@ const PaymentTab: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex justify-between items-center mb-2">
-                    <span className="text-gray-600 font-medium">Party: {voucher.party}</span>
+                    <span className="text-gray-600 font-medium">{voucher.party_name || voucher.party}</span>
                     <span className="font-bold text-green-600 text-sm">
                       {currencySymbol} {voucher.paid_amount.toFixed(2)}
                     </span>

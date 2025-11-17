@@ -229,11 +229,60 @@ const ActionButtons: React.FC<Props> = ({
   const items = getCurrentTabItems()
   const currentTab = getCurrentTab()
   const globalDiscountPercent = getCurrentTabGlobalDiscount()
-  // Load Amount Due from customer insights when dialog opens
+  
+  // Fetch order details when tab is opened/selected (for previously opened orders)
+  useEffect(() => {
+    const fetchOrderDetails = async () => {
+      if (!currentTab?.orderId || !currentTab?.id) return
+      
+      try {
+        console.log('📋 Fetching order details for tab:', currentTab.id, 'Order ID:', currentTab.orderId)
+        const res = await window.electronAPI?.proxy?.request({
+          url: '/api/method/centro_pos_apis.api.order.get_sales_order_details',
+          params: {
+            sales_order_id: currentTab.orderId
+          },
+          method: 'GET'
+        })
+        
+        if (res?.data?.data && currentTab.id) {
+          const orderData = res.data.data
+          const docstatus = Number(orderData.docstatus) || null
+          
+          console.log('📋 Order details fetched for tab:', {
+            tabId: currentTab.id,
+            orderId: currentTab.orderId,
+            docstatus: docstatus,
+            isConfirmed: docstatus === 1
+          })
+          
+          // Update orderData to refresh status
+          updateTabOrderData(currentTab.id, orderData)
+          
+          // Update tab status based on docstatus
+          if (docstatus === 1) {
+            setTabStatus(currentTab.id, 'confirmed')
+          }
+        }
+      } catch (e) {
+        console.error('Failed to fetch order details for tab:', e)
+      }
+    }
+    
+    // Fetch when orderId exists (order is created)
+    if (currentTab?.orderId) {
+      fetchOrderDetails()
+    }
+  }, [currentTab?.orderId, currentTab?.id])
+  
+  // Load Amount Due from customer insights API
+  // If docstatus = 1, calculate as: Amount Due = (fetched Amount Due) - Order Amount
+  // Otherwise, use fetched Amount Due as is
   useEffect(() => {
     let cancelled = false
     const fetchAmountDue = async () => {
       try {
+        // Always fetch from customer insights API
         // Determine customer id
         let customerId = currentTab?.customer?.customer_id
         if (!customerId && currentTab?.customer?.name) {
@@ -245,13 +294,36 @@ const ActionButtons: React.FC<Props> = ({
           const match = list.find((c: any) => c.customer_name === currentTab?.customer?.name)
           customerId = match?.name
         }
-        if (!customerId) return
+        if (!customerId) {
+          if (!cancelled) setAmountDue('0.00')
+          return
+        }
+        
         const insightsRes = await window.electronAPI?.proxy?.request({
           url: '/api/method/centro_pos_apis.api.customer.customer_amount_insights',
           params: { customer_id: customerId }
         })
-        const due = Number(insightsRes?.data?.data?.amount_due ?? 0)
-        if (!cancelled) setAmountDue(due.toFixed(2))
+        const fetchedAmountDue = Number(insightsRes?.data?.data?.amount_due ?? 0)
+        
+        // Check if order is confirmed (docstatus = 1)
+        const docstatus = currentTab?.orderData ? Number(currentTab.orderData.docstatus) : null
+        const isConfirmed = docstatus === 1
+        
+        if (isConfirmed) {
+          // For confirmed orders: Amount Due = (fetched Amount Due) - Order Amount
+          const orderAmt = parseFloat(orderAmount || '0') || 0
+          const calculatedAmountDue = Math.max(0, fetchedAmountDue - orderAmt)
+          
+          console.log('📋 Confirmed order - Fetched Amount Due from API:', fetchedAmountDue)
+          console.log('📋 Confirmed order - Order Amount:', orderAmt)
+          console.log('📋 Confirmed order - Calculated Amount Due (fetched - order):', calculatedAmountDue)
+          
+          if (!cancelled) setAmountDue(calculatedAmountDue.toFixed(2))
+        } else {
+          // For draft orders: Use fetched Amount Due as is
+          console.log('📋 Draft order - Amount Due from API:', fetchedAmountDue)
+          if (!cancelled) setAmountDue(fetchedAmountDue.toFixed(2))
+        }
       } catch (err) {
         console.error('Failed to load amount due:', err)
         if (!cancelled) setAmountDue('0.00')
@@ -259,7 +331,7 @@ const ActionButtons: React.FC<Props> = ({
     }
     if (open) fetchAmountDue()
     return () => { cancelled = true }
-  }, [open, currentTab?.customer?.customer_id, currentTab?.customer?.name])
+  }, [open, currentTab?.customer?.customer_id, currentTab?.customer?.name, currentTab?.orderId, currentTab?.orderData?.docstatus, orderAmount])
 
   // Load POS profile data
   const loadPOSProfile = async () => {
@@ -272,38 +344,48 @@ const ActionButtons: React.FC<Props> = ({
       console.log('📋 POS profile API response in ActionButtons:', response)
       console.log('📋 Full response structure in ActionButtons:', JSON.stringify(response, null, 2))
 
-      if (response?.data?.data) {
-        const profileData = response.data.data
-        console.log('📋 Profile data in ActionButtons:', profileData)
-        console.log('📋 Payments array in ActionButtons:', profileData.payments)
-
-        // Extract payment modes from payments array
-        if (profileData.payments && Array.isArray(profileData.payments)) {
-          console.log(
-            '📋 Processing payments array with length in ActionButtons:',
-            profileData.payments.length
-          )
-          const modes = profileData.payments.map((payment: any) => {
-            console.log('📋 Processing payment in ActionButtons:', payment)
-            return payment.mode_of_payment
-          }) as string[]
-          // Remove duplicates and filter out any undefined/null values
-          const uniqueModes = [...new Set(modes.filter((mode) => mode && mode.trim() !== ''))]
-          console.log('💳 Payment modes from profile in ActionButtons:', modes)
-          console.log('💳 Unique payment modes in ActionButtons:', uniqueModes)
-          console.log(
-            '💳 Number of payment methods found in ActionButtons:',
-            profileData.payments.length
-          )
-          setPaymentModes(uniqueModes)
-        } else {
-          console.log('📋 No payments array found or not an array in ActionButtons')
-        }
-
-        console.log('✅ Successfully loaded POS profile data in ActionButtons')
+      // Handle 404 gracefully - don't throw, just use defaults
+      if (!response?.data?.data) {
+        console.warn('⚠️ POS profile not found (404) - using default payment modes')
+        return // Use default payment modes already set in useState
       }
-    } catch (error) {
+
+      const profileData = response.data.data
+      console.log('📋 Profile data in ActionButtons:', profileData)
+      console.log('📋 Payments array in ActionButtons:', profileData.payments)
+
+      // Extract payment modes from payments array
+      if (profileData.payments && Array.isArray(profileData.payments)) {
+        console.log(
+          '📋 Processing payments array with length in ActionButtons:',
+          profileData.payments.length
+        )
+        const modes = profileData.payments.map((payment: any) => {
+          console.log('📋 Processing payment in ActionButtons:', payment)
+          return payment.mode_of_payment
+        }) as string[]
+        // Remove duplicates and filter out any undefined/null values
+        const uniqueModes = [...new Set(modes.filter((mode) => mode && mode.trim() !== ''))]
+        console.log('💳 Payment modes from profile in ActionButtons:', modes)
+        console.log('💳 Unique payment modes in ActionButtons:', uniqueModes)
+        console.log(
+          '💳 Number of payment methods found in ActionButtons:',
+          profileData.payments.length
+        )
+        setPaymentModes(uniqueModes)
+      } else {
+        console.log('📋 No payments array found or not an array in ActionButtons')
+      }
+
+      console.log('✅ Successfully loaded POS profile data in ActionButtons')
+    } catch (error: any) {
+      // Handle 404 errors gracefully - don't let them propagate to React error boundary
+      if (error?.response?.status === 404 || error?.response?.statusCode === 404) {
+        console.warn('⚠️ POS profile endpoint not found (404) - using default payment modes')
+        return // Use default payment modes already set in useState
+      }
       console.error('📋 Error loading POS profile in ActionButtons:', error)
+      // Don't throw - just log and use defaults
     }
   }
 
@@ -375,11 +457,9 @@ const ActionButtons: React.FC<Props> = ({
     return Number(rounded.toFixed(2))
   }
 
-  // Calculate order total - use rounded_total from order detail API if available
-  // For confirmed orders (docstatus = 1), always use API value
-  // For draft orders (docstatus != 1):
-  //   - If not edited (just saved), use API value
-  //   - If edited (user making changes), use real-time calculation
+  // Calculate order total
+  // For confirmed orders (docstatus = 1), always use outstanding_amount from linked_invoices[0]
+  // For draft orders (docstatus != 1), use calculated total from discount section
   const calculateOrderTotal = useCallback(() => {
     const normalize = (value: any) => {
       const num = Number(value)
@@ -391,6 +471,26 @@ const ActionButtons: React.FC<Props> = ({
     const isConfirmed = docstatus === 1
     const isEdited = currentTab?.isEdited ?? false
 
+    // If order is confirmed (docstatus = 1), use outstanding_amount from linked_invoices[0]
+    if (isConfirmed && hasSavedOrder) {
+      const linkedInvoices = currentTab?.orderData?.linked_invoices
+      let outstandingAmount: number | null = null
+      
+      if (linkedInvoices) {
+        if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
+          outstandingAmount = normalize(linkedInvoices[0]?.outstanding_amount)
+        } else if (typeof linkedInvoices === 'object' && !Array.isArray(linkedInvoices)) {
+          outstandingAmount = normalize((linkedInvoices as any)?.outstanding_amount)
+        }
+      }
+      
+      if (outstandingAmount !== null) {
+        console.log('📋 Using outstanding_amount for confirmed order:', outstandingAmount)
+        return outstandingAmount.toFixed(2)
+      }
+    }
+
+    // For draft orders, use calculated total from discount section
     const roundedTotal = normalize(currentTab?.orderData?.rounded_total)
     const docGrandTotal = normalize(currentTab?.orderData?.grand_total)
 
@@ -405,15 +505,13 @@ const ActionButtons: React.FC<Props> = ({
     }
 
     const serverTotal = roundedTotal ?? linkedGrandTotal ?? docGrandTotal
-    // Use API value if:
-    // 1. Order is confirmed (docstatus = 1), OR
-    // 2. Order is saved and not edited (just saved/updated)
-    if (hasSavedOrder && serverTotal !== null && (isConfirmed || !isEdited)) {
-      console.log('📋 Using server-provided rounded total:', serverTotal, isConfirmed ? '(confirmed)' : '(not edited)')
+    // Use API value if order is saved and not edited (just saved/updated)
+    if (hasSavedOrder && serverTotal !== null && !isEdited) {
+      console.log('📋 Using server-provided rounded total:', serverTotal, '(not edited)')
       return serverTotal.toFixed(2)
     }
 
-    console.log('📋 Using calculated total (server-rounded total unavailable)')
+    console.log('📋 Using calculated total from discount section')
     const untaxedSum = items.reduce((sum: number, it: any) => {
       const qty = Number(it.quantity || 0)
       const rate = Number(it.standard_rate || 0)
@@ -739,8 +837,8 @@ const ActionButtons: React.FC<Props> = ({
 
       // Get rounding enabled status
       const isRoundingEnabled = getCurrentTabRoundingEnabled()
-      // If round box is checked, disable_rounded_total = 1, else 0
-      const disable_rounded_total = isRoundingEnabled ? 1 : 0
+      // If round box is checked, disable_rounded_total = 0, else 1
+      const disable_rounded_total = isRoundingEnabled ? 0 : 1
 
       // Prepare order data
       const orderData: any = {
@@ -1133,19 +1231,23 @@ const ActionButtons: React.FC<Props> = ({
 
   // Order confirmation API function
   const handleOrderConfirmation = async (paymentAmount: number = 0) => {
-    if (!currentTab || !currentTab.orderId) {
-      toast.error('No order found. Please save the order first.', {
-        duration: 5000
-      })
-      return
-    }
+    // Set processing state at the very beginning to ensure consistent hook calls
+    setIsProcessingPayment(true)
+    
+    try {
+      if (!currentTab || !currentTab.orderId) {
+        toast.error('No order found. Please save the order first.', {
+          duration: 5000
+        })
+        return
+      }
 
-    if (!profile?.name) {
-      toast.error('POS profile not found. Please check your profile settings.', {
-        duration: 5000
-      })
-      return
-    }
+      if (!profile?.name) {
+        toast.error('POS profile not found. Please check your profile settings.', {
+          duration: 5000
+        })
+        return
+      }
 
     // Check if order is already confirmed (docstatus = 1)
     const isAlreadyConfirmed = currentTab?.orderData && Number(currentTab.orderData.docstatus) === 1
@@ -1196,7 +1298,6 @@ const ActionButtons: React.FC<Props> = ({
           toast.error('Invoice number not found. Cannot process payment.', {
             duration: 5000
           })
-          setIsProcessingPayment(false)
           return
         }
         
@@ -1230,7 +1331,6 @@ const ActionButtons: React.FC<Props> = ({
           toast.error('Customer not found. Cannot process payment.', {
             duration: 5000
           })
-          setIsProcessingPayment(false)
           return
         }
         
@@ -1372,7 +1472,6 @@ const ActionButtons: React.FC<Props> = ({
           handleServerErrorMessages(paymentEntryResponse?.data?._server_messages, '')
         }
         
-        setIsProcessingPayment(false)
         return
       } catch (paymentError: any) {
         console.error('💳 ===== ERROR CREATING PAYMENT ENTRY =====')
@@ -1385,14 +1484,13 @@ const ActionButtons: React.FC<Props> = ({
         console.error('💳 Server Messages:', paymentError?.response?.data?._server_messages)
         console.error('💳 ===== END ERROR =====')
         handleServerErrorMessages(paymentError?.response?.data?._server_messages, '')
-        setIsProcessingPayment(false)
         return
       }
     }
 
-    setIsProcessingPayment(true)
-    try {
-      console.log('🔄 ===== ORDER CONFIRMATION API CALL START =====')
+    // If we reach here, order is not already confirmed or payment amount is 0
+    // Proceed with order confirmation
+    console.log('🔄 ===== ORDER CONFIRMATION API CALL START =====')
       console.log('🔄 API Endpoint: /api/method/centro_pos_apis.api.order.order_confirmation')
       
       // Context Information
@@ -1922,6 +2020,54 @@ const ActionButtons: React.FC<Props> = ({
             updateTabOrderData(currentTab.id, doc)
             if (Number(doc.docstatus) === 1) {
               setTabStatus(currentTab.id, 'confirmed')
+              
+              // Update orderAmount to use outstanding_amount for confirmed orders
+              const linkedInvoices = doc.linked_invoices
+              let outstandingAmount = 0
+              
+              if (linkedInvoices) {
+                if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
+                  outstandingAmount = Number(linkedInvoices[0]?.outstanding_amount ?? 0)
+                } else if (typeof linkedInvoices === 'object' && !Array.isArray(linkedInvoices)) {
+                  outstandingAmount = Number((linkedInvoices as any)?.outstanding_amount ?? 0)
+                }
+              }
+              
+              // Update Order Amount to use outstanding_amount
+              setOrderAmount(outstandingAmount.toFixed(2))
+              
+              // Fetch Amount Due from customer insights API and calculate: Amount Due = (fetched) - Order Amount
+              try {
+                let customerId = currentTab?.customer?.customer_id
+                if (!customerId && currentTab?.customer?.name) {
+                  const listRes = await window.electronAPI?.proxy?.request({
+                    url: '/api/method/centro_pos_apis.api.customer.customer_list',
+                    params: { search_term: '', limit_start: 1, limit_page_length: 50 }
+                  })
+                  const list = listRes?.data?.data || []
+                  const match = list.find((c: any) => c.customer_name === currentTab?.customer?.name)
+                  customerId = match?.name
+                }
+                
+                if (customerId) {
+                  const insightsRes = await window.electronAPI?.proxy?.request({
+                    url: '/api/method/centro_pos_apis.api.customer.customer_amount_insights',
+                    params: { customer_id: customerId }
+                  })
+                  const fetchedAmountDue = Number(insightsRes?.data?.data?.amount_due ?? 0)
+                  
+                  // Calculate Amount Due = (fetched Amount Due) - Order Amount
+                  const calculatedAmountDue = Math.max(0, fetchedAmountDue - outstandingAmount)
+                  
+                  console.log('📋 Order confirmed - Fetched Amount Due from API:', fetchedAmountDue)
+                  console.log('📋 Order confirmed - Order Amount (outstanding_amount):', outstandingAmount)
+                  console.log('📋 Order confirmed - Calculated Amount Due (fetched - order):', calculatedAmountDue)
+                  
+                  setAmountDue(calculatedAmountDue.toFixed(2))
+                }
+              } catch (err) {
+                console.error('Failed to fetch amount due after confirmation:', err)
+              }
             }
             console.log('📋 Order details refreshed after confirm/pay. Outstanding amount:', doc?.linked_invoices?.[0]?.outstanding_amount)
           }
@@ -2044,7 +2190,15 @@ const ActionButtons: React.FC<Props> = ({
               data-testid="save-button"
               className="px-2 py-2 bg-gradient-to-r from-yellow-400 to-yellow-500 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={!currentUserPrivileges?.sales || currentTab?.status === 'confirmed' || currentTab?.status === 'paid' || !currentTab?.isEdited || isSaving || isItemTableEditing}
-              onClick={handleSave}
+              onClick={async () => {
+                // Wrap in try-catch to prevent errors from propagating to React error boundary
+                try {
+                  await handleSave()
+                } catch (error) {
+                  // Errors are already handled in handleSave
+                  console.error('Error in handleSave onClick:', error)
+                }
+              }}
             >
                 {isSaving ? (
                   <>
@@ -2064,10 +2218,10 @@ const ActionButtons: React.FC<Props> = ({
                 )}
             </Button>
 
-            {/* Confirm Button - Always show, disable based on conditions */}
+            {/* Confirm Button - Only enable if order is created (has orderId) */}
             <Button
               className="px-2 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={!currentUserPrivileges?.billing || currentTab?.status === 'confirmed' || currentTab?.status === 'paid' || isItemTableEditing}
+              disabled={!currentUserPrivileges?.billing || !currentTab?.orderId || currentTab?.status === 'confirmed' || currentTab?.status === 'paid' || isItemTableEditing}
               onClick={handleConfirm}
             >
                 <svg className="w-4 h-4" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="paper-plane" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="currentColor">
@@ -2077,13 +2231,16 @@ const ActionButtons: React.FC<Props> = ({
               <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+Shift+S</span>
             </Button>
             
-            {/* Pay Button - Always show, disable based on conditions */}
+            {/* Pay Button - Only enable if order is created (has orderId) */}
             {(() => {
               // Check if outstanding_amount is 0.0 in linked_invoices[0]
               const linkedInvoices = currentTab?.orderData?.linked_invoices
               const firstLinkedInvoice = Array.isArray(linkedInvoices) && linkedInvoices.length > 0 ? linkedInvoices[0] : null
               const outstandingAmount = firstLinkedInvoice?.outstanding_amount
-              const shouldDisablePayButton = !currentUserPrivileges?.billing || outstandingAmount === 0.0 || outstandingAmount === 0
+              // Check if order is confirmed (docstatus = 1)
+              const docstatus = currentTab?.orderData ? Number(currentTab.orderData.docstatus) : null
+              const isConfirmed = docstatus === 1
+              const shouldDisablePayButton = !currentUserPrivileges?.billing || !currentTab?.orderId || outstandingAmount === 0.0 || outstandingAmount === 0 || !isConfirmed
               
               return (
                 <Button
@@ -2100,12 +2257,26 @@ const ActionButtons: React.FC<Props> = ({
               )
             })()}
 
-            {/* Return Button - Always show, disable based on conditions */}
+            {/* Return Button - Only enable if order is confirmed (docstatus = 1) */}
             <Button
               data-testid="return-button"
               className="relative px-2 py-2 bg-gradient-to-r from-orange-500 to-orange-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={!currentUserPrivileges?.return || currentTab?.orderData?.is_fully_returned === 1}
-              onClick={handleReturn}
+              disabled={(() => {
+                // Check if order is confirmed (docstatus = 1)
+                const docstatus = currentTab?.orderData ? Number(currentTab.orderData.docstatus) : null
+                const isConfirmed = docstatus === 1
+                // Disable if: not confirmed OR no return privilege OR order is fully returned
+                return !currentUserPrivileges?.return || !isConfirmed || currentTab?.orderData?.is_fully_returned === 1
+              })()}
+              onClick={() => {
+                // Wrap in try-catch to prevent errors from propagating to React error boundary
+                try {
+                  handleReturn()
+                } catch (error) {
+                  console.error('Error in handleReturn onClick:', error)
+                  toast.error('Failed to open return modal. Please try again.')
+                }
+              }}
             >
                 {typeof currentTab?.orderData?.return_count === 'number' && currentTab.orderData.return_count > 0 && (
                   <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-white text-orange-600 text-[10px] font-bold flex items-center justify-center shadow">
@@ -2208,20 +2379,28 @@ const ActionButtons: React.FC<Props> = ({
           <DialogFooter className="pt-6">
             <Button
               onClick={async () => {
-                console.log('💳 Confirm/Pay clicked in dialog')
+                // Wrap in try-catch to prevent errors from propagating to React error boundary
+                try {
+                  console.log('💳 Confirm/Pay clicked in dialog')
 
-                // Get payment amount from dialog
-                const paymentAmount = parseFloat(amount) || 0
+                  // Get payment amount from dialog
+                  const paymentAmount = parseFloat(amount) || 0
 
-                // Call order confirmation API with payment amount from dialog
-                await handleOrderConfirmation(paymentAmount)
+                  // Call order confirmation API with payment amount from dialog
+                  await handleOrderConfirmation(paymentAmount)
 
-                // Reset form and close dialogs
-                setOpen(false)
-                setAmount('')
-                setMode('Cash')
-                setDate(getCurrentDate())
-                setIsConfirming(false)
+                  // Reset form and close dialogs (only if no error occurred)
+                  setOpen(false)
+                  setAmount('')
+                  setMode('Cash')
+                  setDate(getCurrentDate())
+                  setIsConfirming(false)
+                } catch (error) {
+                  // Errors are already handled in handleOrderConfirmation
+                  // Just ensure state is reset
+                  console.error('Error in Confirm/Pay onClick:', error)
+                  setIsProcessingPayment(false)
+                }
               }}
               disabled={isProcessingPayment}
               className={`px-8 py-3 text-lg font-semibold flex items-center gap-2 ${isProcessingPayment ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'} text-white`}

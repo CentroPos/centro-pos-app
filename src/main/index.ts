@@ -293,7 +293,29 @@ function setupAuthHandlers(): void {
       payload: { method?: string; url: string; params?: Record<string, any>; data?: any }
     ) => {
       try {
-        const url = new URL(`${apiBaseUrl}${payload.url.startsWith('/') ? '' : '/'}${payload.url}`)
+        // Construct URL properly - ensure we don't lose /api prefix
+        // If payload.url starts with /api, use it directly; otherwise prepend /api
+        let requestPath = payload.url
+        if (!requestPath.startsWith('/api/') && !requestPath.startsWith('/api')) {
+          // If URL doesn't start with /api, prepend it
+          requestPath = requestPath.startsWith('/') ? `/api${requestPath}` : `/api/${requestPath}`
+        }
+        
+        // Ensure apiBaseUrl doesn't have trailing slash
+        const baseUrl = apiBaseUrl.endsWith('/') ? apiBaseUrl.slice(0, -1) : apiBaseUrl
+        
+        // Construct full URL manually to avoid URL constructor issues
+        const fullUrl = `${baseUrl}${requestPath}`
+        const url = new URL(fullUrl)
+        
+        console.log('🔍 URL Construction Debug:', {
+          apiBaseUrl,
+          payloadUrl: payload.url,
+          requestPath,
+          fullUrl,
+          finalUrl: url.toString()
+        })
+        
         if (payload.params) {
           Object.entries(payload.params).forEach(([k, v]) => url.searchParams.append(k, String(v)))
         }

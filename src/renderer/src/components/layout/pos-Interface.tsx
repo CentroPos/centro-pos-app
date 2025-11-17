@@ -255,12 +255,13 @@ const POSInterface: React.FC = () => {
       posProfile,
       posProfileData: posProfile?.data,
       userEmail: user?.email,
-      hasData: !!posProfile?.data?.data
+      hasData: !!posProfile?.data
     })
     
-    if (posProfile?.data?.data) {
-      console.log('✅ Setting POS profile data:', posProfile.data.data)
-      setProfile(posProfile.data.data)
+    // usePosProfile now returns data directly (not nested in data.data.data)
+    if (posProfile?.data) {
+      console.log('✅ Setting POS profile data:', posProfile.data)
+      setProfile(posProfile.data)
       // Set current user privileges
       if (user?.email) {
         console.log('✅ Setting user privileges for:', user.email)
