@@ -6,8 +6,18 @@ import { getApiBaseUrl } from '@renderer/config/production'
 let API_BASE_URL = getApiBaseUrl()
 
 // Create axios instance
+// Ensure baseURL includes /api if it doesn't already
+const getBaseUrl = () => {
+  const base = API_BASE_URL
+  // If baseURL doesn't end with /api, add it
+  if (!base.endsWith('/api') && !base.endsWith('/api/')) {
+    return base.endsWith('/') ? `${base}api` : `${base}/api`
+  }
+  return base
+}
+
 const api: AxiosInstance = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: getBaseUrl(),
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json'
@@ -17,7 +27,14 @@ const api: AxiosInstance = axios.create({
 
 export const setFetchApiBaseUrl = (baseUrl: string) => {
   API_BASE_URL = baseUrl
-  api.defaults.baseURL = baseUrl
+  // Ensure baseURL includes /api if it doesn't already
+  const normalizedBaseUrl = (() => {
+    if (!baseUrl.endsWith('/api') && !baseUrl.endsWith('/api/')) {
+      return baseUrl.endsWith('/') ? `${baseUrl}api` : `${baseUrl}/api`
+    }
+    return baseUrl
+  })()
+  api.defaults.baseURL = normalizedBaseUrl
 }
 
 export const getFetchApiBaseUrl = () => API_BASE_URL
@@ -102,6 +119,20 @@ api.interceptors.response.use(
     if (data?.error === 'Session expired. Please login again.') {
       toast.error('Session expired. Please login again.')
       setTimeout(() => authStore.clearAuthData(), 5000)
+    }
+
+    // Handle 404 and 403 errors gracefully - don't log as critical errors for get_pos_profile
+    // This prevents React error boundary from catching and causing hook inconsistencies
+    if (error?.response?.status === 404 || error?.response?.status === 403) {
+      const url = error?.config?.url || ''
+      if (url.includes('get_pos_profile')) {
+        // Silently handle 404/403 for POS profile - it's optional
+        const status = error?.response?.status === 403 ? '403 (Forbidden)' : '404 (Not Found)'
+        console.warn(`⚠️ POS profile endpoint ${status}:`, url)
+        // Return a resolved promise with empty data instead of rejecting
+        // This prevents the error from propagating to React's error boundary
+        return Promise.resolve({ data: { data: null }, success: false })
+      }
     }
 
     console.error('API request failed:', error)

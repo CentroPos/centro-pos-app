@@ -85,6 +85,8 @@ const DiscountSection: React.FC<Props> = ({
     setIsRoundingEnabled(enabled)
     if (currentTab) {
       updateTabRoundingEnabled(currentTab.id, enabled)
+      // Mark tab as edited when rounding changes
+      setTabEdited(currentTab.id, true)
     }
   }
 

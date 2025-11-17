@@ -33,6 +33,15 @@ const PrintsTabContent: React.FC = () => {
   const prevInstantPrintUrlRef = useRef<string | null>(null)
   const printItemsCache = useRef<Record<string, any[]>>({})
   const pdfPreviewsCache = useRef<Record<string, string>>({})
+  const isMountedRef = useRef(true)
+  
+  // Track mount status to prevent state updates on unmounted component
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
   const getItemKey = (item: any) => `${item.report_title}-${item.doc_id || item.url}`
   const getFormatList = (item: any) => {
     const formats = Array.isArray(item.formats) && item.formats.length > 0 ? item.formats : []
@@ -97,6 +106,11 @@ const PrintsTabContent: React.FC = () => {
 
   // Load PDF preview for a specific item
   const loadPDFPreview = async (item: any, formatUrlOverride?: string) => {
+    // Don't proceed if component is unmounted
+    if (!isMountedRef.current) {
+      return
+    }
+    
     const itemKey = getItemKey(item)
     const formatUrl =
       formatUrlOverride || item.selected_format_url || getDefaultFormatUrl(item)
@@ -107,7 +121,7 @@ const PrintsTabContent: React.FC = () => {
     if (pdfPreviews[previewKey] || pdfPreviewsCache.current[previewKey]) {
       console.log('📄 PDF preview already cached for:', item.report_title)
       // Restore from cache if not in current state
-      if (!pdfPreviews[previewKey] && pdfPreviewsCache.current[previewKey]) {
+      if (!pdfPreviews[previewKey] && pdfPreviewsCache.current[previewKey] && isMountedRef.current) {
         setPdfPreviews((prev) => ({
           ...prev,
           [previewKey]: pdfPreviewsCache.current[previewKey]
@@ -145,10 +159,10 @@ const PrintsTabContent: React.FC = () => {
           uint8Array[2] === 0x44 && // D
           uint8Array[3] === 0x46 // F
 
-        if (isPDF) {
+        if (isPDF && isMountedRef.current) {
           const base64 = btoa(String.fromCharCode(...uint8Array))
-          // Force 100% zoom in Chromium PDF viewer to avoid auto-fit shrinking
-          const dataUrl = `data:application/pdf;base64,${base64}#zoom=100`
+          // Use zoom=fit to make PDF fit the container width and height
+          const dataUrl = `data:application/pdf;base64,${base64}#zoom=fit`
           setPdfPreviews((prev) => ({ ...prev, [previewKey]: dataUrl }))
           // Also save to persistent cache
           pdfPreviewsCache.current[previewKey] = dataUrl
@@ -178,7 +192,7 @@ const PrintsTabContent: React.FC = () => {
         }
       })
         .then(async (response) => {
-          if (response.ok) {
+          if (response.ok && isMountedRef.current) {
             const contentType = response.headers.get('content-type')
             if (contentType?.includes('application/pdf')) {
               const arrayBuffer = await response.arrayBuffer()
@@ -189,10 +203,10 @@ const PrintsTabContent: React.FC = () => {
                 uint8Array[1] === 0x50 && // P
                 uint8Array[2] === 0x44 && // D
                 uint8Array[3] === 0x46 // F
-              if (isPDF) {
+              if (isPDF && isMountedRef.current) {
                 const base64 = btoa(String.fromCharCode(...uint8Array))
-                // Force 100% zoom in Chromium PDF viewer for consistent preview
-                const dataUrl = `data:application/pdf;base64,${base64}#zoom=100`
+                // Use zoom=fit to make PDF fit the container width and height
+                const dataUrl = `data:application/pdf;base64,${base64}#zoom=fit`
                 setInstantPrintPreview(dataUrl)
               }
             }
@@ -202,12 +216,19 @@ const PrintsTabContent: React.FC = () => {
           console.log('📄 Error loading instant print preview:', error)
         })
     } else {
-      setInstantPrintPreview('')
+      if (isMountedRef.current) {
+        setInstantPrintPreview('')
+      }
     }
   }, [currentTab?.instantPrintUrl, refreshKey])
 
   // Set active tab when instant print URL is available or printItems change
   useEffect(() => {
+    // Don't update state if component is unmounted
+    if (!isMountedRef.current) {
+      return
+    }
+    
     const currentInstantPrintUrl = currentTab?.instantPrintUrl || null
     const instantPrintUrlJustSet = currentInstantPrintUrl && currentInstantPrintUrl !== prevInstantPrintUrlForSelectionRef.current
 
@@ -215,22 +236,30 @@ const PrintsTabContent: React.FC = () => {
     // This ensures navigation to Instant Print tab after these actions
     if (instantPrintUrlJustSet) {
       console.log('🖨️ Instant print URL just set, selecting Instant Print tab')
-      setActivePrintTab('instant-print')
+      if (isMountedRef.current) {
+        setActivePrintTab('instant-print')
+      }
       prevInstantPrintUrlForSelectionRef.current = currentInstantPrintUrl
       return
     }
 
     // If instant print URL exists and no tab is selected, select Instant Print
     if (currentTab?.instantPrintUrl && !activePrintTab) {
-      setActivePrintTab('instant-print')
+      if (isMountedRef.current) {
+        setActivePrintTab('instant-print')
+      }
       prevInstantPrintUrlForSelectionRef.current = currentInstantPrintUrl
     } else if (printItems.length > 0 && !activePrintTab && !currentTab?.instantPrintUrl) {
       // If no instant print URL, select first API tab
       const firstItemKey = getItemKey(printItems[0])
-      setActivePrintTab(firstItemKey)
+      if (isMountedRef.current) {
+        setActivePrintTab(firstItemKey)
+      }
     } else if (printItems.length === 0 && !activePrintTab) {
       // Default to Instant Print if no API tabs available
-      setActivePrintTab('instant-print')
+      if (isMountedRef.current) {
+        setActivePrintTab('instant-print')
+      }
     }
 
     // Update ref to track current instant print URL
@@ -266,17 +295,23 @@ const PrintsTabContent: React.FC = () => {
       if (preFetched && Array.isArray(preFetched) && preFetched.length > 0 && orderIdChanged && !instantPrintUrlChanged) {
         console.log('✅ Using pre-fetched print items from order')
         const normalizedPrefetched = preFetched.map(normalizePrintItem)
-        setPrintItems(normalizedPrefetched)
+        if (isMountedRef.current) {
+          setPrintItems(normalizedPrefetched)
+        }
         if (currentOrderId) {
           printItemsCache.current[currentOrderId] = normalizedPrefetched
         }
         // Auto-load PDF previews
-        preFetched.forEach((item: any, index: number) => {
-          const defaultFormat = getDefaultFormatUrl(item)
-          setTimeout(() => {
-            loadPDFPreview(item, defaultFormat)
-          }, index * 100)
-        })
+        if (isMountedRef.current) {
+          preFetched.forEach((item: any, index: number) => {
+            const defaultFormat = getDefaultFormatUrl(item)
+            setTimeout(() => {
+              if (isMountedRef.current) {
+                loadPDFPreview(item, defaultFormat)
+              }
+            }, index * 100)
+          })
+        }
         prevOrderIdRef.current = currentOrderId || null
         return
       }
@@ -284,9 +319,11 @@ const PrintsTabContent: React.FC = () => {
       // Check if we have cached data for this order (only if order ID didn't change and instant print URL didn't change)
       if (currentOrderId && printItemsCache.current[currentOrderId] && !orderIdChanged && !instantPrintUrlChanged) {
         console.log('🖨️ Using cached print items for order:', currentOrderId)
-        setPrintItems(printItemsCache.current[currentOrderId])
-        // Restore PDF previews from cache
-        setPdfPreviews(pdfPreviewsCache.current)
+        if (isMountedRef.current) {
+          setPrintItems(printItemsCache.current[currentOrderId])
+          // Restore PDF previews from cache
+          setPdfPreviews(pdfPreviewsCache.current)
+        }
         return
       }
 
@@ -304,13 +341,17 @@ const PrintsTabContent: React.FC = () => {
 
       if (!currentOrderId) {
         console.log('🖨️ No orderId, setting empty array')
-        setPrintItems([])
+        if (isMountedRef.current) {
+          setPrintItems([])
+        }
         return
       }
 
       console.log('🖨️ Starting API call for order:', currentTab.orderId)
-      setLoading(true)
-      setError(null)
+      if (isMountedRef.current) {
+        setLoading(true)
+        setError(null)
+      }
 
       try {
         console.log(
@@ -343,7 +384,11 @@ const PrintsTabContent: React.FC = () => {
           console.log('🖨️ Processed print items data:', data)
           console.log('🖨️ Data length:', data.length)
           const normalizedData = data.map(normalizePrintItem)
-          setPrintItems(normalizedData)
+          
+          // Only update state if component is still mounted
+          if (isMountedRef.current) {
+            setPrintItems(normalizedData)
+          }
 
           // Cache the print items
           if (currentOrderId) {
@@ -351,11 +396,13 @@ const PrintsTabContent: React.FC = () => {
           }
 
           // Auto-load PDF previews for all items (faster loading)
-          if (normalizedData.length > 0) {
+          if (normalizedData.length > 0 && isMountedRef.current) {
             normalizedData.forEach((item: any, index: number) => {
               const defaultFormat = item.selected_format_url || getDefaultFormatUrl(item)
               setTimeout(() => {
-                loadPDFPreview(item, defaultFormat)
+                if (isMountedRef.current) {
+                  loadPDFPreview(item, defaultFormat)
+                }
               }, index * 100)
             })
           }
@@ -364,7 +411,9 @@ const PrintsTabContent: React.FC = () => {
           console.log('🖨️ Response success was:', response?.success)
           console.log('🖨️ Response data was:', response?.data)
           console.log('🖨️ Response message was:', response?.message)
-          setPrintItems([])
+          if (isMountedRef.current) {
+            setPrintItems([])
+          }
         }
       } catch (err) {
         console.error('❌ Error fetching print items:', err)
@@ -373,10 +422,16 @@ const PrintsTabContent: React.FC = () => {
           stack: (err as any)?.stack,
           name: (err as any)?.name
         })
-        setError((err as any)?.message || 'Failed to fetch print items')
+        // Only update state if component is still mounted
+        if (isMountedRef.current) {
+          setError((err as any)?.message || 'Failed to fetch print items')
+        }
       } finally {
         console.log('🖨️ API call finished, setting loading to false')
-        setLoading(false)
+        // Only update state if component is still mounted
+        if (isMountedRef.current) {
+          setLoading(false)
+        }
       }
     }
 
@@ -428,6 +483,76 @@ const PrintsTabContent: React.FC = () => {
     }
   }, [activePrintTab, printItems, pdfPreviews])
 
+  // Calculate values needed for useHotkeys (MUST be before any conditional returns)
+  const isInstantPrintActive = activePrintTab === 'instant-print'
+  const selectedItem = printItems.find((item) => getItemKey(item) === activePrintTab)
+  const activeItemKey = selectedItem ? getItemKey(selectedItem) : ''
+  const activeFormatUrl = selectedItem
+    ? selectedItem.selected_format_url || getDefaultFormatUrl(selectedItem)
+    : ''
+  const activePreviewKey =
+    selectedItem && activeFormatUrl ? `${activeItemKey}-${activeFormatUrl}` : ''
+  const isPrintEnabled = isInstantPrintActive
+    ? !!instantPrintPreview
+    : !!(activePreviewKey && (pdfPreviews[activePreviewKey] || pdfPreviewsCache.current[activePreviewKey]))
+
+  // Handle print action (MUST be before any conditional returns)
+  const handlePrint = async () => {
+    try {
+      let pdfDataUrl = ''
+      if (isInstantPrintActive) {
+        pdfDataUrl = instantPrintPreview
+      } else if (selectedItem) {
+        const previewKey = activePreviewKey
+        pdfDataUrl = previewKey ? pdfPreviews[previewKey] : ''
+
+        if (!pdfDataUrl && previewKey) {
+          console.log('⏳ PDF preview not loaded yet, checking cache...')
+          const cachedPdfUrl = pdfPreviewsCache.current[previewKey]
+          if (cachedPdfUrl) {
+            console.log('📄 Found PDF in persistent cache, restoring...')
+            if (isMountedRef.current) {
+              setPdfPreviews((prev) => ({ ...prev, [previewKey]: cachedPdfUrl }))
+            }
+            pdfDataUrl = cachedPdfUrl
+          } else if (activeFormatUrl) {
+            console.log('⏳ Loading PDF preview now...')
+            await loadPDFPreview(selectedItem, activeFormatUrl)
+            await new Promise((resolve) => setTimeout(resolve, 1000))
+            pdfDataUrl = pdfPreviewsCache.current[previewKey] || pdfPreviews[previewKey]
+          }
+        }
+      }
+
+      if (pdfDataUrl) {
+        // Use the print function with silent error handling
+        const result = await window.electronAPI?.print.printPDF(pdfDataUrl)
+        console.log('🖨️ Print result:', result)
+
+        if (result?.success) {
+          console.log('✅ Print dialog opened successfully')
+        } else {
+          console.log('ℹ️ Print dialog may not have opened, but this is normal')
+        }
+      }
+    } catch (error: any) {
+      console.log('ℹ️ Print operation completed (errors are handled silently)')
+    }
+  }
+
+  // Keyboard shortcut for print (MUST be before any conditional returns)
+  useHotkeys(
+    'ctrl+shift+p',
+    (e) => {
+      if (isPrintEnabled) {
+        e.preventDefault()
+        console.log('⌨️ Ctrl+Shift+P pressed - triggering print')
+        handlePrint()
+      }
+    },
+    { enableOnFormTags: true }
+  )
+
   if (!currentTab?.orderId) {
     return (
       <div className="p-4">
@@ -472,74 +597,6 @@ const PrintsTabContent: React.FC = () => {
   console.log('🖨️ PrintsTabContent render - printItems type:', typeof printItems)
   console.log('🖨️ PrintsTabContent render - printItems is array:', Array.isArray(printItems))
   console.log('🖨️ PrintsTabContent render - printItems length:', printItems?.length)
-
-  const isInstantPrintActive = activePrintTab === 'instant-print'
-  const selectedItem = printItems.find((item) => getItemKey(item) === activePrintTab)
-  const activeItemKey = selectedItem ? getItemKey(selectedItem) : ''
-  const activeFormatUrl = selectedItem
-    ? selectedItem.selected_format_url || getDefaultFormatUrl(selectedItem)
-    : ''
-  const activePreviewKey =
-    selectedItem && activeFormatUrl ? `${activeItemKey}-${activeFormatUrl}` : ''
-
-  // Handle print action
-  const handlePrint = async () => {
-    try {
-      let pdfDataUrl = ''
-      if (isInstantPrintActive) {
-        pdfDataUrl = instantPrintPreview
-      } else if (selectedItem) {
-        const previewKey = activePreviewKey
-        pdfDataUrl = previewKey ? pdfPreviews[previewKey] : ''
-
-        if (!pdfDataUrl && previewKey) {
-          console.log('⏳ PDF preview not loaded yet, checking cache...')
-          const cachedPdfUrl = pdfPreviewsCache.current[previewKey]
-          if (cachedPdfUrl) {
-            console.log('📄 Found PDF in persistent cache, restoring...')
-            setPdfPreviews((prev) => ({ ...prev, [previewKey]: cachedPdfUrl }))
-            pdfDataUrl = cachedPdfUrl
-          } else if (activeFormatUrl) {
-            console.log('⏳ Loading PDF preview now...')
-            await loadPDFPreview(selectedItem, activeFormatUrl)
-            await new Promise((resolve) => setTimeout(resolve, 1000))
-            pdfDataUrl = pdfPreviewsCache.current[previewKey] || pdfPreviews[previewKey]
-          }
-        }
-      }
-
-      if (pdfDataUrl) {
-        // Use the print function with silent error handling
-        const result = await window.electronAPI?.print.printPDF(pdfDataUrl)
-        console.log('🖨️ Print result:', result)
-
-        if (result?.success) {
-          console.log('✅ Print dialog opened successfully')
-        } else {
-          console.log('ℹ️ Print dialog may not have opened, but this is normal')
-        }
-      }
-    } catch (error: any) {
-      console.log('ℹ️ Print operation completed (errors are handled silently)')
-    }
-  }
-
-  // Keyboard shortcut for print (CTRL+SHIFT+P)
-  const isPrintEnabled = isInstantPrintActive
-    ? !!instantPrintPreview
-    : !!(activePreviewKey && (pdfPreviews[activePreviewKey] || pdfPreviewsCache.current[activePreviewKey]))
-
-  useHotkeys(
-    'ctrl+shift+p',
-    (e) => {
-      if (isPrintEnabled) {
-        e.preventDefault()
-        console.log('⌨️ Ctrl+Shift+P pressed - triggering print')
-        handlePrint()
-      }
-    },
-    { enableOnFormTags: true }
-  )
 
   return (
     <div className="p-4 h-full flex flex-col">
@@ -651,12 +708,13 @@ const PrintsTabContent: React.FC = () => {
 
               {/* PDF Preview */}
               <div className="bg-gray-50 rounded border p-3 flex-1 overflow-hidden flex flex-col">
-                <div className="bg-white rounded border overflow-hidden flex-1">
+                <div className="bg-white rounded border overflow-hidden flex-1" style={{ display: 'flex', flexDirection: 'column' }}>
                   {isInstantPrintActive ? (
                     instantPrintPreview ? (
                       <iframe
                         src={instantPrintPreview}
                         className="w-full h-full border-0"
+                        style={{ minHeight: '100%', minWidth: '100%' }}
                         title="Instant Print"
                         onLoad={() => console.log('📄 Instant Print PDF preview loaded')}
                       />
@@ -703,6 +761,7 @@ const PrintsTabContent: React.FC = () => {
                     <iframe
                       src={pdfPreviews[activePreviewKey]}
                       className="w-full h-full border-0"
+                      style={{ minHeight: '100%', minWidth: '100%' }}
                       title={selectedItem.report_title}
                       onLoad={() => console.log('📄 PDF preview loaded:', selectedItem.report_title)}
                     />
