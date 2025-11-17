@@ -2030,6 +2030,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
   // Edit customer dialog state
   const [editOpen, setEditOpen] = useState(false)
   const [editSubmitting, setEditSubmitting] = useState(false)
+  const [editFormLoading, setEditFormLoading] = useState(false)
   const [editForm, setEditForm] = useState<any>({
     customer_id: '',
     customer_name: '',
@@ -3827,7 +3828,11 @@ const RightPanel: React.FC<RightPanelProps> = ({
                 <div className="text-sm text-red-600">{customerDetailsError}</div>
               </div>
             )}
-            {!customerDetailsLoading && !customerDetailsError && customerDetails && (
+            {!customerDetailsLoading && !customerDetailsError && customerDetails && 
+             typeof customerDetails === 'object' && 
+             (customerDetails.customer_name || customerDetails.name) && 
+             !customerDetails.status && 
+             !customerDetails.message && (
               <>
                 <div className="flex items-center gap-4 mb-6 justify-between">
                   <div className="flex items-center gap-4 flex-1">
@@ -3839,7 +3844,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                   <div className="flex-1">
                     <div className="flex items-center justify-between gap-3">
                       <h3 className="font-bold text-lg">
-                        {customerDetails.customer_name || ''}
+                        {String(customerDetails.customer_name || customerDetails.name || '')}
                       </h3>
                       <button
                         type="button"
@@ -3850,12 +3855,12 @@ const RightPanel: React.FC<RightPanelProps> = ({
                         <RefreshCcw className="h-4 w-4" />
                       </button>
                     </div>
-                    <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">VAT: {customerDetails.tax_id || 'Not Applicable'}</p>
-                    <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">Type: {customerDetails.customer_type || '—'}</p>
-                    <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">Mobile: {customerDetails.mobile_no || '—'}</p>
+                    <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">VAT: {String(customerDetails.tax_id || 'Not Applicable')}</p>
+                    <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">Type: {String(customerDetails.customer_type || '—')}</p>
+                    <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">Mobile: {String(customerDetails.mobile_no || '—')}</p>
                     <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">
                       ADDRESS:{' '}
-                      {customerDetails.primary_address
+                      {customerDetails.primary_address && typeof customerDetails.primary_address === 'string'
                         ? customerDetails.primary_address
                             .replace(/<br\s*\/?>/gi, ', ')
                             .replace(/<[^>]+>/g, '')
@@ -3867,26 +3872,105 @@ const RightPanel: React.FC<RightPanelProps> = ({
                   <div>
                     <button
                       className="px-3 py-1.5 text-sm border rounded hover:bg-gray-50"
-                      onClick={() => {
-                        // populate form
-                        setEditForm({
-                          customer_id: customerDetails.name || selectedCustomer?.name || selectedCustomer?.customer_id,
-                          customer_name: customerDetails.customer_name || '',
-                          customer_name_arabic: customerDetails.customer_name_arabic || '',
-                          email: customerDetails.email_id || '',
-                          mobile: customerDetails.mobile_no || '',
-                          customer_type: customerDetails.customer_type || 'Individual',
-                          tax_id: customerDetails.tax_id || '',
-                          customer_id_type_for_zatca: customerDetails.customer_id_type_for_zatca || '',
-                          customer_id_number_for_zatca: customerDetails.customer_id_number_for_zatca || '',
-                          address_line1: customerDetails.address_line1 || '',
-                          address_line2: customerDetails.address_line2 || '',
-                          building_number: customerDetails.building_number || customerDetails.state || '',
-                          city: customerDetails.city || '',
-                          pincode: customerDetails.pincode || '',
-                          country: customerDetails.country || ''
-                        })
-                        setEditOpen(true)
+                      onClick={async () => {
+                        // Fetch fresh customer details to ensure we have latest data
+                        const customerId = customerDetails.name || selectedCustomer?.name || selectedCustomer?.customer_id
+                        if (!customerId) {
+                          toast.error('Customer ID not found')
+                          return
+                        }
+
+                        try {
+                          setEditOpen(true) // Open dialog first to show loading state
+                          setEditFormLoading(true)
+                          
+                          // Fetch fresh customer details from API
+                          const detailsRes = await (window as any).electronAPI?.proxy?.request({
+                            url: `/api/resource/Customer/${customerId}`,
+                            params: {}
+                          })
+
+                          console.log('📋 Fetching customer details for edit - response:', detailsRes)
+
+                          const customerData = detailsRes?.data?.data || detailsRes?.data
+                          if (!customerData) {
+                            toast.error('Failed to load customer details')
+                            setEditOpen(false)
+                            return
+                          }
+
+                          // Helper function to parse address from primary_address HTML
+                          // Format: "987 Vadakkan House<br>\nAziziya<br>Riyadh<br>\n12345<br>Saudi Arabia<br>\n<br>\n"
+                          const parseAddressFromHTML = (htmlAddress: string) => {
+                            if (!htmlAddress || typeof htmlAddress !== 'string') {
+                              return { line1: '', line2: '', city: '', pincode: '', country: '', building: '' }
+                            }
+                            
+                            // Remove HTML tags and split by <br> tags (including newlines)
+                            const cleanAddress = htmlAddress
+                              .replace(/<br\s*\/?>/gi, '|')
+                              .replace(/<[^>]+>/g, '')
+                              .replace(/\n/g, '')
+                              .trim()
+                            
+                            const parts = cleanAddress
+                              .split('|')
+                              .map(p => p.trim())
+                              .filter(p => p && p.length > 0)
+                            
+                            // Typical structure: [address_line1, address_line2, city, pincode, country]
+                            // Building number might be in line2 or separate
+                            let building = ''
+                            const line2 = parts[1] || ''
+                            
+                            // Try to extract building number from line2 if it contains "building" or numbers
+                            if (line2.toLowerCase().includes('building')) {
+                              building = line2
+                            } else if (line2.match(/^\d+/)) {
+                              // If line2 starts with numbers, it might be building number
+                              building = line2
+                            }
+                            
+                            return {
+                              line1: parts[0] || '',
+                              line2: building ? '' : (parts[1] || ''), // Don't duplicate if building was extracted
+                              city: parts[2] || '',
+                              pincode: parts[3] || '',
+                              country: parts[4] || '',
+                              building: building
+                            }
+                          }
+
+                          // Parse address if primary_address exists
+                          const parsedAddress = customerData.primary_address 
+                            ? parseAddressFromHTML(customerData.primary_address)
+                            : { line1: '', line2: '', city: '', pincode: '', country: '', building: '' }
+
+                          // Populate form with mapped API response fields
+                          setEditForm({
+                            customer_id: customerData.name || customerId,
+                            customer_name: customerData.customer_name || '',
+                            customer_name_arabic: customerData.zatca_customer_name_in_arabic || customerData.customer_name_arabic || '',
+                            email: customerData.email_id || '',
+                            mobile: customerData.mobile_no || '',
+                            customer_type: customerData.customer_type || 'Individual',
+                            tax_id: customerData.tax_id || '',
+                            customer_id_type_for_zatca: customerData.custom_buyer_id_type || customerData.customer_id_type_for_zatca || '',
+                            customer_id_number_for_zatca: customerData.custom_buyer_id || customerData.customer_id_number_for_zatca || '',
+                            address_line1: customerData.address_line1 || parsedAddress.line1 || '',
+                            address_line2: customerData.address_line2 || parsedAddress.line2 || '',
+                            building_number: customerData.building_number || parsedAddress.building || '',
+                            city: customerData.city || parsedAddress.city || '',
+                            pincode: customerData.pincode || parsedAddress.pincode || '',
+                            country: customerData.country || parsedAddress.country || 'Saudi Arabia'
+                          })
+                          setEditFormLoading(false)
+                        } catch (error) {
+                          console.error('❌ Error loading customer details for edit:', error)
+                          toast.error('Failed to load customer details')
+                          setEditFormLoading(false)
+                          setEditOpen(false)
+                        }
                       }}
                     >
                       Edit
@@ -4014,6 +4098,13 @@ const RightPanel: React.FC<RightPanelProps> = ({
               <DialogHeader>
                 <DialogTitle>Edit Customer</DialogTitle>
               </DialogHeader>
+              {editFormLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  <span className="ml-3 text-sm text-gray-600">Loading customer details...</span>
+                </div>
+              ) : (
+              <>
               <div className="space-y-3 p-2">
                 {/* Customer ID - Keep as is */}
                 <div className="space-y-1">
@@ -4125,19 +4216,29 @@ const RightPanel: React.FC<RightPanelProps> = ({
                 </div>
                 </div>
 
-                {/* Row 4: ZATCA ID Number */}
-                <div className="space-y-1">
-                  <label className="text-sm font-medium">Customer ID Number for ZATCA{editForm.customer_type === 'Company' ? ' *' : ''}</label>
-                  <Input
-                    value={editForm.customer_id_number_for_zatca}
-                    onChange={(e) => setEditForm({ ...editForm, customer_id_number_for_zatca: e.target.value })}
-                    onKeyDown={(e) => {
-                      if (e.key === ' ') {
-                        e.stopPropagation()
-                      }
-                    }}
-                    placeholder="1010123456"
-                  />
+                {/* Row 4: ZATCA ID Number and Country */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Customer ID Number for ZATCA{editForm.customer_type === 'Company' ? ' *' : ''}</label>
+                    <Input
+                      value={editForm.customer_id_number_for_zatca}
+                      onChange={(e) => setEditForm({ ...editForm, customer_id_number_for_zatca: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === ' ') {
+                          e.stopPropagation()
+                        }
+                      }}
+                      placeholder="1010123456"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Country</label>
+                    <Input
+                      value={editForm.country}
+                      onChange={(e) => setEditForm({ ...editForm, country: e.target.value })}
+                      placeholder="Saudi Arabia"
+                    />
+                  </div>
                 </div>
 
                 {/* Row 5: Address Line 1 and 2 */}
@@ -4208,14 +4309,6 @@ const RightPanel: React.FC<RightPanelProps> = ({
                   </div>
                 </div>
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-medium">Country</label>
-                <Input
-                  value={editForm.country}
-                  onChange={(e) => setEditForm({ ...editForm, country: e.target.value })}
-                  placeholder="Saudi Arabia"
-                />
-              </div>
               <DialogFooter className="gap-2 mt-4">
                 <Button variant="outline" onClick={()=>setEditOpen(false)}>Cancel</Button>
                 <Button disabled={editSubmitting} onClick={async()=>{
@@ -4255,15 +4348,42 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       country: editForm.country || ''
                     }
                     
-                    console.log('📝 Editing customer - API payload:', apiPayload)
+                    console.log('📝 Editing customer - API call:', {
+                      method: 'POST',
+                      url: '/api/method/centro_pos_apis.api.customer.edit_customer',
+                      body: apiPayload
+                    })
                     
                     const res = await (window as any).electronAPI?.proxy?.request({
                       method:'POST',
                       url:'/api/method/centro_pos_apis.api.customer.edit_customer',
                       data: apiPayload
                     })
-                    console.log('✅ Edit customer response:', res)
-                    const serverMsg = res?.data?.data?.message || res?.data?.message
+                    
+                    console.log('✅ Edit customer response:', {
+                      status: res?.status,
+                      success: res?.success,
+                      data: res?.data,
+                      fullResponse: res
+                    })
+                    
+                    // Extract message safely - ensure it's always a string
+                    let serverMsg: string = 'Customer updated successfully'
+                    if (res?.data?.data) {
+                      if (typeof res.data.data === 'object' && res.data.data !== null) {
+                        // If data.data is an object, extract message from it
+                        if (typeof res.data.data.message === 'string') {
+                          serverMsg = res.data.data.message
+                        }
+                      } else if (typeof res.data.data === 'string') {
+                        serverMsg = res.data.data
+                      }
+                    } else if (res?.data?.message) {
+                      if (typeof res.data.message === 'string') {
+                        serverMsg = res.data.message
+                      }
+                    }
+                    
                     const serverError = res?.data?._server_messages
                     if (res?.success === false || res?.status >= 400 || serverError) {
                       let prettyErr = 'Update failed'
@@ -4321,11 +4441,14 @@ const RightPanel: React.FC<RightPanelProps> = ({
                           if (obj?.message) uiMsg = obj.message
                         }
                       } catch (_) {}
-                      toast.error(uiMsg)
+                      toast.error(typeof uiMsg === 'string' ? uiMsg : 'Failed to update customer')
                       setEditSubmitting(false)
                       return
                     }
-                    const msg = serverMsg || 'Customer updated successfully'
+                    
+                    // Ensure msg is always a string
+                    const msg = typeof serverMsg === 'string' ? serverMsg : 'Customer updated successfully'
+                    
                     // refresh details
                     if (selectedCustomer?.name || selectedCustomer?.customer_id || customerDetails?.name){
                       // trigger reload using existing loadCustomerDetails flow
@@ -4338,20 +4461,48 @@ const RightPanel: React.FC<RightPanelProps> = ({
                         const customerId = match?.name || customerDetails?.name
                         if (customerId){
                           const detailsRes = await (window as any).electronAPI?.proxy?.request({url:`/api/resource/Customer/${customerId}`, params:{}})
-                          setCustomerDetails(detailsRes?.data?.data || null)
+                          console.log('🔄 Refreshing customer details after edit - response:', detailsRes)
+                          
+                          // Safely extract customer data - ensure it's a proper customer object, not a response wrapper
+                          let customerData = null
+                          if (detailsRes?.data?.data) {
+                            // Check if data.data is a valid customer object (has customer_name or name property)
+                            if (detailsRes.data.data && typeof detailsRes.data.data === 'object' && 
+                                (detailsRes.data.data.customer_name || detailsRes.data.data.name)) {
+                              customerData = detailsRes.data.data
+                            }
+                          } else if (detailsRes?.data && typeof detailsRes.data === 'object' && 
+                                     (detailsRes.data.customer_name || detailsRes.data.name)) {
+                            // Fallback: check if data itself is the customer object
+                            customerData = detailsRes.data
+                          }
+                          
+                          // Only set if we have valid customer data (not a response wrapper object)
+                          if (customerData && !customerData.status && !customerData.message) {
+                            setCustomerDetails(customerData)
+                          } else {
+                            console.warn('⚠️ Invalid customer data structure received:', customerData)
+                          }
                         }
                         setCustomerDetailsLoading(false)
-                      })() }catch(e){}
+                      })() }catch(e){
+                        console.error('❌ Error refreshing customer details after edit:', e)
+                        setCustomerDetailsLoading(false)
+                      }
                     }
                     toast.success(msg)
                     setEditOpen(false)
                   }catch(err){
-                    toast.error('Failed to update customer')
+                    console.error('❌ Edit customer error:', err)
+                    const errorMsg = err instanceof Error ? err.message : 'Failed to update customer'
+                    toast.error(typeof errorMsg === 'string' ? errorMsg : 'Failed to update customer')
                   }finally{
                     setEditSubmitting(false)
                   }
                 }}>Save</Button>
               </DialogFooter>
+              </>
+              )}
             </DialogContent>
           </Dialog>
 
@@ -4972,7 +5123,13 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       return (
                         <div
                           key={index}
-                          className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200"
+                          className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200 cursor-pointer hover:shadow-sm transition"
+                          onClick={() => {
+                            const orderId = order.sales_order_id || order.sales_invoice_id || order.name
+                            if (orderId) {
+                              handleOpenOrder(String(orderId), true) // Skip confirm for returns tab
+                            }
+                          }}
                         >
                           {/* Order No and Date Row */}
                           <div className="flex justify-between items-center mb-2">

@@ -353,7 +353,11 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
         country: newCustomer.country || ''
       }
 
-      console.log('📝 Creating customer - API payload:', apiPayload)
+      console.log('📝 Creating customer - API call:', {
+        method: 'POST',
+        url: '/api/method/centro_pos_apis.api.customer.create_customer',
+        body: apiPayload
+      })
 
       // Call the API directly using proxy
       const response = await window.electronAPI?.proxy?.request({
@@ -362,7 +366,12 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
         data: apiPayload
       })
 
-      console.log('Create customer response:', response)
+      console.log('✅ Create customer response:', {
+        status: response?.status,
+        success: response?.success,
+        data: response?.data,
+        fullResponse: response
+      })
 
       // Check if the response indicates success (status 200)
       if (response?.status === 200) {
@@ -645,9 +654,9 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
             </DialogFooter>
           </div>
         ) : (
-          <>
+          <div className="flex flex-col flex-1 min-h-0">
             {/* Create Header */}
-            <div className="flex items-center justify-between mb-0">
+            <div className="flex items-center justify-between mb-0 flex-shrink-0">
               <Button variant="outline" size="sm" onClick={() => setView('search')}>
                 <ArrowLeft className="h-4 w-4 mr-1" />
                 Back
@@ -655,7 +664,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
             </div>
 
             {/* Create Form - Compact layout to fit in one window */}
-            <div className="space-y-3 p-2">
+            <div className="space-y-3 p-2 flex-1 overflow-y-auto min-h-0">
               {/* Row 1: Customer Name and Name in Arabic */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
@@ -796,24 +805,39 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                 </div>
               </div>
 
-              {/* Row 4: ZATCA ID Number */}
-              <div className="space-y-1">
-                <label className="text-sm font-medium">Customer ID Number for ZATCA{newCustomer.customer_type === 'Company' ? ' *' : ''}</label>
-                <Input
-                  value={newCustomer.customer_id_number_for_zatca}
-                  onChange={(e) =>
-                    setNewCustomer((p) => ({
-                      ...p,
-                      customer_id_number_for_zatca: e.target.value
-                    }))
-                  }
-                  onKeyDown={(e) => {
-                    if (e.key === ' ') {
-                      e.stopPropagation()
+              {/* Row 4: ZATCA ID Number and Country */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Customer ID Number for ZATCA{newCustomer.customer_type === 'Company' ? ' *' : ''}</label>
+                  <Input
+                    value={newCustomer.customer_id_number_for_zatca}
+                    onChange={(e) =>
+                      setNewCustomer((p) => ({
+                        ...p,
+                        customer_id_number_for_zatca: e.target.value
+                      }))
                     }
-                  }}
-                  placeholder="1010123456"
-                />
+                    onKeyDown={(e) => {
+                      if (e.key === ' ') {
+                        e.stopPropagation()
+                      }
+                    }}
+                    placeholder="1010123456"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Country</label>
+                  <Input
+                    value={newCustomer.country}
+                    onChange={(e) =>
+                      setNewCustomer((p) => ({
+                        ...p,
+                        country: e.target.value
+                      }))
+                    }
+                    placeholder="Saudi Arabia"
+                  />
+                </div>
               </div>
 
               {/* Row 5: Address Line 1 and 2 */}
@@ -908,24 +932,9 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                   />
                 </div>
               </div>
-
-              {/* Row 7: Country */}
-              <div className="space-y-1">
-                <label className="text-sm font-medium">Country</label>
-                <Input
-                  value={newCustomer.country}
-                  onChange={(e) =>
-                    setNewCustomer((p) => ({
-                      ...p,
-                      country: e.target.value
-                    }))
-                  }
-                  placeholder="Saudi Arabia"
-                />
-              </div>
             </div>
 
-            <DialogFooter className="gap-2 mt-4">
+            <DialogFooter className="gap-2 mt-4 flex-shrink-0 border-t pt-4">
               <Button
                 variant="outline"
                 onClick={() => setView('search')}
@@ -960,7 +969,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                 )}
               </Button>
             </DialogFooter>
-          </>
+          </div>
         )}
       </DialogContent>
     </Dialog>,

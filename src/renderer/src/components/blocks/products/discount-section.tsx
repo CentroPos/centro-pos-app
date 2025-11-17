@@ -1,6 +1,7 @@
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
 import { Checkbox } from '@renderer/components/ui/checkbox'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@renderer/components/ui/dialog'
 import { useMemo, useState, useRef, useEffect } from 'react'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { useHotkeys } from 'react-hotkeys-hook'
@@ -74,6 +75,9 @@ const DiscountSection: React.FC<Props> = ({
   const [vatPercentage, setVatPercentage] = useState(10)
   const isRoundingEnabledFromStore = getCurrentTabRoundingEnabled()
   const [isRoundingEnabled, setIsRoundingEnabled] = useState(isRoundingEnabledFromStore)
+  const [showDuplicateConfirm, setShowDuplicateConfirm] = useState(false)
+  const duplicateConfirmBtnRef = useRef<HTMLButtonElement>(null)
+  const duplicateCancelBtnRef = useRef<HTMLButtonElement>(null)
   
   // Sync local state with store
   useEffect(() => {
@@ -310,7 +314,13 @@ const DiscountSection: React.FC<Props> = ({
 
   // Duplicate current order tab
   const handleDuplicate = () => {
+    setShowDuplicateConfirm(true)
+  }
+
+  // Handle confirmed duplicate
+  const handleConfirmDuplicate = () => {
     duplicateCurrentTab()
+    setShowDuplicateConfirm(false)
   }
 
   // Hotkey: Ctrl+Shift+2
@@ -450,6 +460,58 @@ const DiscountSection: React.FC<Props> = ({
           onFocusChange={onZatcaBoxFocusChange}
         />
       )}
+
+      {/* Duplicate confirmation dialog */}
+      <Dialog open={showDuplicateConfirm} onOpenChange={(v) => {
+        if (!v) {
+          setShowDuplicateConfirm(false)
+        }
+      }}>
+        <DialogContent 
+          className="max-w-sm" 
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowLeft') {
+              e.preventDefault()
+              duplicateConfirmBtnRef.current?.focus()
+            } else if (e.key === 'ArrowRight') {
+              e.preventDefault()
+              duplicateCancelBtnRef.current?.focus()
+            } else if (e.key === 'Enter') {
+              e.preventDefault()
+              const activeElement = document.activeElement
+              if (activeElement instanceof HTMLButtonElement) {
+                activeElement.click()
+              }
+            }
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Duplicate Order?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600">
+            Do you want to duplicate the current order?
+          </p>
+          <DialogFooter>
+            <Button
+              ref={duplicateConfirmBtnRef}
+              onClick={handleConfirmDuplicate}
+              autoFocus
+              className="flex items-center gap-2"
+            >
+              Confirm
+            </Button>
+            <Button 
+              ref={duplicateCancelBtnRef} 
+              variant="outline" 
+              onClick={() => {
+                setShowDuplicateConfirm(false)
+              }}
+            >
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
