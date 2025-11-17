@@ -30,6 +30,22 @@ type Props = {
     errors: Array<{ message: string; title: string; indicator: string; itemCode: string; idx?: number }>
   ) => void
   onFocusItem?: (itemCode: string, idx?: number) => void
+  onZatcaResponses?: (
+    responses: Array<{
+      invoice_no?: string
+      status?: string
+      status_code?: string
+      response?: {
+        type?: string
+        code?: string
+        category?: string
+        message?: string
+        status?: string
+        [key: string]: any
+      }
+      [key: string]: any
+    }>
+  ) => void
 }
 
 // Helper function to format HTML content for display
@@ -166,7 +182,9 @@ const ActionButtons: React.FC<Props> = ({
   selectedPriceList = 'Standard Selling',
   onSaveCompleted,
   isItemTableEditing = false,
-  onInsufficientStockErrors
+  onInsufficientStockErrors,
+  onFocusItem,
+  onZatcaResponses
 }) => {
   // Get current date in local timezone (YYYY-MM-DD format)
   const getCurrentDate = () => {
@@ -719,6 +737,11 @@ const ActionButtons: React.FC<Props> = ({
       // Get reservation status
       const isReserved = getCurrentTabReservation()
 
+      // Get rounding enabled status
+      const isRoundingEnabled = getCurrentTabRoundingEnabled()
+      // If round box is checked, disable_rounded_total = 1, else 0
+      const disable_rounded_total = isRoundingEnabled ? 1 : 0
+
       // Prepare order data
       const orderData: any = {
         customer: finalCustomerId,
@@ -728,7 +751,8 @@ const ActionButtons: React.FC<Props> = ({
         additional_discount_percentage: globalDiscountPercent, // Global discount from bottom section
         items: mappedItems,
         custom_stock_adjustment_sources: customStockAdjustmentSources,
-        is_reserved: isReserved
+        is_reserved: isReserved,
+        disable_rounded_total: disable_rounded_total
       }
 
       // Add Other Details fields if present
@@ -1130,9 +1154,12 @@ const ActionButtons: React.FC<Props> = ({
     if (isAlreadyConfirmed && paymentAmount > 0) {
       try {
         console.log('💳 ===== ORDER ALREADY CONFIRMED, CALLING PAYMENT ENTRY DIRECTLY =====')
+        console.log('💳 Payment Amount:', paymentAmount)
+        console.log('💳 Order ID:', currentTab.orderId)
         
         // Get invoice number from current tab or orderData
         let invoiceNumber = getCurrentTabInvoiceNumber()
+        console.log('💳 Invoice Number Retrieved:', invoiceNumber)
         if (!invoiceNumber && currentTab?.orderData?.linked_invoices) {
           const linkedInvoices = currentTab.orderData.linked_invoices
           if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
@@ -1173,9 +1200,33 @@ const ActionButtons: React.FC<Props> = ({
           return
         }
         
-        // Get customer ID from current tab
-        const customerId = currentTab?.customer?.customer_id || null
+        // Get customer ID from multiple sources: tab customer, orderData, or store helper
+        let customerId = currentTab?.customer?.customer_id || null
+        
+        // If not found in tab customer, try orderData
+        if (!customerId && currentTab?.orderData?.customer) {
+          customerId = currentTab.orderData.customer
+          console.log('💳 Customer ID found in orderData:', customerId)
+        }
+        
+        // If still not found, try getCurrentTabCustomer
         if (!customerId) {
+          const selectedCustomer = getCurrentTabCustomer()
+          customerId = selectedCustomer?.customer_id || null
+          if (customerId) {
+            console.log('💳 Customer ID found via getCurrentTabCustomer:', customerId)
+          }
+        }
+        
+        console.log('💳 Customer ID (final):', customerId)
+        console.log('💳 Customer sources checked:', {
+          tabCustomer: currentTab?.customer?.customer_id,
+          orderDataCustomer: currentTab?.orderData?.customer,
+          storeCustomer: getCurrentTabCustomer()?.customer_id
+        })
+        
+        if (!customerId) {
+          console.log('❌ Customer ID not found in any source, cannot proceed with payment')
           toast.error('Customer not found. Cannot process payment.', {
             duration: 5000
           })
@@ -1187,6 +1238,8 @@ const ActionButtons: React.FC<Props> = ({
         const selectedPostingDate = getCurrentTabPostingDate()
         const formattedDate = selectedPostingDate || date || getCurrentDate()
         console.log('📅 Using posting date for payment entry:', formattedDate, 'from store:', selectedPostingDate)
+        console.log('💳 Payment Mode:', mode)
+        console.log('💳 Payment Date:', date)
         
         const paymentEntryData = {
           payment_type: 'Receive',
@@ -1204,7 +1257,24 @@ const ActionButtons: React.FC<Props> = ({
           ]
         }
         
-        console.log('💳 Payment Entry Request Data:', JSON.stringify(paymentEntryData, null, 2))
+        console.log('💳 ===== CREATE PAYMENT ENTRY API CALL =====')
+        console.log('💳 API URL: /api/method/centro_pos_apis.api.order.create_payment_entry')
+        console.log('💳 Request Method: POST')
+        console.log('💳 Request Body:', JSON.stringify(paymentEntryData, null, 2))
+        console.log('💳 Full Request Data:', paymentEntryData)
+        console.log('💳 Payment Entry Data Details:', {
+          payment_type: paymentEntryData.payment_type,
+          party_type: paymentEntryData.party_type,
+          party: paymentEntryData.party,
+          posting_date: paymentEntryData.posting_date,
+          paid_amount: paymentEntryData.paid_amount,
+          mode_of_payment: paymentEntryData.mode_of_payment,
+          references_count: paymentEntryData.references.length,
+          reference_doctype: paymentEntryData.references[0]?.reference_doctype,
+          reference_name: paymentEntryData.references[0]?.reference_name,
+          allocated_amount: paymentEntryData.references[0]?.allocated_amount
+        })
+        console.log('💳 ===== END API CALL =====')
         
         const paymentEntryResponse = await window.electronAPI?.proxy?.request({
           method: 'POST',
@@ -1212,12 +1282,47 @@ const ActionButtons: React.FC<Props> = ({
           data: paymentEntryData
         })
         
-        console.log('💳 ===== PAYMENT ENTRY API RESPONSE =====')
+        console.log('💳 ===== CREATE PAYMENT ENTRY API RESPONSE =====')
         console.log('💳 Full Response Object:', paymentEntryResponse)
         console.log('💳 Response Status:', paymentEntryResponse?.status)
         console.log('💳 Response Success:', paymentEntryResponse?.success)
         console.log('💳 Response Data:', JSON.stringify(paymentEntryResponse?.data, null, 2))
-        console.log('💳 ===== END PAYMENT ENTRY API RESPONSE =====')
+        console.log('💳 Response Headers:', paymentEntryResponse?.headers)
+        
+        // Log full response message/details
+        if (paymentEntryResponse?.data?.message) {
+          console.log('💳 Response Message:', paymentEntryResponse.data.message)
+        }
+        if (paymentEntryResponse?.data?.data?.message) {
+          console.log('💳 Response Data Message:', paymentEntryResponse.data.data.message)
+        }
+        if (paymentEntryResponse?.data?.data) {
+          console.log('💳 Response Data Object:', paymentEntryResponse.data.data)
+        }
+        if (paymentEntryResponse?.data?._server_messages) {
+          console.log('💳 Server Messages:', paymentEntryResponse.data._server_messages)
+        }
+        if (paymentEntryResponse?.data?.error) {
+          console.log('💳 Response Error:', paymentEntryResponse.data.error)
+        }
+        if (paymentEntryResponse?.data?.exc) {
+          console.log('💳 Response Exception:', paymentEntryResponse.data.exc)
+        }
+        if (paymentEntryResponse?.data?.exc_type) {
+          console.log('💳 Exception Type:', paymentEntryResponse.data.exc_type)
+        }
+        
+        // Log complete response structure
+        console.log('💳 Complete Response Structure:', {
+          status: paymentEntryResponse?.status,
+          success: paymentEntryResponse?.success,
+          data: paymentEntryResponse?.data,
+          message: paymentEntryResponse?.data?.message || paymentEntryResponse?.data?.data?.message,
+          error: paymentEntryResponse?.data?.error,
+          serverMessages: paymentEntryResponse?.data?._server_messages
+        })
+        
+        console.log('💳 ===== END API RESPONSE =====')
         
         if (paymentEntryResponse?.success) {
           console.log('✅ Payment entry created successfully!')
@@ -1269,10 +1374,17 @@ const ActionButtons: React.FC<Props> = ({
         
         setIsProcessingPayment(false)
         return
-      } catch (paymentError) {
-        console.error('❌ ===== ERROR CREATING PAYMENT ENTRY =====')
-        console.error('❌ Error:', paymentError)
-        handleServerErrorMessages((paymentError as any)?.response?.data?._server_messages, '')
+      } catch (paymentError: any) {
+        console.error('💳 ===== ERROR CREATING PAYMENT ENTRY =====')
+        console.error('💳 Error Object:', paymentError)
+        console.error('💳 Error Message:', paymentError?.message)
+        console.error('💳 Error Stack:', paymentError?.stack)
+        console.error('💳 Error Response:', paymentError?.response)
+        console.error('💳 Error Response Data:', paymentError?.response?.data)
+        console.error('💳 Error Response Status:', paymentError?.response?.status)
+        console.error('💳 Server Messages:', paymentError?.response?.data?._server_messages)
+        console.error('💳 ===== END ERROR =====')
+        handleServerErrorMessages(paymentError?.response?.data?._server_messages, '')
         setIsProcessingPayment(false)
         return
       }
@@ -1369,6 +1481,36 @@ const ActionButtons: React.FC<Props> = ({
       console.log('📦 Response Data:', JSON.stringify(response?.data, null, 2))
       console.log('📦 Response Headers:', response?.headers)
       console.log('📦 ===== END API RESPONSE =====')
+
+      // Parse and handle ZATCA responses - check before success check to show even with warnings
+      // Check multiple possible locations for zatca_response
+      const zatcaResponseData = 
+        response?.data?.data?.zatca_response || 
+        response?.data?.zatca_response ||
+        response?.zatca_response
+      
+      console.log('📦 Checking for ZATCA response:', {
+        'response?.data?.data?.zatca_response': response?.data?.data?.zatca_response,
+        'response?.data?.zatca_response': response?.data?.zatca_response,
+        'response?.zatca_response': response?.zatca_response,
+        'fullResponseData': response?.data
+      })
+      
+      if (zatcaResponseData && onZatcaResponses) {
+        console.log('📦 ===== ZATCA RESPONSE FOUND =====')
+        console.log('📦 ZATCA Response Data:', JSON.stringify(zatcaResponseData, null, 2))
+        
+        // Handle both array and single object responses
+        const zatcaResponses = Array.isArray(zatcaResponseData) 
+          ? zatcaResponseData 
+          : [zatcaResponseData]
+        
+        console.log('📦 Parsed ZATCA Responses:', zatcaResponses)
+        console.log('📦 Calling onZatcaResponses with:', zatcaResponses)
+        onZatcaResponses(zatcaResponses)
+      } else {
+        console.log('📦 No ZATCA response found or onZatcaResponses not available')
+      }
 
       if (response?.success) {
         console.log('✅ ===== ORDER CONFIRMATION SUCCESS =====')
@@ -1489,10 +1631,33 @@ const ActionButtons: React.FC<Props> = ({
                 console.log('💳 ===== CREATING PAYMENT ENTRY FOR CONFIRMED ORDER =====')
                 console.log('💳 Order is confirmed, calling create_payment_entry API...')
                 
-                // Get customer ID from current tab
-                const customerId = currentTab?.customer?.customer_id || null
+                // Get customer ID from multiple sources: tab customer, orderData, or store helper
+                let customerId = currentTab?.customer?.customer_id || null
+                
+                // If not found in tab customer, try orderData
+                if (!customerId && orderData?.customer) {
+                  customerId = orderData.customer
+                  console.log('💳 Customer ID found in orderData (confirmed order):', customerId)
+                }
+                
+                // If still not found, try getCurrentTabCustomer
                 if (!customerId) {
-                  console.log('⚠️ No customer ID found, cannot create payment entry')
+                  const selectedCustomer = getCurrentTabCustomer()
+                  customerId = selectedCustomer?.customer_id || null
+                  if (customerId) {
+                    console.log('💳 Customer ID found via getCurrentTabCustomer (confirmed order):', customerId)
+                  }
+                }
+                
+                console.log('💳 Customer ID (final, confirmed order):', customerId)
+                console.log('💳 Customer sources checked (confirmed order):', {
+                  tabCustomer: currentTab?.customer?.customer_id,
+                  orderDataCustomer: orderData?.customer,
+                  storeCustomer: getCurrentTabCustomer()?.customer_id
+                })
+                
+                if (!customerId) {
+                  console.log('⚠️ No customer ID found in any source, cannot create payment entry')
                 } else {
                   // Get posting date from store (selected date from order details) or use payment date
                   const selectedPostingDate = getCurrentTabPostingDate()
@@ -1515,7 +1680,12 @@ const ActionButtons: React.FC<Props> = ({
                     ]
                   }
                   
-                  console.log('💳 Payment Entry Request Data:', JSON.stringify(paymentEntryData, null, 2))
+                  console.log('💳 ===== CREATE PAYMENT ENTRY API CALL (CONFIRMED ORDER) =====')
+                  console.log('💳 API URL: /api/method/centro_pos_apis.api.order.create_payment_entry')
+                  console.log('💳 Request Method: POST')
+                  console.log('💳 Request Body:', JSON.stringify(paymentEntryData, null, 2))
+                  console.log('💳 Full Request Data:', paymentEntryData)
+                  console.log('💳 ===== END API CALL =====')
                   
                   const paymentEntryResponse = await window.electronAPI?.proxy?.request({
                     method: 'POST',
@@ -1523,12 +1693,47 @@ const ActionButtons: React.FC<Props> = ({
                     data: paymentEntryData
                   })
                   
-                  console.log('💳 ===== PAYMENT ENTRY API RESPONSE =====')
+                  console.log('💳 ===== CREATE PAYMENT ENTRY API RESPONSE (CONFIRMED ORDER) =====')
                   console.log('💳 Full Response Object:', paymentEntryResponse)
                   console.log('💳 Response Status:', paymentEntryResponse?.status)
                   console.log('💳 Response Success:', paymentEntryResponse?.success)
                   console.log('💳 Response Data:', JSON.stringify(paymentEntryResponse?.data, null, 2))
-                  console.log('💳 ===== END PAYMENT ENTRY API RESPONSE =====')
+                  console.log('💳 Response Headers:', paymentEntryResponse?.headers)
+                  
+                  // Log full response message/details
+                  if (paymentEntryResponse?.data?.message) {
+                    console.log('💳 Response Message:', paymentEntryResponse.data.message)
+                  }
+                  if (paymentEntryResponse?.data?.data?.message) {
+                    console.log('💳 Response Data Message:', paymentEntryResponse.data.data.message)
+                  }
+                  if (paymentEntryResponse?.data?.data) {
+                    console.log('💳 Response Data Object:', paymentEntryResponse.data.data)
+                  }
+                  if (paymentEntryResponse?.data?._server_messages) {
+                    console.log('💳 Server Messages:', paymentEntryResponse.data._server_messages)
+                  }
+                  if (paymentEntryResponse?.data?.error) {
+                    console.log('💳 Response Error:', paymentEntryResponse.data.error)
+                  }
+                  if (paymentEntryResponse?.data?.exc) {
+                    console.log('💳 Response Exception:', paymentEntryResponse.data.exc)
+                  }
+                  if (paymentEntryResponse?.data?.exc_type) {
+                    console.log('💳 Exception Type:', paymentEntryResponse.data.exc_type)
+                  }
+                  
+                  // Log complete response structure
+                  console.log('💳 Complete Response Structure:', {
+                    status: paymentEntryResponse?.status,
+                    success: paymentEntryResponse?.success,
+                    data: paymentEntryResponse?.data,
+                    message: paymentEntryResponse?.data?.message || paymentEntryResponse?.data?.data?.message,
+                    error: paymentEntryResponse?.data?.error,
+                    serverMessages: paymentEntryResponse?.data?._server_messages
+                  })
+                  
+                  console.log('💳 ===== END API RESPONSE =====')
                   
                   if (paymentEntryResponse?.success) {
                     console.log('✅ Payment entry created successfully!')
@@ -1563,12 +1768,16 @@ const ActionButtons: React.FC<Props> = ({
                     // Don't show error toast as order confirmation already succeeded
                   }
                 }
-              } catch (paymentError) {
-                console.error('❌ ===== ERROR CREATING PAYMENT ENTRY =====')
-                console.error('❌ Error:', paymentError)
-                console.error('❌ Error message:', (paymentError as any)?.message)
-                console.error('❌ Error stack:', (paymentError as any)?.stack)
-                console.error('❌ ===== END PAYMENT ENTRY ERROR =====')
+              } catch (paymentError: any) {
+                console.error('💳 ===== ERROR CREATING PAYMENT ENTRY (CONFIRMED ORDER PATH) =====')
+                console.error('💳 Error Object:', paymentError)
+                console.error('💳 Error Message:', paymentError?.message)
+                console.error('💳 Error Stack:', paymentError?.stack)
+                console.error('💳 Error Response:', paymentError?.response)
+                console.error('💳 Error Response Data:', paymentError?.response?.data)
+                console.error('💳 Error Response Status:', paymentError?.response?.status)
+                console.error('💳 Server Messages:', paymentError?.response?.data?._server_messages)
+                console.error('💳 ===== END ERROR =====')
                 // Don't block the flow if payment entry fails - order is already confirmed
               }
             } else {

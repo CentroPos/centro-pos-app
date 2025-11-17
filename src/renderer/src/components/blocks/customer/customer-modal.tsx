@@ -771,10 +771,18 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     <SelectTrigger>
                       <SelectValue placeholder="Select ID type" />
                     </SelectTrigger>
-                    <SelectContent className="z-[9999] bg-white border border-gray-200 shadow-xl">
-                      <SelectItem value="CRN">CRN</SelectItem>
+                    <SelectContent className="z-[9999] bg-white border border-gray-200 shadow-xl max-h-[200px]">
                       <SelectItem value="TIN">TIN</SelectItem>
-                      <SelectItem value="VAT">VAT</SelectItem>
+                      <SelectItem value="CRN">CRN</SelectItem>
+                      <SelectItem value="MOM">MOM</SelectItem>
+                      <SelectItem value="MLS">MLS</SelectItem>
+                      <SelectItem value="700">700</SelectItem>
+                      <SelectItem value="SAG">SAG</SelectItem>
+                      <SelectItem value="NAT">NAT</SelectItem>
+                      <SelectItem value="GCC">GCC</SelectItem>
+                      <SelectItem value="IQA">IQA</SelectItem>
+                      <SelectItem value="PAS">PAS</SelectItem>
+                      <SelectItem value="OTH">OTH</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
