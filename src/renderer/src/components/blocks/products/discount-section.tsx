@@ -5,6 +5,7 @@ import { useMemo, useState, useRef, useEffect } from 'react'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { useHotkeys } from 'react-hotkeys-hook'
 import BottomErrorBox from '../common/bottom-error-box'
+import BottomZatcaBox from '../common/bottom-zatca-box'
 
 interface ErrorMessage {
   message: string
@@ -13,11 +14,29 @@ interface ErrorMessage {
   itemCode: string
 }
 
+interface ZatcaResponse {
+  invoice_no?: string
+  status?: string
+  status_code?: string
+  response?: {
+    type?: string
+    code?: string
+    category?: string
+    message?: string
+    status?: string
+    [key: string]: any
+  }
+  [key: string]: any
+}
+
 type Props = {
   errors?: ErrorMessage[]
   onCloseErrors?: () => void
   onErrorBoxFocusChange?: (isFocused: boolean) => void
   onFocusItem?: (itemCode: string, idx?: number) => void
+  zatcaResponses?: ZatcaResponse[]
+  onCloseZatcaResponses?: () => void
+  onZatcaBoxFocusChange?: (isFocused: boolean) => void
 }
 
 function roundToNearest(value: number, step = 0.05) {
@@ -29,7 +48,10 @@ const DiscountSection: React.FC<Props> = ({
   errors = [],
   onCloseErrors,
   onErrorBoxFocusChange,
-  onFocusItem
+  onFocusItem,
+  zatcaResponses = [],
+  onCloseZatcaResponses,
+  onZatcaBoxFocusChange
 }) => {
   const {
     getCurrentTabItems,
@@ -414,6 +436,16 @@ const DiscountSection: React.FC<Props> = ({
           onClose={onCloseErrors || (() => {})}
           onFocusChange={onErrorBoxFocusChange}
           onFocusItem={onFocusItem}
+        />
+      )}
+
+      {/* Bottom ZATCA Response Box */}
+      {zatcaResponses.length > 0 && (
+        <BottomZatcaBox
+          zatcaResponses={zatcaResponses}
+          isVisible={zatcaResponses.length > 0}
+          onClose={onCloseZatcaResponses || (() => {})}
+          onFocusChange={onZatcaBoxFocusChange}
         />
       )}
     </div>

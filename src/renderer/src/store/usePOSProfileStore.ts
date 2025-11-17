@@ -19,6 +19,7 @@ interface POSProfile {
   custom_allow_order_date_change?: number
   warehouse?: string
   custom_hide_cost_and_margin_info?: number
+  custom_show_purchase_history?: number
 }
 
 interface POSProfileStore {

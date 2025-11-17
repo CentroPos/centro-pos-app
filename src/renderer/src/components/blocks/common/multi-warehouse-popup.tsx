@@ -58,6 +58,7 @@ const MultiWarehousePopup: React.FC<MultiWarehousePopupProps> = ({
           const isSelected = warehouse.selected !== undefined ? warehouse.selected : (isDefaultWarehouse || false)
           
           // Pre-fill allocation: use existing allocated value if provided, otherwise calculate default
+          // If allocated is already set (from props), use it directly; otherwise calculate
           let initialAllocated = warehouse.allocated || 0
           if (initialAllocated === 0 && isSelected && isDefaultWarehouse) {
             // Only auto-fill if no existing allocation and it's the default warehouse

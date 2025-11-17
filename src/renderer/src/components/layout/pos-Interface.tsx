@@ -24,6 +24,21 @@ const POSInterface: React.FC = () => {
   const [isItemTableEditing, setIsItemTableEditing] = useState(false)
   const [insufficientStockErrors, setInsufficientStockErrors] = useState<Array<{message: string, title: string, indicator: string, itemCode: string}>>([])
   const [isErrorBoxFocused, setIsErrorBoxFocused] = useState(false)
+  const [zatcaResponses, setZatcaResponses] = useState<Array<{
+    invoice_no?: string
+    status?: string
+    status_code?: string
+    response?: {
+      type?: string
+      code?: string
+      category?: string
+      message?: string
+      status?: string
+      [key: string]: any
+    }
+    [key: string]: any
+  }>>([])
+  const [isZatcaBoxFocused, setIsZatcaBoxFocused] = useState(false)
 
   // Handle item selection - switch to product tab
   const handleItemSelect = (itemId: string) => {
@@ -40,6 +55,11 @@ const POSInterface: React.FC = () => {
   // Handle closing insufficient stock errors
   const handleCloseInsufficientStockErrors = () => {
     setInsufficientStockErrors([])
+  }
+
+  // Handle closing ZATCA responses
+  const handleCloseZatcaResponses = () => {
+    setZatcaResponses([])
   }
 
   // Handle focusing on a specific item from error box
@@ -460,6 +480,7 @@ const POSInterface: React.FC = () => {
           isItemTableEditing={isItemTableEditing}
           onInsufficientStockErrors={setInsufficientStockErrors}
           onFocusItem={handleFocusItem}
+          onZatcaResponses={setZatcaResponses}
         />
           {/* Fixed top: Order details */}
           <OrderDetails 
@@ -494,6 +515,9 @@ const POSInterface: React.FC = () => {
               onCloseErrors={handleCloseInsufficientStockErrors}
               onErrorBoxFocusChange={setIsErrorBoxFocused}
               onFocusItem={handleFocusItem}
+              zatcaResponses={zatcaResponses}
+              onCloseZatcaResponses={handleCloseZatcaResponses}
+              onZatcaBoxFocusChange={setIsZatcaBoxFocused}
             />
           </div>
         </div>

@@ -131,16 +131,57 @@ export const usePOSTabStore = create<POSTabStore>()(
           return
         }
         // Map API order items (if provided) to cart item structure used by POS
+        // Also convert custom_stock_adjustment_sources to warehouseAllocations format
+        const customStockAdjustmentSources = orderData?.custom_stock_adjustment_sources || []
+        
+        // Group custom_stock_adjustment_sources by item_code
+        const allocationsByItem: Record<string, Array<{ name: string; allocated: number; available?: number; selected: boolean }>> = {}
+        if (Array.isArray(customStockAdjustmentSources)) {
+          customStockAdjustmentSources.forEach((source: any) => {
+            if (source.item_code && source.source_warehouse && source.qty > 0) {
+              if (!allocationsByItem[source.item_code]) {
+                allocationsByItem[source.item_code] = []
+              }
+              allocationsByItem[source.item_code].push({
+                name: source.source_warehouse,
+                allocated: Number(source.qty || 0),
+                available: source.available || undefined,
+                selected: true
+              })
+            }
+          })
+        }
+        
         const mappedItems = Array.isArray(orderData?.items)
-          ? orderData.items.map((it: any) => ({
-              item_code: it.item_code,
-              item_name: it.item_name,
-              label: it.description || it.item_name,
-              quantity: Number(it.qty || it.quantity || 0),
-              uom: it.uom || it.stock_uom,
-              discount_percentage: Number(it.discount_percentage || 0),
-              standard_rate: Number(it.rate || it.price_list_rate || 0)
-            }))
+          ? orderData.items.map((it: any) => {
+              const itemCode = it.item_code
+              const baseItem = {
+                item_code: itemCode,
+                item_name: it.item_name,
+                label: it.description || it.item_name,
+                quantity: Number(it.qty || it.quantity || 0),
+                uom: it.uom || it.stock_uom,
+                discount_percentage: Number(it.discount_percentage || 0),
+                standard_rate: Number(it.rate || it.price_list_rate || 0)
+              }
+              
+              // Preserve warehouseAllocations if present, or convert from custom_stock_adjustment_sources
+              if (it.warehouseAllocations && Array.isArray(it.warehouseAllocations) && it.warehouseAllocations.length > 0) {
+                // Use existing warehouseAllocations from item
+                return {
+                  ...baseItem,
+                  warehouseAllocations: it.warehouseAllocations
+                }
+              } else if (allocationsByItem[itemCode] && allocationsByItem[itemCode].length > 0) {
+                // Convert from custom_stock_adjustment_sources
+                return {
+                  ...baseItem,
+                  warehouseAllocations: allocationsByItem[itemCode]
+                }
+              }
+              
+              return baseItem
+            })
           : []
 
         // Determine status: use provided status, or check docstatus, or default to draft

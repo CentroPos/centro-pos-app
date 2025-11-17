@@ -482,6 +482,65 @@ const PrintsTabContent: React.FC = () => {
   const activePreviewKey =
     selectedItem && activeFormatUrl ? `${activeItemKey}-${activeFormatUrl}` : ''
 
+  // Handle print action
+  const handlePrint = async () => {
+    try {
+      let pdfDataUrl = ''
+      if (isInstantPrintActive) {
+        pdfDataUrl = instantPrintPreview
+      } else if (selectedItem) {
+        const previewKey = activePreviewKey
+        pdfDataUrl = previewKey ? pdfPreviews[previewKey] : ''
+
+        if (!pdfDataUrl && previewKey) {
+          console.log('⏳ PDF preview not loaded yet, checking cache...')
+          const cachedPdfUrl = pdfPreviewsCache.current[previewKey]
+          if (cachedPdfUrl) {
+            console.log('📄 Found PDF in persistent cache, restoring...')
+            setPdfPreviews((prev) => ({ ...prev, [previewKey]: cachedPdfUrl }))
+            pdfDataUrl = cachedPdfUrl
+          } else if (activeFormatUrl) {
+            console.log('⏳ Loading PDF preview now...')
+            await loadPDFPreview(selectedItem, activeFormatUrl)
+            await new Promise((resolve) => setTimeout(resolve, 1000))
+            pdfDataUrl = pdfPreviewsCache.current[previewKey] || pdfPreviews[previewKey]
+          }
+        }
+      }
+
+      if (pdfDataUrl) {
+        // Use the print function with silent error handling
+        const result = await window.electronAPI?.print.printPDF(pdfDataUrl)
+        console.log('🖨️ Print result:', result)
+
+        if (result?.success) {
+          console.log('✅ Print dialog opened successfully')
+        } else {
+          console.log('ℹ️ Print dialog may not have opened, but this is normal')
+        }
+      }
+    } catch (error: any) {
+      console.log('ℹ️ Print operation completed (errors are handled silently)')
+    }
+  }
+
+  // Keyboard shortcut for print (CTRL+SHIFT+P)
+  const isPrintEnabled = isInstantPrintActive
+    ? !!instantPrintPreview
+    : !!(activePreviewKey && (pdfPreviews[activePreviewKey] || pdfPreviewsCache.current[activePreviewKey]))
+
+  useHotkeys(
+    'ctrl+shift+p',
+    (e) => {
+      if (isPrintEnabled) {
+        e.preventDefault()
+        console.log('⌨️ Ctrl+Shift+P pressed - triggering print')
+        handlePrint()
+      }
+    },
+    { enableOnFormTags: true }
+  )
+
   return (
     <div className="p-4 h-full flex flex-col">
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -562,46 +621,7 @@ const PrintsTabContent: React.FC = () => {
                 )}
                 <button
                   type="button"
-                  onClick={async () => {
-                    try {
-                      let pdfDataUrl = ''
-                      if (isInstantPrintActive) {
-                        pdfDataUrl = instantPrintPreview
-                      } else if (selectedItem) {
-                        const previewKey = activePreviewKey
-                        pdfDataUrl = previewKey ? pdfPreviews[previewKey] : ''
-
-                        if (!pdfDataUrl && previewKey) {
-                          console.log('⏳ PDF preview not loaded yet, checking cache...')
-                          const cachedPdfUrl = pdfPreviewsCache.current[previewKey]
-                          if (cachedPdfUrl) {
-                            console.log('📄 Found PDF in persistent cache, restoring...')
-                            setPdfPreviews((prev) => ({ ...prev, [previewKey]: cachedPdfUrl }))
-                            pdfDataUrl = cachedPdfUrl
-                          } else if (activeFormatUrl) {
-                            console.log('⏳ Loading PDF preview now...')
-                            await loadPDFPreview(selectedItem, activeFormatUrl)
-                            await new Promise((resolve) => setTimeout(resolve, 1000))
-                            pdfDataUrl = pdfPreviewsCache.current[previewKey] || pdfPreviews[previewKey]
-                          }
-                        }
-                      }
-
-                      if (pdfDataUrl) {
-                      // Use the print function with silent error handling
-                        const result = await window.electronAPI?.print.printPDF(pdfDataUrl)
-                      console.log('🖨️ Print result:', result)
-
-                      if (result?.success) {
-                        console.log('✅ Print dialog opened successfully')
-                      } else {
-                        console.log('ℹ️ Print dialog may not have opened, but this is normal')
-                        }
-                      }
-                    } catch (error: any) {
-                      console.log('ℹ️ Print operation completed (errors are handled silently)')
-                    }
-                  }}
+                  onClick={handlePrint}
                   onKeyDown={(e) => {
                     // Prevent Enter key from triggering print
                     if (e.key === 'Enter') {
@@ -625,6 +645,7 @@ const PrintsTabContent: React.FC = () => {
                     />
                   </svg>
                   Print
+                  <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+Shift+P</span>
                 </button>
               </div>
 
@@ -773,17 +794,27 @@ const RightPanel: React.FC<RightPanelProps> = ({
   })
   const refreshBypassRef = useRef<{ token?: number; pending?: Set<'recent' | 'most' | 'details'> }>({})
   
-  // Tab configuration - update this array when adding/removing tabs
-  const productTabs = [
-    { id: 'sales-history', label: 'Sales History', color: 'blue' },
-    { id: 'customer-history', label: 'Customer History', color: 'emerald' },
-    { id: 'purchase-history', label: 'Purchase History', color: 'purple' }
-  ]
-  
-  const shouldScrollTabs = productTabs.length >= 4
   const [currencySymbol, setCurrencySymbol] = useState('$')
   const { profile } = usePOSProfileStore()
   const hideCostAndMargin = profile?.custom_hide_cost_and_margin_info === 1
+  const showPurchaseHistory = profile?.custom_show_purchase_history === 1
+  
+  // Tab configuration - filter based on profile setting
+  const productTabs = [
+    { id: 'sales-history', label: 'Sales History', color: 'blue' },
+    { id: 'customer-history', label: 'Customer History', color: 'emerald' },
+    ...(showPurchaseHistory ? [{ id: 'purchase-history', label: 'Purchase History', color: 'purple' }] : [])
+  ]
+  
+  const shouldScrollTabs = productTabs.length >= 4
+  
+  // If purchase history is disabled and user is on that tab, switch to sales-history
+  useEffect(() => {
+    if (!showPurchaseHistory && productSubTab === 'purchase-history') {
+      console.log('🚫 Purchase History is disabled, switching to Sales History')
+      setProductSubTab('sales-history')
+    }
+  }, [showPurchaseHistory, productSubTab])
   const { updateItemInTab, getCurrentTab, updateTabOrderData, clearAllTabs } = usePOSTabStore()
   const { openTab } = usePOSTabStore()
   const { tabs, setActiveTab } = usePOSTabStore()
@@ -1011,6 +1042,11 @@ const RightPanel: React.FC<RightPanelProps> = ({
       ? selectedItemFromTable.warehouseAllocations 
       : []
     
+    // Check if this is a non-applied item (no existing allocations)
+    const hasNoAllocations = existingAllocations.length === 0
+    const enteredQty = Number(selectedItemFromTable.quantity || 0)
+    const defaultWarehouseName = profile?.warehouse
+    
     // Transform warehouseStock to MultiWarehousePopup format
     const warehouses = warehouseStock.map((warehouse) => {
       // Find quantity for current UOM
@@ -1021,14 +1057,34 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
       // Check if this warehouse has an existing allocation
       const existingAlloc = existingAllocations.find((alloc: any) => alloc.name === warehouse.name)
-      const isSelected = existingAlloc ? true : false // Use existing selection or default to false
-      const allocated = existingAlloc ? Number(existingAlloc.allocated || 0) : 0
+      
+      let isSelected: boolean
+      let allocated: number
+      
+      if (existingAlloc) {
+        // Item has existing allocations - use them
+        isSelected = true
+        allocated = Number(existingAlloc.allocated || 0)
+      } else if (hasNoAllocations && defaultWarehouseName && warehouse.name === defaultWarehouseName) {
+        // Non-applied item: select default warehouse and set initial quantity
+        isSelected = true
+        // If entered qty < available in current store, use entered qty; else use max available
+        if (enteredQty < availableQty) {
+          allocated = enteredQty
+        } else {
+          allocated = availableQty
+        }
+      } else {
+        // No existing allocation and not the default warehouse
+        isSelected = false
+        allocated = 0
+      }
 
       return {
         name: warehouse.name,
         available: availableQty,
-        allocated: allocated, // Pre-fill with existing allocation
-        selected: isSelected // Use existing selection
+        allocated: allocated,
+        selected: isSelected
       }
     })
 
@@ -1549,8 +1605,13 @@ const RightPanel: React.FC<RightPanelProps> = ({
         console.log('🔄 Customer History tab active, fetching customer history...')
         fetchCustomerHistory(selectedItemId, customerHistoryPage, customerHistorySearch)
       } else if (productSubTab === 'purchase-history') {
-        console.log('🔄 Purchase History tab active, fetching purchase history...')
-        fetchPurchaseHistory(selectedItemId, purchaseHistoryPage, purchaseHistorySearch)
+        if (showPurchaseHistory) {
+          console.log('🔄 Purchase History tab active, fetching purchase history...')
+          fetchPurchaseHistory(selectedItemId, purchaseHistoryPage, purchaseHistorySearch)
+        } else {
+          console.log('🚫 Purchase History is disabled, switching to Sales History')
+          setProductSubTab('sales-history')
+        }
       }
     }
   }, [
@@ -1562,7 +1623,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
     purchaseHistoryPage,
     purchaseHistorySearch,
     selectedItemId,
-    refreshTokens.product
+    refreshTokens.product,
+    showPurchaseHistory
   ])
 
   // Live warehouse stock fetched from backend (for all UOMs)
@@ -1665,11 +1727,17 @@ const RightPanel: React.FC<RightPanelProps> = ({
     }
   })()
 
-  // Fetch Arabic name for the selected product
+  // State for item_group and brand from Item resource API
+  const [itemGroup, setItemGroup] = useState<string>('')
+  const [itemBrand, setItemBrand] = useState<string>('')
+
+  // Fetch Arabic name, item_group, and brand for the selected product
   useEffect(() => {
     const code = productData?.item_code
     if (!code) {
       setProductArabicName('')
+      setItemGroup('')
+      setItemBrand('')
       return
     }
     let cancelled = false
@@ -1678,10 +1746,18 @@ const RightPanel: React.FC<RightPanelProps> = ({
         const res = await window.electronAPI?.proxy.request({
           url: `/api/resource/Item/${code}`
         })
-        const ar = res?.data?.data?.custom_item_name_arabic || ''
-        if (!cancelled) setProductArabicName(ar)
+        const itemData = res?.data?.data
+        if (!cancelled) {
+          setProductArabicName(itemData?.custom_item_name_arabic || '')
+          setItemGroup(itemData?.item_group || '')
+          setItemBrand(itemData?.brand || '')
+        }
       } catch (e) {
-        if (!cancelled) setProductArabicName('')
+        if (!cancelled) {
+          setProductArabicName('')
+          setItemGroup('')
+          setItemBrand('')
+        }
       }
     })()
     return () => {
@@ -3007,8 +3083,12 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     {productArabicName && (
                       <div className="text-xs text-gray-700">{productArabicName}</div>
                     )}
-                    <div className="text-sm text-gray-600">Category: {productData.category}</div>
-                    <div className="text-sm text-gray-600">Location: {productData.location}</div>
+                    {itemGroup && (
+                      <div className="text-sm text-gray-600">Group: {itemGroup}</div>
+                    )}
+                    {itemBrand && (
+                      <div className="text-sm text-gray-600">Brand: {itemBrand}</div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -3207,23 +3287,25 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     >
                       Customer History
                     </button>
-                    <button
-                      className={`px-4 py-3 font-bold text-sm border-b-2 ${shouldScrollTabs ? 'whitespace-nowrap' : 'flex-1'} ${
-                        productSubTab === 'purchase-history'
-                          ? 'border-purple-500 bg-purple-50 text-purple-700'
-                          : 'text-gray-500 hover:text-black hover:bg-white/40'
-                      }`}
-                      onClick={() => {
-                        console.log('🔄 Switching to Purchase History tab')
-                        setProductSubTab('purchase-history')
-                        if (selectedItemId) {
-                          console.log('🔄 Triggering purchase history fetch from tab click')
-                          fetchPurchaseHistory(selectedItemId)
-                        }
-                      }}
-                    >
-                      Purchase History
-                    </button>
+                    {showPurchaseHistory && (
+                      <button
+                        className={`px-4 py-3 font-bold text-sm border-b-2 ${shouldScrollTabs ? 'whitespace-nowrap' : 'flex-1'} ${
+                          productSubTab === 'purchase-history'
+                            ? 'border-purple-500 bg-purple-50 text-purple-700'
+                            : 'text-gray-500 hover:text-black hover:bg-white/40'
+                        }`}
+                        onClick={() => {
+                          console.log('🔄 Switching to Purchase History tab')
+                          setProductSubTab('purchase-history')
+                          if (selectedItemId) {
+                            console.log('🔄 Triggering purchase history fetch from tab click')
+                            fetchPurchaseHistory(selectedItemId)
+                          }
+                        }}
+                      >
+                        Purchase History
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -3967,10 +4049,18 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       <SelectTrigger>
                         <SelectValue placeholder="Select ID type" />
                       </SelectTrigger>
-                      <SelectContent className="z-[9999] bg-white border border-gray-200 shadow-xl">
-                        <SelectItem value="CRN">CRN</SelectItem>
+                      <SelectContent className="z-[9999] bg-white border border-gray-200 shadow-xl max-h-[200px]">
                         <SelectItem value="TIN">TIN</SelectItem>
-                        <SelectItem value="VAT">VAT</SelectItem>
+                        <SelectItem value="CRN">CRN</SelectItem>
+                        <SelectItem value="MOM">MOM</SelectItem>
+                        <SelectItem value="MLS">MLS</SelectItem>
+                        <SelectItem value="700">700</SelectItem>
+                        <SelectItem value="SAG">SAG</SelectItem>
+                        <SelectItem value="NAT">NAT</SelectItem>
+                        <SelectItem value="GCC">GCC</SelectItem>
+                        <SelectItem value="IQA">IQA</SelectItem>
+                        <SelectItem value="PAS">PAS</SelectItem>
+                        <SelectItem value="OTH">OTH</SelectItem>
                       </SelectContent>
                     </Select>
                 </div>
