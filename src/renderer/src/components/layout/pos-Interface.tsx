@@ -38,7 +38,7 @@ const POSInterface: React.FC = () => {
     }
     [key: string]: any
   }>>([])
-  const [isZatcaBoxFocused, setIsZatcaBoxFocused] = useState(false)
+  const [_isZatcaBoxFocused, setIsZatcaBoxFocused] = useState(false)
 
   // Handle item selection - switch to product tab
   const handleItemSelect = (itemId: string) => {

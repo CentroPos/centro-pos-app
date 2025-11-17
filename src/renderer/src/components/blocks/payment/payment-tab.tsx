@@ -63,8 +63,8 @@ const PaymentTab: React.FC = () => {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [_customers, setCustomers] = useState<Customer[]>([])
   const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([])
-  const [customerPage, setCustomerPage] = useState(1)
-  const [customerHasMore, setCustomerHasMore] = useState(false) // Fixed page size, no more loads
+  const [_customerPage, setCustomerPage] = useState(1)
+  const [_customerHasMore, setCustomerHasMore] = useState(false) // Fixed page size, no more loads
   const [isFetchingMoreCustomers, setIsFetchingMoreCustomers] = useState(false)
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(false)
   const latestCustomerReq = React.useRef(0)
@@ -244,7 +244,7 @@ const PaymentTab: React.FC = () => {
     setCustomers([])
     setFilteredCustomers([])
     setCustomerPage(1)
-    setCustomerHasMore(false)
+    setCustomerHasMore(false) // Setter is used, variable is prefixed with _ to indicate unused getter
     const handle = setTimeout(() => {
       loadCustomers(searchTerm, 1, false)
     }, 300)
@@ -1222,12 +1222,11 @@ const PaymentTab: React.FC = () => {
             {/* Customer List */}
             <div
               className="flex-1 overflow-y-auto p-2"
-              onScroll={(e) => {
-                const el = e.currentTarget as HTMLDivElement
-                const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 120
+              onScroll={() => {
                 // Fixed page size, no infinite scroll - pagination disabled
-                // if (nearBottom && customerHasMore && !isFetchingMoreCustomers) {
-                //   loadCustomers(searchTerm, customerPage + 1, true)
+                // const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 120
+                // if (nearBottom && _customerHasMore && !isFetchingMoreCustomers) {
+                //   loadCustomers(searchTerm, _customerPage + 1, true)
                 // }
               }}
             >

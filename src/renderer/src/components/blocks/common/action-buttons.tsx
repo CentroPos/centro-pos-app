@@ -183,7 +183,7 @@ const ActionButtons: React.FC<Props> = ({
   onSaveCompleted,
   isItemTableEditing = false,
   onInsufficientStockErrors,
-  onFocusItem,
+  onFocusItem: _onFocusItem,
   onZatcaResponses
 }) => {
   // Get current date in local timezone (YYYY-MM-DD format)

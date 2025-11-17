@@ -245,20 +245,28 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
       }
       
       // Try immediately
+      let timer1: NodeJS.Timeout | null = null
+      let timer2: NodeJS.Timeout | null = null
+      
       if (!attemptFocus()) {
         // Try after a short delay
-        const timer1 = setTimeout(() => {
+        timer1 = setTimeout(() => {
           if (!attemptFocus()) {
             // Try one more time after longer delay
-            const timer2 = setTimeout(() => {
+            timer2 = setTimeout(() => {
               attemptFocus()
             }, 200)
-            return () => clearTimeout(timer2)
           }
         }, 50)
-        return () => clearTimeout(timer1)
+      }
+      
+      // Return cleanup function
+      return () => {
+        if (timer1) clearTimeout(timer1)
+        if (timer2) clearTimeout(timer2)
       }
     }
+    return undefined
   }, [open, view])
 
   // Handlers (logic kept)
