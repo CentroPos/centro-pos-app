@@ -491,7 +491,7 @@ const ActionButtons: React.FC<Props> = ({
     }
 
     // For draft orders, use calculated total from discount section
-    const roundedTotal = normalize(currentTab?.orderData?.rounded_total)
+    const roundedTotal = normalize(currentTab?.orderData?.final_total)
     const docGrandTotal = normalize(currentTab?.orderData?.grand_total)
 
     let linkedGrandTotal: number | null = null
@@ -1230,7 +1230,7 @@ const ActionButtons: React.FC<Props> = ({
   }
 
   // Order confirmation API function
-  const handleOrderConfirmation = async (paymentAmount: number = 0) => {
+  const handleOrderConfirmation = async (paymentAmount: number = 0, isConfirmingMode: boolean = false) => {
     // Set processing state at the very beginning to ensure consistent hook calls
     setIsProcessingPayment(true)
     
@@ -1249,11 +1249,29 @@ const ActionButtons: React.FC<Props> = ({
         return
       }
 
-    // Check if order is already confirmed (docstatus = 1)
-    const isAlreadyConfirmed = currentTab?.orderData && Number(currentTab.orderData.docstatus) === 1
+    // Check if order is already confirmed (docstatus = 1) - check BEFORE any API call
+    let isAlreadyConfirmed = false
+    try {
+      const orderDetailsCheck = await window.electronAPI?.proxy?.request({
+        url: '/api/method/centro_pos_apis.api.order.get_sales_order_details',
+        params: {
+          sales_order_id: currentTab.orderId
+        },
+        method: 'GET'
+      })
+      if (orderDetailsCheck?.data?.data) {
+        isAlreadyConfirmed = Number(orderDetailsCheck.data.data.docstatus) === 1
+        console.log('📋 Order docstatus checked BEFORE API call:', orderDetailsCheck.data.data.docstatus, 'isConfirmed:', isAlreadyConfirmed)
+      }
+    } catch (checkError) {
+      console.warn('⚠️ Failed to check order docstatus before API call, using cached value:', checkError)
+      // Fallback to cached value if API check fails
+      isAlreadyConfirmed = currentTab?.orderData && Number(currentTab.orderData.docstatus) === 1
+    }
     
-    // If order is already confirmed and payment amount > 0, directly call payment entry API
-    if (isAlreadyConfirmed && paymentAmount > 0) {
+    // If in Payment window (isConfirmingMode = false) and order is already confirmed and payment amount > 0, directly call payment entry API
+    // Skip this if in Confirm window mode
+    if (!isConfirmingMode && isAlreadyConfirmed && paymentAmount > 0) {
       try {
         console.log('💳 ===== ORDER ALREADY CONFIRMED, CALLING PAYMENT ENTRY DIRECTLY =====')
         console.log('💳 Payment Amount:', paymentAmount)
@@ -1488,9 +1506,11 @@ const ActionButtons: React.FC<Props> = ({
       }
     }
 
-    // If we reach here, order is not already confirmed or payment amount is 0
-    // Proceed with order confirmation
+    // If we reach here:
+    // - In Confirm window: Always call confirmation API (payment API is skipped)
+    // - In Payment window: Order is not confirmed, so call confirmation API first, then check docstatus and call payment API if needed
     console.log('🔄 ===== ORDER CONFIRMATION API CALL START =====')
+    console.log('🔄 Mode:', isConfirmingMode ? 'Confirm Window' : 'Payment Window')
       console.log('🔄 API Endpoint: /api/method/centro_pos_apis.api.order.order_confirmation')
       
       // Context Information
@@ -1722,9 +1742,16 @@ const ActionButtons: React.FC<Props> = ({
             
             console.log('📋 ===== END EXTRACTING INVOICE NUMBER =====')
             
-            // If order is confirmed (docstatus = 1) and payment amount > 0, call create_payment_entry API
+            // Check docstatus AFTER confirmation API call
             const isOrderConfirmed = Number(orderData.docstatus) === 1
-            if (isOrderConfirmed && paymentAmount > 0 && invoiceNumber) {
+            console.log('📋 Order docstatus checked AFTER confirmation API:', orderData.docstatus, 'isConfirmed:', isOrderConfirmed)
+            
+            // Only call payment API if:
+            // 1. NOT in Confirm window mode (isConfirmingMode = false)
+            // 2. Order is confirmed (docstatus = 1)
+            // 3. Payment amount > 0
+            // 4. Invoice number exists
+            if (!isConfirmingMode && isOrderConfirmed && paymentAmount > 0 && invoiceNumber) {
               try {
                 console.log('💳 ===== CREATING PAYMENT ENTRY FOR CONFIRMED ORDER =====')
                 console.log('💳 Order is confirmed, calling create_payment_entry API...')
@@ -1879,7 +1906,9 @@ const ActionButtons: React.FC<Props> = ({
                 // Don't block the flow if payment entry fails - order is already confirmed
               }
             } else {
-              if (!isOrderConfirmed) {
+              if (isConfirmingMode) {
+                console.log('🔘 Confirm window mode - skipping payment entry API call')
+              } else if (!isOrderConfirmed) {
                 console.log('📋 Order is not confirmed (docstatus != 1), skipping payment entry API call')
               } else if (paymentAmount <= 0) {
                 console.log('📋 Payment amount is 0, skipping payment entry API call')
@@ -2387,7 +2416,8 @@ const ActionButtons: React.FC<Props> = ({
                   const paymentAmount = parseFloat(amount) || 0
 
                   // Call order confirmation API with payment amount from dialog
-                  await handleOrderConfirmation(paymentAmount)
+                  // Pass isConfirming flag to distinguish between Confirm window and Payment window
+                  await handleOrderConfirmation(paymentAmount, isConfirming)
 
                   // Reset form and close dialogs (only if no error occurred)
                   setOpen(false)
