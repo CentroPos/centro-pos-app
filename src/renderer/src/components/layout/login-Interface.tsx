@@ -128,15 +128,11 @@ const LoginPage: React.FC = () => {
           return
         }
 
+        // Only update form value and API URLs, but don't save to localStorage here
+        // localStorage should only be updated after successful login
         form.setValue('baseUrl', normalized, { shouldDirty: false, shouldTouch: false })
         setApiBaseUrl(normalized)
         setFetchApiBaseUrl(normalized)
-
-        try {
-          window.localStorage.setItem(BASE_URL_STORAGE_KEY, normalized)
-        } catch (error) {
-          console.warn('Failed to sync base URL to local storage', error)
-        }
       } catch (error) {
         console.warn('Failed to retrieve base URL from main process', error)
       }
@@ -159,14 +155,7 @@ const LoginPage: React.FC = () => {
     try {
       const normalizedBaseUrl = sanitizeBaseUrl(data.baseUrl)
 
-      if (typeof window !== 'undefined') {
-        try {
-          window.localStorage.setItem(BASE_URL_STORAGE_KEY, normalizedBaseUrl)
-        } catch (storageError) {
-          console.warn('Failed to persist base URL', storageError)
-        }
-      }
-
+      // Set base URL for current session (but don't persist yet)
       setApiBaseUrl(normalizedBaseUrl)
       setFetchApiBaseUrl(normalizedBaseUrl)
 
@@ -181,17 +170,28 @@ const LoginPage: React.FC = () => {
       await storeLogin({ username: data.email, password: data.password })
       console.log('2. StoreLogin successful')
       
+      // Only save base URL to localStorage AFTER successful login
+      if (typeof window !== 'undefined') {
+        try {
+          window.localStorage.setItem(BASE_URL_STORAGE_KEY, normalizedBaseUrl)
+          console.log('3. Base URL saved to localStorage:', normalizedBaseUrl)
+        } catch (storageError) {
+          console.warn('Failed to persist base URL', storageError)
+        }
+      }
+      
       toast.success('Login successful!')
-      console.log('3. Toast shown, navigating to POS...')
+      console.log('4. Toast shown, navigating to POS...')
       
       // Navigate to POS page after successful login
       navigate({ to: '/pos', replace: true })
-      console.log('4. Navigation completed')
+      console.log('5. Navigation completed')
       
     } catch (err: any) {
       console.error('=== LOGIN FAILED ===', err)
       const errorMsg = err?.message || err?.error || COMMON_ERROR_MESSAGE
       toast.error(errorMsg)
+      // Don't save base URL if login fails - keep the previously saved one
     }
   }
 

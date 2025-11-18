@@ -210,7 +210,7 @@ const DiscountSection: React.FC<Props> = ({
     let totalFinal = useRounding ? totalRoundedCandidate : Number(totalRaw.toFixed(2))
     let roundingAdj = useRounding ? roundingCandidate : 0
 
-    // Prefer rounded_total returned from backend once the order exists
+    // Prefer final_total returned from backend once the order exists
     // For confirmed orders (docstatus = 1), always use API value
     // For draft orders (docstatus != 1):
     //   - If not edited (just saved), use API value
@@ -220,7 +220,7 @@ const DiscountSection: React.FC<Props> = ({
     const isConfirmed = docstatus === 1
     const isEdited = currentTab?.isEdited ?? false
 
-    const roundedTotalFromOrder = currentTab?.orderData?.rounded_total
+    const roundedTotalFromOrder = currentTab?.orderData?.final_total
     const grandTotalFromOrder = currentTab?.orderData?.grand_total
 
     // For confirmed orders, we may also have grand_total inside linked invoices
