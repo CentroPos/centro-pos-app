@@ -1600,36 +1600,6 @@ const ActionButtons: React.FC<Props> = ({
       console.log('📦 Response Headers:', response?.headers)
       console.log('📦 ===== END API RESPONSE =====')
 
-      // Parse and handle ZATCA responses - check before success check to show even with warnings
-      // Check multiple possible locations for zatca_response
-      const zatcaResponseData = 
-        response?.data?.data?.zatca_response || 
-        response?.data?.zatca_response ||
-        response?.zatca_response
-      
-      console.log('📦 Checking for ZATCA response:', {
-        'response?.data?.data?.zatca_response': response?.data?.data?.zatca_response,
-        'response?.data?.zatca_response': response?.data?.zatca_response,
-        'response?.zatca_response': response?.zatca_response,
-        'fullResponseData': response?.data
-      })
-      
-      if (zatcaResponseData && onZatcaResponses) {
-        console.log('📦 ===== ZATCA RESPONSE FOUND =====')
-        console.log('📦 ZATCA Response Data:', JSON.stringify(zatcaResponseData, null, 2))
-        
-        // Handle both array and single object responses
-        const zatcaResponses = Array.isArray(zatcaResponseData) 
-          ? zatcaResponseData 
-          : [zatcaResponseData]
-        
-        console.log('📦 Parsed ZATCA Responses:', zatcaResponses)
-        console.log('📦 Calling onZatcaResponses with:', zatcaResponses)
-        onZatcaResponses(zatcaResponses)
-      } else {
-        console.log('📦 No ZATCA response found or onZatcaResponses not available')
-      }
-
       if (response?.success) {
         console.log('✅ ===== ORDER CONFIRMATION SUCCESS =====')
         console.log('✅ Order confirmed successfully!')
@@ -1690,6 +1660,28 @@ const ActionButtons: React.FC<Props> = ({
             // Update orderData in the tab with fresh data (preserving _relatedData structure but clearing cache)
             updateTabOrderData(currentTab.id, freshOrderData)
             console.log('✅ Order data updated in tab with fresh status colors')
+            
+            // Extract and handle ZATCA responses from order details API AFTER order data is updated
+            // zatca_response is in the order details API response, not the order confirmation API
+            const zatcaResponseData = orderData.zatca_response
+            
+            console.log('📦 ===== CHECKING FOR ZATCA RESPONSE IN ORDER DETAILS =====')
+            console.log('📦 ZATCA Response Data:', JSON.stringify(zatcaResponseData, null, 2))
+            
+            if (zatcaResponseData && onZatcaResponses) {
+              console.log('📦 ===== ZATCA RESPONSE FOUND =====')
+              
+              // Handle both array and single object responses
+              const zatcaResponses = Array.isArray(zatcaResponseData) 
+                ? zatcaResponseData 
+                : [zatcaResponseData]
+              
+              console.log('📦 Parsed ZATCA Responses:', zatcaResponses)
+              console.log('📦 Calling onZatcaResponses with:', zatcaResponses)
+              onZatcaResponses(zatcaResponses)
+            } else {
+              console.log('📦 No ZATCA response found in order details or onZatcaResponses not available')
+            }
             
             // Extract invoice number, status, and custom_reverse_status from linked_invoices
             const linkedInvoices = orderData.linked_invoices
