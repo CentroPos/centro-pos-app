@@ -678,6 +678,17 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                       }))
                     }
                     onKeyDown={(e) => {
+                      const target = e.target as HTMLElement
+                      // Allow arrow keys for text editing in input/textarea fields
+                      const isInputField = target.tagName === 'INPUT' || 
+                                          target.tagName === 'TEXTAREA' ||
+                                          target.closest('input') ||
+                                          target.closest('textarea')
+                      if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                        e.stopPropagation()
+                        // Don't prevent default - let browser handle cursor movement
+                        return
+                      }
                       if (e.key === ' ') {
                         e.stopPropagation()
                       }
@@ -693,6 +704,19 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     onChange={(e) =>
                       setNewCustomer((p) => ({ ...p, customer_name_arabic: e.target.value }))
                     }
+                    onKeyDown={(e) => {
+                      const target = e.target as HTMLElement
+                      // Allow arrow keys for text editing in input/textarea fields
+                      const isInputField = target.tagName === 'INPUT' || 
+                                          target.tagName === 'TEXTAREA' ||
+                                          target.closest('input') ||
+                                          target.closest('textarea')
+                      if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                        e.stopPropagation()
+                        // Don't prevent default - let browser handle cursor movement
+                        return
+                      }
+                    }}
                     placeholder="اكتب الاسم بالعربية"
                     disabled={isCreatingCustomer}
                   />
@@ -737,6 +761,19 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                         email: e.target.value
                       }))
                     }
+                    onKeyDown={(e) => {
+                      const target = e.target as HTMLElement
+                      // Allow arrow keys for text editing in input/textarea fields
+                      const isInputField = target.tagName === 'INPUT' || 
+                                          target.tagName === 'TEXTAREA' ||
+                                          target.closest('input') ||
+                                          target.closest('textarea')
+                      if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                        e.stopPropagation()
+                        // Don't prevent default - let browser handle cursor movement
+                        return
+                      }
+                    }}
                     placeholder="email@example.com"
                     disabled={isCreatingCustomer}
                   />
@@ -751,6 +788,19 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                         mobile: e.target.value
                       }))
                     }
+                    onKeyDown={(e) => {
+                      const target = e.target as HTMLElement
+                      // Allow arrow keys for text editing in input/textarea fields
+                      const isInputField = target.tagName === 'INPUT' || 
+                                          target.tagName === 'TEXTAREA' ||
+                                          target.closest('input') ||
+                                          target.closest('textarea')
+                      if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                        e.stopPropagation()
+                        // Don't prevent default - let browser handle cursor movement
+                        return
+                      }
+                    }}
                     placeholder="+966509876543"
                   />
                 </div>
@@ -771,6 +821,19 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                         tax_id: e.target.value
                       }))
                     }
+                    onKeyDown={(e) => {
+                      const target = e.target as HTMLElement
+                      // Allow arrow keys for text editing in input/textarea fields
+                      const isInputField = target.tagName === 'INPUT' || 
+                                          target.tagName === 'TEXTAREA' ||
+                                          target.closest('input') ||
+                                          target.closest('textarea')
+                      if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                        e.stopPropagation()
+                        // Don't prevent default - let browser handle cursor movement
+                        return
+                      }
+                    }}
                     placeholder="310123456700003"
                   />
                 </div>
@@ -818,6 +881,17 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                       }))
                     }
                     onKeyDown={(e) => {
+                      const target = e.target as HTMLElement
+                      // Allow arrow keys for text editing in input/textarea fields
+                      const isInputField = target.tagName === 'INPUT' || 
+                                          target.tagName === 'TEXTAREA' ||
+                                          target.closest('input') ||
+                                          target.closest('textarea')
+                      if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                        e.stopPropagation()
+                        // Don't prevent default - let browser handle cursor movement
+                        return
+                      }
                       if (e.key === ' ') {
                         e.stopPropagation()
                       }
@@ -835,6 +909,19 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                         country: e.target.value
                       }))
                     }
+                    onKeyDown={(e) => {
+                      const target = e.target as HTMLElement
+                      // Allow arrow keys for text editing in input/textarea fields
+                      const isInputField = target.tagName === 'INPUT' || 
+                                          target.tagName === 'TEXTAREA' ||
+                                          target.closest('input') ||
+                                          target.closest('textarea')
+                      if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                        e.stopPropagation()
+                        // Don't prevent default - let browser handle cursor movement
+                        return
+                      }
+                    }}
                     placeholder="Saudi Arabia"
                   />
                 </div>
@@ -853,6 +940,17 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                       }))
                     }
                     onKeyDown={(e) => {
+                      const target = e.target as HTMLElement
+                      // Allow arrow keys for text editing in input/textarea fields
+                      const isInputField = target.tagName === 'INPUT' || 
+                                          target.tagName === 'TEXTAREA' ||
+                                          target.closest('input') ||
+                                          target.closest('textarea')
+                      if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                        e.stopPropagation()
+                        // Don't prevent default - let browser handle cursor movement
+                        return
+                      }
                       if (e.key === ' ') {
                         e.stopPropagation()
                       }
@@ -871,6 +969,17 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                       }))
                     }
                     onKeyDown={(e) => {
+                      const target = e.target as HTMLElement
+                      // Allow arrow keys for text editing in input/textarea fields
+                      const isInputField = target.tagName === 'INPUT' || 
+                                          target.tagName === 'TEXTAREA' ||
+                                          target.closest('input') ||
+                                          target.closest('textarea')
+                      if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                        e.stopPropagation()
+                        // Don't prevent default - let browser handle cursor movement
+                        return
+                      }
                       if (e.key === ' ') {
                         e.stopPropagation()
                       }
@@ -893,6 +1002,17 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                       }))
                     }
                     onKeyDown={(e) => {
+                      const target = e.target as HTMLElement
+                      // Allow arrow keys for text editing in input/textarea fields
+                      const isInputField = target.tagName === 'INPUT' || 
+                                          target.tagName === 'TEXTAREA' ||
+                                          target.closest('input') ||
+                                          target.closest('textarea')
+                      if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                        e.stopPropagation()
+                        // Don't prevent default - let browser handle cursor movement
+                        return
+                      }
                       if (e.key === ' ') {
                         e.stopPropagation()
                       }
@@ -911,6 +1031,17 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                       }))
                     }
                     onKeyDown={(e) => {
+                      const target = e.target as HTMLElement
+                      // Allow arrow keys for text editing in input/textarea fields
+                      const isInputField = target.tagName === 'INPUT' || 
+                                          target.tagName === 'TEXTAREA' ||
+                                          target.closest('input') ||
+                                          target.closest('textarea')
+                      if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                        e.stopPropagation()
+                        // Don't prevent default - let browser handle cursor movement
+                        return
+                      }
                       if (e.key === ' ') {
                         e.stopPropagation()
                       }
@@ -928,6 +1059,19 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                         pincode: e.target.value
                       }))
                     }
+                    onKeyDown={(e) => {
+                      const target = e.target as HTMLElement
+                      // Allow arrow keys for text editing in input/textarea fields
+                      const isInputField = target.tagName === 'INPUT' || 
+                                          target.tagName === 'TEXTAREA' ||
+                                          target.closest('input') ||
+                                          target.closest('textarea')
+                      if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                        e.stopPropagation()
+                        // Don't prevent default - let browser handle cursor movement
+                        return
+                      }
+                    }}
                     placeholder="11564"
                   />
                 </div>

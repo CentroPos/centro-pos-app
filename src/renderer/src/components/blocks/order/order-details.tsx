@@ -350,11 +350,15 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({
   const ribbonClipPath = 'polygon(12% 0%, 88% 0%, 100% 50%, 88% 100%, 12% 100%, 0% 50%)'
   
   // Get main_status and sub_status from order detail API
-  const mainStatus = currentTab?.orderData?.main_status || 'N/A'
-  const subStatus = currentTab?.orderData?.sub_status || 'N/A'
+  const mainStatus = currentTab?.orderData?.main_status || null
+  const subStatus = currentTab?.orderData?.sub_status || null
   
   // Get zatca_status from order detail API
-  const zatcaStatus = currentTab?.orderData?.zatca_status || 'N/A'
+  const zatcaStatus = currentTab?.orderData?.zatca_status || null
+  
+  // Check if statuses should be displayed (hide if null, undefined, empty, or 'N/A')
+  const shouldShowOrderStatus = mainStatus && mainStatus !== 'N/A' && String(mainStatus).trim() !== ''
+  const shouldShowZatcaStatus = zatcaStatus && zatcaStatus !== 'N/A' && String(zatcaStatus).trim() !== ''
   
   // Get status colors from order detail API - default to yellow (golden) if null/missing
   const statusColor = currentTab?.orderData?.status_color || 'yellow'
@@ -411,41 +415,49 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({
         </button>
       )}
       {/* Order & Return ribbons */}
-      <div className="pointer-events-none absolute right-[28px] top-0 z-[60] flex flex-col gap-5 items-end">
-        {/* First ribbon - Order Status (main_status and sub_status) */}
-        <div
-          className={`px-3 py-1 bg-gradient-to-r ${getStatusRibbonStyle(statusColor)} text-white font-semibold uppercase shadow-lg tracking-wide origin-top-right`}
-          style={{ 
-            clipPath: ribbonClipPath, 
-            transform: 'rotate(42deg) translateX(30px)',
-            width: '160px',
-            height: '40px',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '2px'
-          }}
-        >
-          <span className="text-[11px] whitespace-nowrap overflow-hidden text-ellipsis">{mainStatus}</span>
-          <span className="text-[8px] whitespace-nowrap overflow-hidden text-ellipsis opacity-90">{subStatus}</span>
+      {(shouldShowOrderStatus || shouldShowZatcaStatus) && (
+        <div className="pointer-events-none absolute right-[28px] top-0 z-[60] flex flex-col gap-5 items-end">
+          {/* First ribbon - Order Status (main_status and sub_status) */}
+          {shouldShowOrderStatus && (
+            <div
+              className={`px-3 py-1 bg-gradient-to-r ${getStatusRibbonStyle(statusColor)} text-white font-semibold uppercase shadow-lg tracking-wide origin-top-right`}
+              style={{ 
+                clipPath: ribbonClipPath, 
+                transform: 'rotate(42deg) translateX(30px)',
+                width: '160px',
+                height: '40px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '2px'
+              }}
+            >
+              <span className="text-[11px] whitespace-nowrap overflow-hidden text-ellipsis">{mainStatus}</span>
+              {subStatus && subStatus !== 'N/A' && String(subStatus).trim() !== '' && (
+                <span className="text-[8px] whitespace-nowrap overflow-hidden text-ellipsis opacity-90">{subStatus}</span>
+              )}
+            </div>
+          )}
+          {/* Second ribbon - Zatca Status */}
+          {shouldShowZatcaStatus && (
+            <div
+              className={`px-3 py-1 bg-gradient-to-r ${getZatcaRibbonStyle(zatcaColor)} text-white text-[9px] font-semibold uppercase shadow-lg tracking-wide origin-top-right`}
+              style={{ 
+                clipPath: ribbonClipPath, 
+                transform: 'rotate(42deg) translateX(30px) translateY(0px)',
+                width: '160px',
+                height: '26px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <span className="whitespace-nowrap overflow-hidden text-ellipsis">{zatcaStatus}</span>
+            </div>
+          )}
         </div>
-        {/* Second ribbon - Zatca Status */}
-        <div
-          className={`px-3 py-1 bg-gradient-to-r ${getZatcaRibbonStyle(zatcaColor)} text-white text-[9px] font-semibold uppercase shadow-lg tracking-wide origin-top-right`}
-          style={{ 
-            clipPath: ribbonClipPath, 
-            transform: 'rotate(42deg) translateX(30px) translateY(0px)',
-            width: '160px',
-            height: '26px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
-          <span className="whitespace-nowrap overflow-hidden text-ellipsis">{zatcaStatus}</span>
-        </div>
-      </div>
+      )}
 
       <div className="mt-2 grid grid-cols-4 gap-6">
         <div className="space-y-2">

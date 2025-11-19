@@ -4120,6 +4120,17 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       value={editForm.customer_name}
                       onChange={(e) => setEditForm({ ...editForm, customer_name: e.target.value })}
                       onKeyDown={(e) => {
+                        const target = e.target as HTMLElement
+                        // Allow arrow keys for text editing in input/textarea fields
+                        const isInputField = target.tagName === 'INPUT' || 
+                                            target.tagName === 'TEXTAREA' ||
+                                            target.closest('input') ||
+                                            target.closest('textarea')
+                        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                          e.stopPropagation()
+                          // Don't prevent default - let browser handle cursor movement
+                          return
+                        }
                         if (e.key === ' ') {
                           e.stopPropagation()
                         }
@@ -4132,6 +4143,19 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     <Input
                       value={editForm.customer_name_arabic}
                       onChange={(e) => setEditForm({ ...editForm, customer_name_arabic: e.target.value })}
+                      onKeyDown={(e) => {
+                        const target = e.target as HTMLElement
+                        // Allow arrow keys for text editing in input/textarea fields
+                        const isInputField = target.tagName === 'INPUT' || 
+                                            target.tagName === 'TEXTAREA' ||
+                                            target.closest('input') ||
+                                            target.closest('textarea')
+                        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                          e.stopPropagation()
+                          // Don't prevent default - let browser handle cursor movement
+                          return
+                        }
+                      }}
                       placeholder="اكتب الاسم بالعربية"
                     />
                 </div>
@@ -4164,6 +4188,19 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       type="email"
                       value={editForm.email}
                       onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                      onKeyDown={(e) => {
+                        const target = e.target as HTMLElement
+                        // Allow arrow keys for text editing in input/textarea fields
+                        const isInputField = target.tagName === 'INPUT' || 
+                                            target.tagName === 'TEXTAREA' ||
+                                            target.closest('input') ||
+                                            target.closest('textarea')
+                        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                          e.stopPropagation()
+                          // Don't prevent default - let browser handle cursor movement
+                          return
+                        }
+                      }}
                       placeholder="email@example.com"
                     />
                 </div>
@@ -4172,6 +4209,19 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     <Input
                       value={editForm.mobile}
                       onChange={(e) => setEditForm({ ...editForm, mobile: e.target.value })}
+                      onKeyDown={(e) => {
+                        const target = e.target as HTMLElement
+                        // Allow arrow keys for text editing in input/textarea fields
+                        const isInputField = target.tagName === 'INPUT' || 
+                                            target.tagName === 'TEXTAREA' ||
+                                            target.closest('input') ||
+                                            target.closest('textarea')
+                        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                          e.stopPropagation()
+                          // Don't prevent default - let browser handle cursor movement
+                          return
+                        }
+                      }}
                       placeholder="+966509876543"
                     />
                 </div>
@@ -4187,6 +4237,19 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     <Input
                       value={editForm.tax_id}
                       onChange={(e) => setEditForm({ ...editForm, tax_id: e.target.value })}
+                      onKeyDown={(e) => {
+                        const target = e.target as HTMLElement
+                        // Allow arrow keys for text editing in input/textarea fields
+                        const isInputField = target.tagName === 'INPUT' || 
+                                            target.tagName === 'TEXTAREA' ||
+                                            target.closest('input') ||
+                                            target.closest('textarea')
+                        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                          e.stopPropagation()
+                          // Don't prevent default - let browser handle cursor movement
+                          return
+                        }
+                      }}
                       placeholder="310123456700003"
                     />
                 </div>
@@ -4224,6 +4287,17 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       value={editForm.customer_id_number_for_zatca}
                       onChange={(e) => setEditForm({ ...editForm, customer_id_number_for_zatca: e.target.value })}
                       onKeyDown={(e) => {
+                        const target = e.target as HTMLElement
+                        // Allow arrow keys for text editing in input/textarea fields
+                        const isInputField = target.tagName === 'INPUT' || 
+                                            target.tagName === 'TEXTAREA' ||
+                                            target.closest('input') ||
+                                            target.closest('textarea')
+                        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                          e.stopPropagation()
+                          // Don't prevent default - let browser handle cursor movement
+                          return
+                        }
                         if (e.key === ' ') {
                           e.stopPropagation()
                         }
@@ -4236,6 +4310,19 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     <Input
                       value={editForm.country}
                       onChange={(e) => setEditForm({ ...editForm, country: e.target.value })}
+                      onKeyDown={(e) => {
+                        const target = e.target as HTMLElement
+                        // Allow arrow keys for text editing in input/textarea fields
+                        const isInputField = target.tagName === 'INPUT' || 
+                                            target.tagName === 'TEXTAREA' ||
+                                            target.closest('input') ||
+                                            target.closest('textarea')
+                        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                          e.stopPropagation()
+                          // Don't prevent default - let browser handle cursor movement
+                          return
+                        }
+                      }}
                       placeholder="Saudi Arabia"
                     />
                   </div>
@@ -4249,6 +4336,17 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       value={editForm.address_line1}
                       onChange={(e) => setEditForm({ ...editForm, address_line1: e.target.value })}
                       onKeyDown={(e) => {
+                        const target = e.target as HTMLElement
+                        // Allow arrow keys for text editing in input/textarea fields
+                        const isInputField = target.tagName === 'INPUT' || 
+                                            target.tagName === 'TEXTAREA' ||
+                                            target.closest('input') ||
+                                            target.closest('textarea')
+                        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                          e.stopPropagation()
+                          // Don't prevent default - let browser handle cursor movement
+                          return
+                        }
                         if (e.key === ' ') {
                           e.stopPropagation()
                         }
@@ -4262,6 +4360,17 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       value={editForm.address_line2}
                       onChange={(e) => setEditForm({ ...editForm, address_line2: e.target.value })}
                       onKeyDown={(e) => {
+                        const target = e.target as HTMLElement
+                        // Allow arrow keys for text editing in input/textarea fields
+                        const isInputField = target.tagName === 'INPUT' || 
+                                            target.tagName === 'TEXTAREA' ||
+                                            target.closest('input') ||
+                                            target.closest('textarea')
+                        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                          e.stopPropagation()
+                          // Don't prevent default - let browser handle cursor movement
+                          return
+                        }
                         if (e.key === ' ') {
                           e.stopPropagation()
                         }
@@ -4279,6 +4388,17 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       value={editForm.city}
                       onChange={(e) => setEditForm({ ...editForm, city: e.target.value })}
                       onKeyDown={(e) => {
+                        const target = e.target as HTMLElement
+                        // Allow arrow keys for text editing in input/textarea fields
+                        const isInputField = target.tagName === 'INPUT' || 
+                                            target.tagName === 'TEXTAREA' ||
+                                            target.closest('input') ||
+                                            target.closest('textarea')
+                        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                          e.stopPropagation()
+                          // Don't prevent default - let browser handle cursor movement
+                          return
+                        }
                         if (e.key === ' ') {
                           e.stopPropagation()
                         }
@@ -4292,6 +4412,17 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       value={editForm.building_number}
                       onChange={(e) => setEditForm({ ...editForm, building_number: e.target.value })}
                       onKeyDown={(e) => {
+                        const target = e.target as HTMLElement
+                        // Allow arrow keys for text editing in input/textarea fields
+                        const isInputField = target.tagName === 'INPUT' || 
+                                            target.tagName === 'TEXTAREA' ||
+                                            target.closest('input') ||
+                                            target.closest('textarea')
+                        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                          e.stopPropagation()
+                          // Don't prevent default - let browser handle cursor movement
+                          return
+                        }
                         if (e.key === ' ') {
                           e.stopPropagation()
                         }
@@ -4304,6 +4435,19 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     <Input
                       value={editForm.pincode}
                       onChange={(e) => setEditForm({ ...editForm, pincode: e.target.value })}
+                      onKeyDown={(e) => {
+                        const target = e.target as HTMLElement
+                        // Allow arrow keys for text editing in input/textarea fields
+                        const isInputField = target.tagName === 'INPUT' || 
+                                            target.tagName === 'TEXTAREA' ||
+                                            target.closest('input') ||
+                                            target.closest('textarea')
+                        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                          e.stopPropagation()
+                          // Don't prevent default - let browser handle cursor movement
+                          return
+                        }
+                      }}
                       placeholder="11564"
                     />
                   </div>
