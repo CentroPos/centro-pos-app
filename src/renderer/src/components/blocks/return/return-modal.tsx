@@ -63,6 +63,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
   const [loading, setLoading] = useState(false)
   const [returnLoading, setReturnLoading] = useState(false)
   const [selectedItems, setSelectedItems] = useState<{ [key: string]: { selected: boolean; qty: number; originalQty: number; itemCode: string; originalSalesInvoiceItem: string } }>({})
+  const [searchQuery, setSearchQuery] = useState('')
   
   // Calculate selected items count
   const selectedItemsCount = Object.values(selectedItems).filter(item => item.selected).length
@@ -81,6 +82,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
       setInvoiceNumber('')
       setInvoiceData(null)
       setSelectedItems({})
+      setSearchQuery('')
     } else {
       console.log('📋 [ReturnModal] Modal opening, checking for invoice number...')
       // When modal opens, pre-fill invoice number from store if available
@@ -562,8 +564,8 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
         </DialogHeader>
 
         <div className="flex-1 flex flex-col space-y-4 overflow-hidden">
-          {/* Invoice Number Input */}
-          <div className="space-y-2">
+          {/* Invoice Number Input - Hidden but functional for auto-population */}
+          <div className="hidden">
             <Label htmlFor="invoice-number" className="text-sm font-medium text-gray-700 font-sans">
               Invoice Number
             </Label>
@@ -644,6 +646,18 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                     )
                   })()}
                 </div>
+                
+                {/* Search Box */}
+                <div className="space-y-2">
+                  <Input
+                    type="text"
+                    placeholder="🔍 Search items by code or name..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-1/2 font-sans border-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                  />
+                </div>
+                
                 <Tabs defaultValue="items" className="flex-1 flex flex-col overflow-hidden min-h-0 relative">
                   <TabsList className="grid w-full grid-cols-2 bg-gray-100 p-1 rounded-lg flex-shrink-0">
                     <TabsTrigger 
@@ -686,7 +700,15 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {invoiceData.items.map((item, index) => {
+                      {invoiceData.items
+                        .filter((item) => {
+                          if (!searchQuery.trim()) return true
+                          const searchLower = searchQuery.toLowerCase().trim()
+                          const itemCode = (item.item_code || '').toLowerCase()
+                          const itemName = (item.item_name || '').toLowerCase()
+                          return itemCode.includes(searchLower) || itemName.includes(searchLower)
+                        })
+                        .map((item, index) => {
                         // Safely extract item data with fallbacks
                         const itemCode = item.item_code || `item-${index}`
                         const itemName = item.item_name || 'Unknown Item'
@@ -706,8 +728,8 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                                 }
                               />
                             </TableCell>
-                            <TableCell className="font-medium font-sans text-gray-800">{itemCode}</TableCell>
-                                  <TableCell className="font-sans text-gray-700" title={itemName}>
+                            <TableCell className="font-medium font-sans text-gray-800 text-xs" style={{ fontSize: '0.75rem' }}>{itemCode}</TableCell>
+                                  <TableCell className="font-sans text-gray-700 text-xs" style={{ fontSize: '0.75rem' }} title={itemName}>
                                     {itemName}
                                   </TableCell>
                                   <TableCell className="font-sans text-gray-700 text-left">{uom}</TableCell>
@@ -741,7 +763,15 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                             {invoiceData.items
                               .filter((item) => {
                                 const selectionKey = item.original_sales_invoice_item || item.item_code || ''
-                                return selectedItems[selectionKey]?.selected === true
+                                const isSelected = selectedItems[selectionKey]?.selected === true
+                                if (!isSelected) return false
+                                
+                                // Apply search filter
+                                if (!searchQuery.trim()) return true
+                                const searchLower = searchQuery.toLowerCase().trim()
+                                const itemCode = (item.item_code || '').toLowerCase()
+                                const itemName = (item.item_name || '').toLowerCase()
+                                return itemCode.includes(searchLower) || itemName.includes(searchLower)
                               })
                               .map((item, index) => {
                                 // Safely extract item data with fallbacks
@@ -756,8 +786,8 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                                 
                                 return (
                                   <TableRow key={index} className="hover:bg-gray-50 border-b border-gray-100">
-                                    <TableCell className="font-medium font-sans text-gray-800">{itemCode}</TableCell>
-                                    <TableCell className="font-sans text-gray-700" title={itemName}>
+                                    <TableCell className="font-medium font-sans text-gray-800 text-xs" style={{ fontSize: '0.75rem' }}>{itemCode}</TableCell>
+                                    <TableCell className="font-sans text-gray-700 text-xs" style={{ fontSize: '0.75rem' }} title={itemName}>
                                       {itemName}
                                     </TableCell>
                                     <TableCell className="font-sans text-gray-700 text-left">{uom}</TableCell>
@@ -799,11 +829,21 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                       })}
                             {invoiceData.items.filter((item) => {
                               const selectionKey = item.original_sales_invoice_item || item.item_code || ''
-                              return selectedItems[selectionKey]?.selected === true
+                              const isSelected = selectedItems[selectionKey]?.selected === true
+                              if (!isSelected) return false
+                              
+                              // Apply search filter
+                              if (!searchQuery.trim()) return true
+                              const searchLower = searchQuery.toLowerCase().trim()
+                              const itemCode = (item.item_code || '').toLowerCase()
+                              const itemName = (item.item_name || '').toLowerCase()
+                              return itemCode.includes(searchLower) || itemName.includes(searchLower)
                             }).length === 0 && (
                               <TableRow>
                                 <TableCell colSpan={6} className="text-center py-8 text-gray-500 font-sans">
-                                  No items selected. Please select items from the &quot;Items&quot; tab.
+                                  {searchQuery.trim() 
+                                    ? 'No selected items match your search.'
+                                    : 'No items selected. Please select items from the "Items" tab.'}
                                 </TableCell>
                               </TableRow>
                             )}
