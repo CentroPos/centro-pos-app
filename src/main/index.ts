@@ -422,23 +422,36 @@ function setupAuthHandlers(): void {
     try {
       console.log('🖨️ Printing PDF from data URL')
       
-      // Create a new window for printing
+      // Create a new window for printing with proper webPreferences for production
       const printWindow = new BrowserWindow({
         show: true,
         width: 800,
         height: 600,
         webPreferences: {
           nodeIntegration: false,
-          contextIsolation: true
+          contextIsolation: true,
+          webSecurity: false,  // Allow loading data URLs and cross-origin resources
+          allowRunningInsecureContent: true,
+          sandbox: false  // Disable sandbox to allow printing
         }
+      })
+
+      // Disable CSP for print window to allow data URLs
+      printWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+        const responseHeaders = { ...details.responseHeaders }
+        delete responseHeaders['content-security-policy']
+        delete responseHeaders['Content-Security-Policy']
+        callback({
+          responseHeaders
+        })
       })
 
       // Load the PDF data URL directly
       await printWindow.loadURL(pdfDataUrl)
       console.log('📄 PDF loaded in print window')
       
-      // Wait for PDF to fully render
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      // Wait for PDF to fully render - increase timeout for production builds
+      await new Promise(resolve => setTimeout(resolve, 1500))
 
       console.log('🖨️ Opening print dialog...')
       
@@ -453,14 +466,20 @@ function setupAuthHandlers(): void {
         } else {
           console.log('✅ Print job started')
         }
+        // Close window after print dialog is handled (user cancels or prints)
+        setTimeout(() => {
+          if (!printWindow.isDestroyed()) {
+            printWindow.close()
+          }
+        }, 1000)
       })
       
-      // Close the print window after a delay
+      // Fallback: Close the print window after a longer delay if still open
       setTimeout(() => {
         if (!printWindow.isDestroyed()) {
           printWindow.close()
         }
-      }, 3000)
+      }, 10000)
       
       // Return success immediately - the print dialog should open
       return { success: true }
