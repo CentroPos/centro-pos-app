@@ -302,10 +302,19 @@ const OrderDetails: React.FC<OrderDetailsProps> = ({
     let resolvedDefault: string | undefined = customer?.default_price_list
     if (!resolvedDefault && customer?.customer_id) {
       try {
+        console.log('📞 API Call: get_customer_details (Price List)', {
+          url: '/api/method/centro_pos_apis.api.customer.get_customer_details',
+          params: { customer_id: customer.customer_id }
+        })
         const resp = await window.electronAPI?.proxy?.request({
           method: 'GET',
-          url: `/api/resource/Customer/${encodeURIComponent(customer.customer_id)}`,
-          params: { fields: '["default_price_list"]' }
+          url: '/api/method/centro_pos_apis.api.customer.get_customer_details',
+          params: { customer_id: customer.customer_id }
+        })
+        console.log('📥 API Response: get_customer_details (Price List)', {
+          fullResponse: resp,
+          data: resp?.data,
+          customerData: resp?.data?.data
         })
         resolvedDefault = resp?.data?.data?.default_price_list
         console.log('🧾 Fetched customer default_price_list:', resolvedDefault)

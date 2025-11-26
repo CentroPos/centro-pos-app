@@ -914,10 +914,21 @@ const RightPanel: React.FC<RightPanelProps> = ({
         const customerId = orderData.customer || null
         
         // Fetch all related data in parallel
+        console.log('📞 API Call: get_customer_details (Order Open)', {
+          url: '/api/method/centro_pos_apis.api.customer.get_customer_details',
+          params: { customer_id: customerId }
+        })
         const [customerDetailsRes, customerInsightsRes, recentOrdersRes, mostOrderedRes] = await Promise.allSettled([
           customerId ? window.electronAPI?.proxy?.request({
-            url: `/api/resource/Customer/${customerId}`,
-            params: {}
+            url: '/api/method/centro_pos_apis.api.customer.get_customer_details',
+            params: { customer_id: customerId }
+          }).then((res) => {
+            console.log('📥 API Response: get_customer_details (Order Open)', {
+              fullResponse: res,
+              data: res?.data,
+              customerData: res?.data?.data
+            })
+            return res
           }) : Promise.resolve(null),
           customerId ? window.electronAPI?.proxy?.request({
             url: '/api/method/centro_pos_apis.api.customer.customer_amount_insights',
@@ -2663,9 +2674,18 @@ const RightPanel: React.FC<RightPanelProps> = ({
         console.log('✅ Found customer ID:', customerId, 'for customer:', selectedCustomer.name)
 
         // Step 2: Fetch customer details
+        console.log('📞 API Call: get_customer_details', {
+          url: '/api/method/centro_pos_apis.api.customer.get_customer_details',
+          params: { customer_id: customerId }
+        })
         const detailsRes = await window.electronAPI?.proxy?.request({
-          url: `/api/resource/Customer/${customerId}`,
-          params: {}
+          url: '/api/method/centro_pos_apis.api.customer.get_customer_details',
+          params: { customer_id: customerId }
+        })
+        console.log('📥 API Response: get_customer_details', {
+          fullResponse: detailsRes,
+          data: detailsRes?.data,
+          customerData: detailsRes?.data?.data
         })
 
         // Step 3: Fetch customer insights
@@ -3885,12 +3905,20 @@ const RightPanel: React.FC<RightPanelProps> = ({
                           setEditFormLoading(true)
                           
                           // Fetch fresh customer details from API
+                          console.log('📞 API Call: get_customer_details (Edit)', {
+                            url: '/api/method/centro_pos_apis.api.customer.get_customer_details',
+                            params: { customer_id: customerId }
+                          })
                           const detailsRes = await (window as any).electronAPI?.proxy?.request({
-                            url: `/api/resource/Customer/${customerId}`,
-                            params: {}
+                            url: '/api/method/centro_pos_apis.api.customer.get_customer_details',
+                            params: { customer_id: customerId }
                           })
 
-                          console.log('📋 Fetching customer details for edit - response:', detailsRes)
+                          console.log('📥 API Response: get_customer_details (Edit)', {
+                            fullResponse: detailsRes,
+                            data: detailsRes?.data,
+                            customerData: detailsRes?.data?.data || detailsRes?.data
+                          })
 
                           const customerData = detailsRes?.data?.data || detailsRes?.data
                           if (!customerData) {
@@ -3941,7 +3969,10 @@ const RightPanel: React.FC<RightPanelProps> = ({
                             }
                           }
 
-                          // Parse address if primary_address exists
+                          // Get address details from primary_address_details object
+                          const primaryAddress = customerData.primary_address_details || {}
+                          
+                          // Parse address from HTML as fallback if primary_address_details is not available
                           const parsedAddress = customerData.primary_address 
                             ? parseAddressFromHTML(customerData.primary_address)
                             : { line1: '', line2: '', city: '', pincode: '', country: '', building: '' }
@@ -3955,14 +3986,16 @@ const RightPanel: React.FC<RightPanelProps> = ({
                             mobile: customerData.mobile_no || '',
                             customer_type: customerData.customer_type || 'Individual',
                             tax_id: customerData.tax_id || '',
-                            customer_id_type_for_zatca: customerData.custom_buyer_id_type || customerData.customer_id_type_for_zatca || '',
-                            customer_id_number_for_zatca: customerData.custom_buyer_id || customerData.customer_id_number_for_zatca || '',
-                            address_line1: customerData.address_line1 || parsedAddress.line1 || '',
-                            address_line2: customerData.address_line2 || parsedAddress.line2 || '',
-                            building_number: customerData.building_number || parsedAddress.building || '',
-                            city: customerData.city || parsedAddress.city || '',
-                            pincode: customerData.pincode || parsedAddress.pincode || '',
-                            country: customerData.country || parsedAddress.country || 'Saudi Arabia'
+                            // Use custom_selected_buyer_id_type and custom_selected_buyer_id_value from API
+                            customer_id_type_for_zatca: customerData.custom_selected_buyer_id_type || customerData.custom_buyer_id_type || customerData.customer_id_type_for_zatca || '',
+                            customer_id_number_for_zatca: customerData.custom_selected_buyer_id_value || customerData.custom_buyer_id || customerData.customer_id_number_for_zatca || '',
+                            // Use primary_address_details object for address fields, with fallback to parsed HTML or top-level fields
+                            address_line1: primaryAddress.address_line1 || customerData.address_line1 || parsedAddress.line1 || '',
+                            address_line2: primaryAddress.address_line2 || customerData.address_line2 || parsedAddress.line2 || '',
+                            building_number: primaryAddress.custom_building_number || customerData.building_number || parsedAddress.building || '',
+                            city: primaryAddress.city || customerData.city || parsedAddress.city || '',
+                            pincode: primaryAddress.pincode || customerData.pincode || parsedAddress.pincode || '',
+                            country: primaryAddress.country || customerData.country || parsedAddress.country || 'Saudi Arabia'
                           })
                           setEditFormLoading(false)
                         } catch (error) {
@@ -4604,8 +4637,16 @@ const RightPanel: React.FC<RightPanelProps> = ({
                         const match = list.find((c:any)=> c.customer_name === (selectedCustomer?.name || customerDetails?.customer_name))
                         const customerId = match?.name || customerDetails?.name
                         if (customerId){
-                          const detailsRes = await (window as any).electronAPI?.proxy?.request({url:`/api/resource/Customer/${customerId}`, params:{}})
-                          console.log('🔄 Refreshing customer details after edit - response:', detailsRes)
+                          console.log('📞 API Call: get_customer_details (Refresh)', {
+                            url: '/api/method/centro_pos_apis.api.customer.get_customer_details',
+                            params: { customer_id: customerId }
+                          })
+                          const detailsRes = await (window as any).electronAPI?.proxy?.request({url:'/api/method/centro_pos_apis.api.customer.get_customer_details', params:{customer_id: customerId}})
+                          console.log('📥 API Response: get_customer_details (Refresh)', {
+                            fullResponse: detailsRes,
+                            data: detailsRes?.data,
+                            customerData: detailsRes?.data?.data
+                          })
                           
                           // Safely extract customer data - ensure it's a proper customer object, not a response wrapper
                           let customerData: any = null
