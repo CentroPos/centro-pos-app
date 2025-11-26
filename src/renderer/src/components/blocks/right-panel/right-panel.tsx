@@ -9,6 +9,7 @@ import { useAuthStore } from '@renderer/store/useAuthStore'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 import { useHotkeys } from 'react-hotkeys-hook'
+import { getApiBaseUrl } from '@renderer/config/production'
 import PaymentTab from '../payment/payment-tab'
 import MultiWarehousePopup from '../common/multi-warehouse-popup'
 
@@ -114,7 +115,15 @@ const PrintsTabContent: React.FC = () => {
     const itemKey = getItemKey(item)
     const formatUrl =
       formatUrlOverride || item.selected_format_url || getDefaultFormatUrl(item)
-    const pdfUrl = `${window.location.origin}${formatUrl}`
+    
+    // Construct PDF URL - use API base URL instead of window.location.origin
+    // In dev mode, getApiBaseUrl() returns '/api' which works with window.location.origin
+    // In production, getApiBaseUrl() returns full URL like 'http://172.104.140.136'
+    const apiBaseUrl = getApiBaseUrl()
+    const pdfUrl = apiBaseUrl.startsWith('http') 
+      ? `${apiBaseUrl}${formatUrl}` 
+      : `${window.location.origin}${formatUrl}`
+    
     const previewKey = `${itemKey}-${formatUrl}`
 
     // Check both current state and persistent cache
@@ -182,7 +191,13 @@ const PrintsTabContent: React.FC = () => {
   useEffect(() => {
     const instantPrintUrl = currentTab?.instantPrintUrl
     if (instantPrintUrl) {
-      const pdfUrl = `${window.location.origin}${instantPrintUrl}`
+      // Construct PDF URL - use API base URL instead of window.location.origin
+      // In dev mode, getApiBaseUrl() returns '/api' which works with window.location.origin
+      // In production, getApiBaseUrl() returns full URL like 'http://172.104.140.136'
+      const apiBaseUrl = getApiBaseUrl()
+      const pdfUrl = apiBaseUrl.startsWith('http') 
+        ? `${apiBaseUrl}${instantPrintUrl}` 
+        : `${window.location.origin}${instantPrintUrl}`
       // Load PDF preview
       fetch(pdfUrl, {
         method: 'GET',
