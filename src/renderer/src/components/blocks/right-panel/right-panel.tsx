@@ -9,7 +9,6 @@ import { useAuthStore } from '@renderer/store/useAuthStore'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 import { useHotkeys } from 'react-hotkeys-hook'
-import { getApiBaseUrl } from '@renderer/config/production'
 import PaymentTab from '../payment/payment-tab'
 import MultiWarehousePopup from '../common/multi-warehouse-popup'
 
@@ -116,14 +115,6 @@ const PrintsTabContent: React.FC = () => {
     const formatUrl =
       formatUrlOverride || item.selected_format_url || getDefaultFormatUrl(item)
     
-    // Construct PDF URL - use API base URL instead of window.location.origin
-    // In dev mode, getApiBaseUrl() returns '/api' which works with window.location.origin
-    // In production, getApiBaseUrl() returns full URL like 'http://172.104.140.136'
-    const apiBaseUrl = getApiBaseUrl()
-    const pdfUrl = apiBaseUrl.startsWith('http') 
-      ? `${apiBaseUrl}${formatUrl}` 
-      : `${window.location.origin}${formatUrl}`
-    
     const previewKey = `${itemKey}-${formatUrl}`
 
     // Check both current state and persistent cache
@@ -142,48 +133,32 @@ const PrintsTabContent: React.FC = () => {
     try {
       console.log('📄 Loading PDF preview for:', item.report_title)
 
-      const response = await fetch(pdfUrl, {
-        method: 'GET',
-        credentials: 'include',
-        headers: {
-          Accept: 'application/pdf,application/json'
-        }
+      // Use proxy API which handles authentication, CORS, and PDF conversion
+      const response = await window.electronAPI?.proxy.request({
+        url: formatUrl,
+        method: 'GET'
       })
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch PDF: ${response.status}`)
+      if (!response?.success) {
+        throw new Error(`Failed to fetch PDF: ${response?.status || 'Unknown error'}`)
       }
 
-      const contentType = response.headers.get('content-type')
-
-      if (contentType?.includes('application/pdf')) {
-        const arrayBuffer = await response.arrayBuffer()
-        const uint8Array = new Uint8Array(arrayBuffer)
-
-        // Check if it's actually a PDF
-        const isPDF =
-          uint8Array.length >= 4 &&
-          uint8Array[0] === 0x25 && // %
-          uint8Array[1] === 0x50 && // P
-          uint8Array[2] === 0x44 && // D
-          uint8Array[3] === 0x46 // F
-
-        if (isPDF && isMountedRef.current) {
-          const base64 = btoa(String.fromCharCode(...uint8Array))
-          // Use zoom=fit to make PDF fit the container width and height
-          const dataUrl = `data:application/pdf;base64,${base64}#zoom=fit`
+      // The proxy API already converts PDFs to base64 data URLs
+      // response.pdfData is already a full data URL like "data:application/pdf;base64,..."
+      if (response.pdfData) {
+        // Append zoom parameter for PDF viewer
+        const dataUrl = `${response.pdfData}#zoom=fit`
+        if (isMountedRef.current) {
           setPdfPreviews((prev) => ({ ...prev, [previewKey]: dataUrl }))
           // Also save to persistent cache
           pdfPreviewsCache.current[previewKey] = dataUrl
           console.log('📄 PDF preview loaded and cached for:', item.report_title)
-        } else {
-          console.log('📄 PDF format validation handled for:', item.report_title)
         }
       } else {
-        console.log('📄 Response format handled for:', item.report_title)
+        console.log('📄 Response does not contain PDF data for:', item.report_title)
       }
     } catch (error) {
-      console.log('📄 PDF preview loading handled gracefully for:', item.report_title)
+      console.log('📄 PDF preview loading handled gracefully for:', item.report_title, error)
     }
   }
 
@@ -191,40 +166,18 @@ const PrintsTabContent: React.FC = () => {
   useEffect(() => {
     const instantPrintUrl = currentTab?.instantPrintUrl
     if (instantPrintUrl) {
-      // Construct PDF URL - use API base URL instead of window.location.origin
-      // In dev mode, getApiBaseUrl() returns '/api' which works with window.location.origin
-      // In production, getApiBaseUrl() returns full URL like 'http://172.104.140.136'
-      const apiBaseUrl = getApiBaseUrl()
-      const pdfUrl = apiBaseUrl.startsWith('http') 
-        ? `${apiBaseUrl}${instantPrintUrl}` 
-        : `${window.location.origin}${instantPrintUrl}`
-      // Load PDF preview
-      fetch(pdfUrl, {
-        method: 'GET',
-        credentials: 'include',
-        headers: {
-          Accept: 'application/pdf,application/json'
-        }
-      })
-        .then(async (response) => {
-          if (response.ok && isMountedRef.current) {
-            const contentType = response.headers.get('content-type')
-            if (contentType?.includes('application/pdf')) {
-              const arrayBuffer = await response.arrayBuffer()
-              const uint8Array = new Uint8Array(arrayBuffer)
-              const isPDF =
-                uint8Array.length >= 4 &&
-                uint8Array[0] === 0x25 && // %
-                uint8Array[1] === 0x50 && // P
-                uint8Array[2] === 0x44 && // D
-                uint8Array[3] === 0x46 // F
-              if (isPDF && isMountedRef.current) {
-                const base64 = btoa(String.fromCharCode(...uint8Array))
-                // Use zoom=fit to make PDF fit the container width and height
-                const dataUrl = `data:application/pdf;base64,${base64}#zoom=fit`
-                setInstantPrintPreview(dataUrl)
-              }
-            }
+      // Use proxy API which handles authentication, CORS, and PDF conversion
+      window.electronAPI?.proxy
+        .request({
+          url: instantPrintUrl,
+          method: 'GET'
+        })
+        .then((response) => {
+          if (response?.success && response?.pdfData && isMountedRef.current) {
+            // response.pdfData is already a full data URL, just append zoom parameter
+            const dataUrl = `${response.pdfData}#zoom=fit`
+            setInstantPrintPreview(dataUrl)
+            console.log('📄 Instant print preview loaded')
           }
         })
         .catch((error) => {
