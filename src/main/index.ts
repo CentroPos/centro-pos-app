@@ -352,52 +352,65 @@ function setupAuthHandlers(): void {
         const csrfToken = response.headers.get('x-frappe-csrf-token') || ''
         if (csrfToken) proxySessionData.csrfToken = csrfToken
 
-        // Check if response is PDF or binary content
+        // Check if response might be PDF or binary content
         const contentType = response.headers.get('content-type') || ''
-        const isPdf = contentType.includes('application/pdf') || 
-                     payload.url.includes('create_order') ||
-                     contentType.includes('application/octet-stream') ||
-                     contentType === ''
+        const mightBePdf = contentType.includes('application/pdf') || 
+                           payload.url.includes('create_order') ||
+                           payload.url.includes('/print_format/') ||
+                           payload.url.includes('/api/method/') && payload.url.includes('print') ||
+                           contentType.includes('application/octet-stream') ||
+                           contentType === '' ||
+                           !contentType.includes('application/json') && !contentType.includes('text/')
         
         let data = {}
         let pdfData: string | null = null
         
-        if (isPdf) {
-          // Handle PDF response
-          try {
-            const arrayBuffer = await response.arrayBuffer()
-            const uint8Array = new Uint8Array(arrayBuffer)
-            
-            // Check if it's actually a PDF by looking for PDF header
-            const isActualPdf = uint8Array.length > 4 && 
-                               uint8Array[0] === 0x25 && // %
-                               uint8Array[1] === 0x50 && // P
-                               uint8Array[2] === 0x44 && // D
-                               uint8Array[3] === 0x46    // F
-            
-            if (isActualPdf) {
-              const base64 = Buffer.from(arrayBuffer).toString('base64')
-              pdfData = `data:application/pdf;base64,${base64}`
-              data = { pdf_data: base64, pdf_url: pdfData }
-              console.log('📄 PDF response detected, converted to base64, size:', arrayBuffer.byteLength)
-            } else {
-              console.log('📄 Response detected as potential PDF but not valid PDF format')
-              // Try to parse as JSON anyway
-              const text = new TextDecoder().decode(arrayBuffer)
-              try {
-                data = JSON.parse(text)
-                console.log('📄 Response parsed as JSON instead')
-              } catch {
-                data = { error: 'Response is not PDF or JSON' }
-              }
+        // Always try to detect PDF by reading response body first
+        // This handles cases where content-type might not be set correctly
+        try {
+          const arrayBuffer = await response.arrayBuffer()
+          const uint8Array = new Uint8Array(arrayBuffer)
+          
+          // Check if it's actually a PDF by looking for PDF header
+          const isActualPdf = uint8Array.length > 4 && 
+                             uint8Array[0] === 0x25 && // %
+                             uint8Array[1] === 0x50 && // P
+                             uint8Array[2] === 0x44 && // D
+                             uint8Array[3] === 0x46    // F
+          
+          if (isActualPdf) {
+            const base64 = Buffer.from(arrayBuffer).toString('base64')
+            pdfData = `data:application/pdf;base64,${base64}`
+            data = { pdf_data: base64, pdf_url: pdfData }
+            console.log('📄 PDF response detected, converted to base64, size:', arrayBuffer.byteLength)
+          } else if (mightBePdf) {
+            // If we thought it might be PDF but it's not, try to parse as JSON
+            console.log('📄 Response detected as potential PDF but not valid PDF format, trying JSON')
+            const text = new TextDecoder().decode(arrayBuffer)
+            try {
+              data = JSON.parse(text)
+              console.log('📄 Response parsed as JSON instead')
+            } catch {
+              data = { error: 'Response is not PDF or JSON' }
             }
-          } catch (error) {
-            console.error('Error processing PDF response:', error)
-            data = { error: 'Failed to process PDF response' }
+          } else {
+            // Try to parse as JSON
+            const text = new TextDecoder().decode(arrayBuffer)
+            try {
+              data = JSON.parse(text)
+            } catch {
+              data = { error: 'Failed to parse response' }
+            }
           }
-        } else {
-          // Handle JSON response
-          data = await response.json().catch(() => ({}))
+        } catch (error) {
+          console.error('Error processing response:', error)
+          // Fallback: try JSON parsing
+          try {
+            const clonedResponse = response.clone()
+            data = await clonedResponse.json().catch(() => ({ error: 'Failed to process response' }))
+          } catch {
+            data = { error: 'Failed to process response' }
+          }
         }
         
         return { success: response.ok, status: response.status, data, pdfData: pdfData || undefined }
