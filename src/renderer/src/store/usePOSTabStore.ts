@@ -23,6 +23,9 @@ interface Tab {
     name?: string
     gst?: string
     customer_id?: string
+    mobile_no?: string
+    email?: string
+    tax_id?: string
   } | null
   items: any[]  // Add items to each tab
   isEdited?: boolean
@@ -72,7 +75,7 @@ interface POSTabStore {
   getCurrentTabGlobalDiscount: () => number
   
   // Customer management methods
-  updateTabCustomer: (tabId: string, customer: { name: string; gst: string; customer_id?: string }) => void
+  updateTabCustomer: (tabId: string, customer: { name: string; gst: string; customer_id?: string; mobile_no?: string; email?: string; tax_id?: string }) => void
   
   // Other Details methods
   updateTabOtherDetails: (tabId: string, details: { po_no?: string | null; po_date?: string | null; internal_note?: string | null }) => void
@@ -101,7 +104,7 @@ interface POSTabStore {
   // Helper methods
   getCurrentTab: () => Tab | undefined
   getCurrentTabItems: () => any[]
-  getCurrentTabCustomer: () => { name?: string; gst?: string; customer_id?: string } | null
+  getCurrentTabCustomer: () => { name?: string; gst?: string; customer_id?: string; mobile_no?: string; email?: string; tax_id?: string } | null
   
   // Clear all tabs (use with caution)
   clearAllTabs: () => void
@@ -537,7 +540,7 @@ export const usePOSTabStore = create<POSTabStore>()(
       },
 
       // Customer management methods
-      updateTabCustomer: (tabId: string, customer: { name: string; gst: string; customer_id?: string }) => {
+      updateTabCustomer: (tabId: string, customer: { name: string; gst: string; customer_id?: string; mobile_no?: string; email?: string; tax_id?: string }) => {
         set((state) => ({
           tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, customer } : tab))
         }))

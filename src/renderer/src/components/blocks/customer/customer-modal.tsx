@@ -132,7 +132,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
         createdAt: '',
         updatedAt: ''
       }))
-      console.log('[CustomerModal] Mapped customers (first 5):', transformedCustomers.slice(0,5).map(c => ({ name: c.name, default_price_list: (c as any).default_price_list })))
+      console.log('[CustomerModal] Mapped customers (first 5):', transformedCustomers.slice(0, 5).map(c => ({ name: c.name, default_price_list: (c as any).default_price_list })))
 
       // Fixed page size; disable further loads
       setHasMore(false)
@@ -170,24 +170,24 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
     apiCustomersLength: apiCustomers.length
   })
 
-  // Add test command to window for debugging
-  ;(window as any).testCustomerAPI = async () => {
-    try {
-      const res = await window.electronAPI?.proxy?.request({
-        url: '/api/method/centro_pos_apis.api.customer.customer_list',
-        params: {
-          search_term: search,
-          limit_start: 1,
-          limit_page_length: 15
-        }
-      })
-      console.log('🧪 Customer API result:', res)
-      return res
-    } catch (e) {
-      console.error('🧪 Customer API error:', e)
-      return e
+    // Add test command to window for debugging
+    ; (window as any).testCustomerAPI = async () => {
+      try {
+        const res = await window.electronAPI?.proxy?.request({
+          url: '/api/method/centro_pos_apis.api.customer.customer_list',
+          params: {
+            search_term: search,
+            limit_start: 1,
+            limit_page_length: 15
+          }
+        })
+        console.log('🧪 Customer API result:', res)
+        return res
+      } catch (e) {
+        console.error('🧪 Customer API error:', e)
+        return e
+      }
     }
-  }
 
   // Removed unused mutation hook
 
@@ -211,7 +211,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const customerListRef = useRef<HTMLDivElement | null>(null)
-  
+
   useEffect(() => {
     if (lastInteraction !== 'keyboard') return
     if (selectedIndex >= 0 && itemRefs.current[selectedIndex]) {
@@ -229,7 +229,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
           // Also blur any active element in the item table
           const activeElement = document.activeElement
           if (activeElement && activeElement !== searchInputRef.current) {
-            ;(activeElement as HTMLElement).blur()
+            ; (activeElement as HTMLElement).blur()
           }
           return true
         } else if (customerListRef.current) {
@@ -237,17 +237,17 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
           customerListRef.current.focus()
           const activeElement = document.activeElement
           if (activeElement && activeElement !== customerListRef.current) {
-            ;(activeElement as HTMLElement).blur()
+            ; (activeElement as HTMLElement).blur()
           }
           return true
         }
         return false
       }
-      
+
       // Try immediately
       let timer1: NodeJS.Timeout | null = null
       let timer2: NodeJS.Timeout | null = null
-      
+
       if (!attemptFocus()) {
         // Try after a short delay
         timer1 = setTimeout(() => {
@@ -259,7 +259,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
           }
         }, 50)
       }
-      
+
       // Return cleanup function
       return () => {
         if (timer1) clearTimeout(timer1)
@@ -271,13 +271,16 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
 
   // Handlers (logic kept)
   const handleSelect = () => {
-    if (selectedIndex >= 0 && customersForDisplay[selectedIndex]) {
-      const selectedCustomer = customersForDisplay[selectedIndex]
+    if (selectedIndex >= 0 && apiCustomers[selectedIndex]) {
+      const selectedCustomer = apiCustomers[selectedIndex]
       // Store customer with correct customer_id for order creation
       const customerForOrder = {
         name: selectedCustomer.name, // Display name (customer_name field)
         gst: selectedCustomer.gst, // Tax ID for reference
-        customer_id: selectedCustomer.id // Actual customer_id
+        tax_id: selectedCustomer.gst, // Explicit tax_id
+        customer_id: selectedCustomer.id, // Actual customer_id
+        mobile_no: selectedCustomer.phone, // Map phone to mobile_no
+        email: selectedCustomer.email
       }
       console.log('🔍 Customer selection debug:', {
         selectedCustomer,
@@ -401,8 +404,11 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
         // Auto-select newly created
         const newCustomerForSelection = {
           name: newCustomer.customer_name, // Display name
-          gst: newCustomer.tax_id || 'Not Available',
-          customer_id: response.data.name // The actual customer_id returned from API (CUS-XXXXX format)
+          gst: newCustomer.tax_id || '',
+          tax_id: newCustomer.tax_id || '',
+          customer_id: response.data.name, // The actual customer_id returned from API (CUS-XXXXX format)
+          mobile_no: newCustomer.mobile || '',
+          email: newCustomer.email || ''
         }
 
         console.log('👤 New customer created for order:', newCustomerForSelection)
@@ -606,26 +612,24 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                       ref={(el) => {
                         itemRefs.current[index] = el
                       }}
-                      className={`p-3 rounded-lg cursor-pointer transition-all duration-200 ${
-                        selectedIndex === index
-                          ? 'bg-primary text-primary-foreground'
-                          : 'hover:bg-muted'
-                      }`}
+                      className={`p-3 rounded-lg cursor-pointer transition-all duration-200 ${selectedIndex === index
+                        ? 'bg-primary text-primary-foreground'
+                        : 'hover:bg-muted'
+                        }`}
                       onClick={() => {
                         setSelectedIndex(index)
                         handleSelect()
                       }}
-                      // Disable cursor-driven navigation; cursor is for click only
+                    // Disable cursor-driven navigation; cursor is for click only
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
                           <h4 className="font-medium text-sm leading-tight">{c.name}</h4>
                           <p
-                            className={`text-xs mt-1 ${
-                              selectedIndex === index
-                                ? 'text-primary-foreground/80'
-                                : 'text-muted-foreground'
-                            }`}
+                            className={`text-xs mt-1 ${selectedIndex === index
+                              ? 'text-primary-foreground/80'
+                              : 'text-muted-foreground'
+                              }`}
                           >
                             <span>Tax ID: {c.gst || 'Not Available'}</span>
                             <span className="mx-1">•</span>
@@ -680,10 +684,10 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     onKeyDown={(e) => {
                       const target = e.target as HTMLElement
                       // Allow arrow keys for text editing in input/textarea fields
-                      const isInputField = target.tagName === 'INPUT' || 
-                                          target.tagName === 'TEXTAREA' ||
-                                          target.closest('input') ||
-                                          target.closest('textarea')
+                      const isInputField = target.tagName === 'INPUT' ||
+                        target.tagName === 'TEXTAREA' ||
+                        target.closest('input') ||
+                        target.closest('textarea')
                       if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
                         e.stopPropagation()
                         // Don't prevent default - let browser handle cursor movement
@@ -707,10 +711,10 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     onKeyDown={(e) => {
                       const target = e.target as HTMLElement
                       // Allow arrow keys for text editing in input/textarea fields
-                      const isInputField = target.tagName === 'INPUT' || 
-                                          target.tagName === 'TEXTAREA' ||
-                                          target.closest('input') ||
-                                          target.closest('textarea')
+                      const isInputField = target.tagName === 'INPUT' ||
+                        target.tagName === 'TEXTAREA' ||
+                        target.closest('input') ||
+                        target.closest('textarea')
                       if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
                         e.stopPropagation()
                         // Don't prevent default - let browser handle cursor movement
@@ -764,10 +768,10 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     onKeyDown={(e) => {
                       const target = e.target as HTMLElement
                       // Allow arrow keys for text editing in input/textarea fields
-                      const isInputField = target.tagName === 'INPUT' || 
-                                          target.tagName === 'TEXTAREA' ||
-                                          target.closest('input') ||
-                                          target.closest('textarea')
+                      const isInputField = target.tagName === 'INPUT' ||
+                        target.tagName === 'TEXTAREA' ||
+                        target.closest('input') ||
+                        target.closest('textarea')
                       if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
                         e.stopPropagation()
                         // Don't prevent default - let browser handle cursor movement
@@ -791,10 +795,10 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     onKeyDown={(e) => {
                       const target = e.target as HTMLElement
                       // Allow arrow keys for text editing in input/textarea fields
-                      const isInputField = target.tagName === 'INPUT' || 
-                                          target.tagName === 'TEXTAREA' ||
-                                          target.closest('input') ||
-                                          target.closest('textarea')
+                      const isInputField = target.tagName === 'INPUT' ||
+                        target.tagName === 'TEXTAREA' ||
+                        target.closest('input') ||
+                        target.closest('textarea')
                       if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
                         e.stopPropagation()
                         // Don't prevent default - let browser handle cursor movement
@@ -824,10 +828,10 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     onKeyDown={(e) => {
                       const target = e.target as HTMLElement
                       // Allow arrow keys for text editing in input/textarea fields
-                      const isInputField = target.tagName === 'INPUT' || 
-                                          target.tagName === 'TEXTAREA' ||
-                                          target.closest('input') ||
-                                          target.closest('textarea')
+                      const isInputField = target.tagName === 'INPUT' ||
+                        target.tagName === 'TEXTAREA' ||
+                        target.closest('input') ||
+                        target.closest('textarea')
                       if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
                         e.stopPropagation()
                         // Don't prevent default - let browser handle cursor movement
@@ -883,10 +887,10 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     onKeyDown={(e) => {
                       const target = e.target as HTMLElement
                       // Allow arrow keys for text editing in input/textarea fields
-                      const isInputField = target.tagName === 'INPUT' || 
-                                          target.tagName === 'TEXTAREA' ||
-                                          target.closest('input') ||
-                                          target.closest('textarea')
+                      const isInputField = target.tagName === 'INPUT' ||
+                        target.tagName === 'TEXTAREA' ||
+                        target.closest('input') ||
+                        target.closest('textarea')
                       if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
                         e.stopPropagation()
                         // Don't prevent default - let browser handle cursor movement
@@ -912,10 +916,10 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     onKeyDown={(e) => {
                       const target = e.target as HTMLElement
                       // Allow arrow keys for text editing in input/textarea fields
-                      const isInputField = target.tagName === 'INPUT' || 
-                                          target.tagName === 'TEXTAREA' ||
-                                          target.closest('input') ||
-                                          target.closest('textarea')
+                      const isInputField = target.tagName === 'INPUT' ||
+                        target.tagName === 'TEXTAREA' ||
+                        target.closest('input') ||
+                        target.closest('textarea')
                       if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
                         e.stopPropagation()
                         // Don't prevent default - let browser handle cursor movement
@@ -942,10 +946,10 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     onKeyDown={(e) => {
                       const target = e.target as HTMLElement
                       // Allow arrow keys for text editing in input/textarea fields
-                      const isInputField = target.tagName === 'INPUT' || 
-                                          target.tagName === 'TEXTAREA' ||
-                                          target.closest('input') ||
-                                          target.closest('textarea')
+                      const isInputField = target.tagName === 'INPUT' ||
+                        target.tagName === 'TEXTAREA' ||
+                        target.closest('input') ||
+                        target.closest('textarea')
                       if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
                         e.stopPropagation()
                         // Don't prevent default - let browser handle cursor movement
@@ -971,10 +975,10 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     onKeyDown={(e) => {
                       const target = e.target as HTMLElement
                       // Allow arrow keys for text editing in input/textarea fields
-                      const isInputField = target.tagName === 'INPUT' || 
-                                          target.tagName === 'TEXTAREA' ||
-                                          target.closest('input') ||
-                                          target.closest('textarea')
+                      const isInputField = target.tagName === 'INPUT' ||
+                        target.tagName === 'TEXTAREA' ||
+                        target.closest('input') ||
+                        target.closest('textarea')
                       if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
                         e.stopPropagation()
                         // Don't prevent default - let browser handle cursor movement
@@ -1004,10 +1008,10 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     onKeyDown={(e) => {
                       const target = e.target as HTMLElement
                       // Allow arrow keys for text editing in input/textarea fields
-                      const isInputField = target.tagName === 'INPUT' || 
-                                          target.tagName === 'TEXTAREA' ||
-                                          target.closest('input') ||
-                                          target.closest('textarea')
+                      const isInputField = target.tagName === 'INPUT' ||
+                        target.tagName === 'TEXTAREA' ||
+                        target.closest('input') ||
+                        target.closest('textarea')
                       if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
                         e.stopPropagation()
                         // Don't prevent default - let browser handle cursor movement
@@ -1033,10 +1037,10 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     onKeyDown={(e) => {
                       const target = e.target as HTMLElement
                       // Allow arrow keys for text editing in input/textarea fields
-                      const isInputField = target.tagName === 'INPUT' || 
-                                          target.tagName === 'TEXTAREA' ||
-                                          target.closest('input') ||
-                                          target.closest('textarea')
+                      const isInputField = target.tagName === 'INPUT' ||
+                        target.tagName === 'TEXTAREA' ||
+                        target.closest('input') ||
+                        target.closest('textarea')
                       if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
                         e.stopPropagation()
                         // Don't prevent default - let browser handle cursor movement
@@ -1062,10 +1066,10 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     onKeyDown={(e) => {
                       const target = e.target as HTMLElement
                       // Allow arrow keys for text editing in input/textarea fields
-                      const isInputField = target.tagName === 'INPUT' || 
-                                          target.tagName === 'TEXTAREA' ||
-                                          target.closest('input') ||
-                                          target.closest('textarea')
+                      const isInputField = target.tagName === 'INPUT' ||
+                        target.tagName === 'TEXTAREA' ||
+                        target.closest('input') ||
+                        target.closest('textarea')
                       if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
                         e.stopPropagation()
                         // Don't prevent default - let browser handle cursor movement

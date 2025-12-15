@@ -1,7 +1,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs'
 import { Input } from '@renderer/components/ui/input'
 import { Textarea } from '@renderer/components/ui/textarea'
-import { Search as SearchIcon } from 'lucide-react'
+import { Search as SearchIcon, Plus, X, RefreshCcw } from 'lucide-react'
 import { Checkbox } from '@renderer/components/ui/checkbox'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@renderer/components/ui/dialog'
 import { Button } from '@renderer/components/ui/button'
@@ -13,7 +13,14 @@ import {
   TableHeader,
   TableRow
 } from '@renderer/components/ui/table'
-import { Plus, X } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@renderer/components/ui/select'
+
 import React, { useState, useRef, useEffect } from 'react'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { useHotkeys } from 'react-hotkeys-hook'
@@ -39,9 +46,8 @@ type Props = {
 }
 
 const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem, shouldStartEditing = false, onEditingStarted, onAddItemClick, onSaveCompleted, isProductModalOpen = false, isCustomerModalOpen = false, isErrorBoxFocused = false, onEditingStateChange, errorItems = [] }) => {
-  const { getCurrentTabItems, activeTabId, updateItemInTab, updateItemInTabByIndex, getCurrentTab, setTabEdited, removeItemFromTabByIndex, updateTabOtherDetails, updateTabReservation, getCurrentTabReservation } = usePOSTabStore();
+  const { getCurrentTabItems, activeTabId, updateItemInTab, updateItemInTabByIndex, getCurrentTab, setTabEdited, removeItemFromTabByIndex, updateTabOtherDetails, updateTabReservation, getCurrentTabReservation, updateTabCustomer, updateTabPostingDate, updateTabOrderData } = usePOSTabStore();
   const items = getCurrentTabItems();
-  const hasBottomErrors = Array.isArray(errorItems) && errorItems.length > 0;
   const [tableSearch, setTableSearch] = useState('')
   const isReserved = getCurrentTabReservation()
   const filteredItems = items.filter((it) => {
@@ -70,6 +76,123 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   }, [showDeleteConfirm])
   // const isReadOnly = currentTab?.status === 'confirmed' || currentTab?.status === 'paid';
 
+  // --- Date & Price List Logic (Migrated from OrderDetails) ---
+  const { profile } = usePOSProfileStore()
+
+  // Price List State
+  const [selectedPriceList, setSelectedPriceList] = useState<string>('Standard Selling')
+  const [priceLists, setPriceLists] = useState<string[]>([])
+  const [loadingPriceLists, setLoadingPriceLists] = useState(false)
+
+  // Date State
+  const getCurrentDate = () => {
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = String(now.getMonth() + 1).padStart(2, '0')
+    const day = String(now.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+  const [orderDate, setOrderDate] = useState<string>(getCurrentDate())
+
+  // Check if date change is allowed from POS profile
+  const isDateChangeAllowed = profile?.custom_allow_order_date_change === 1
+
+  // Other Details State (Moved from bottom)
+  const [poRef, setPoRef] = useState<string>(currentTab?.po_no || '')
+  const [poRefDate, setPoRefDate] = useState<string>(currentTab?.po_date || getCurrentDate())
+  const [internalNote, setInternalNote] = useState<string>(currentTab?.internal_note || '')
+
+  // Fetch Price Lists
+  useEffect(() => {
+    const fetchPriceLists = async () => {
+      setLoadingPriceLists(true)
+      try {
+        const response = await window.electronAPI?.proxy?.request({
+          method: 'GET',
+          url: '/api/resource/Price List',
+          params: { limit_start: 1, limit_page_length: 10 }
+        })
+        if (response?.data?.data && Array.isArray(response.data.data)) {
+          const names = response.data.data.map((item: any) => item.name).filter(Boolean)
+          setPriceLists(names)
+          if (names.length === 0) setPriceLists(['Standard Selling'])
+        } else {
+          setPriceLists(['Standard Selling'])
+        }
+      } catch (error) {
+        console.error('❌ Error fetching price lists:', error)
+        setPriceLists(['Standard Selling'])
+      } finally {
+        setLoadingPriceLists(false)
+      }
+    }
+    fetchPriceLists()
+  }, [])
+
+  // Sync Price List from Store -> Local State
+  useEffect(() => {
+    const storePriceList = currentTab?.orderData?.price_list
+    if (storePriceList && storePriceList !== selectedPriceList) {
+      setSelectedPriceList(storePriceList)
+    }
+  }, [currentTab?.orderData?.price_list])
+
+  // Sync Order Date from Store -> Local State
+  useEffect(() => {
+    const currentDate = getCurrentDate()
+    // For new/draft orders
+    if (!currentTab?.orderId || currentTab?.status === 'draft' || !isReadOnly) {
+      const storedDate = currentTab?.posting_date || currentDate
+      setOrderDate(storedDate)
+      return
+    }
+    // For confirmed/paid orders
+    if (isReadOnly && currentTab?.orderData?.posting_date) {
+      const orderDateStr = currentTab.orderData.posting_date
+      if (orderDateStr) {
+        try {
+          const date = orderDateStr.includes('T') ? new Date(orderDateStr) : new Date(orderDateStr + 'T00:00:00')
+          if (!isNaN(date.getTime())) {
+            const y = date.getFullYear()
+            const m = String(date.getMonth() + 1).padStart(2, '0')
+            const d = String(date.getDate()).padStart(2, '0')
+            setOrderDate(`${y}-${m}-${d}`)
+            return
+          }
+        } catch (e) {
+          console.warn('Invalid date format:', orderDateStr, e)
+        }
+      }
+    }
+    setOrderDate(currentDate)
+  }, [activeTabId, currentTab?.orderId, currentTab?.status, currentTab?.orderData?.posting_date, isReadOnly])
+
+  // Initialize Price List from Profile (if not set)
+  useEffect(() => {
+    if (profile?.selling_price_list && !currentTab?.orderData?.price_list) {
+      setSelectedPriceList(profile.selling_price_list)
+    }
+  }, [profile?.selling_price_list])
+
+  // Handle Price List Change
+  const handlePriceListChange = (priceList: string) => {
+    setSelectedPriceList(priceList)
+    if (activeTabId && currentTab?.orderData) {
+      updateTabOrderData(activeTabId, { ...currentTab.orderData, price_list: priceList })
+      setTabEdited(activeTabId, true)
+    }
+  }
+
+  // Handle Date Change
+  const handleDateChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newDate = event.target.value
+    setOrderDate(newDate)
+    if (activeTabId) {
+      updateTabPostingDate(activeTabId, newDate)
+      setTabEdited(activeTabId, true)
+    }
+  }
+
   // Helper function to update item and mark tab as edited (by exact row when possible)
   const updateItemAndMarkEdited = (itemCode: string, updates: any) => {
     if (!activeTabId) return
@@ -80,8 +203,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     } else {
       updateItemInTab(activeTabId, itemCode, updates)
     }
-      setTabEdited(activeTabId, true)
-    }
+    setTabEdited(activeTabId, true)
+  }
 
   // Editable field order and keyboard navigation between fields
   type EditField = 'item_name' | 'item_description' | 'quantity' | 'uom' | 'discount_percentage' | 'standard_rate'
@@ -96,7 +219,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     selectItem(itemCode)
     setActiveField(field)
     setIsEditing(true)
-    
+
     // Get the item from filteredItems using selectedRowIndex (handles duplicates correctly by S.No)
     // This ensures we get the correct duplicate, not just the first one with that item_code
     const filteredItem = selectedRowIndex >= 0 ? filteredItems[selectedRowIndex] : null
@@ -126,7 +249,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       }
       return
     }
-    
+
     // Find the actual index in items array by matching position
     // Count occurrences in filteredItems to find the correct duplicate in items
     let countBefore = 0
@@ -135,7 +258,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         countBefore++
       }
     }
-    
+
     // Find the nth occurrence in items array
     let found = 0
     let actualIndex = -1
@@ -148,14 +271,14 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         found++
       }
     }
-    
+
     // Use the item from the correct index, or fallback to filteredItem
     const rowItem = actualIndex >= 0 ? items[actualIndex] : filteredItem
     if (!rowItem) return
-    
+
     // Check if this is the last item (newly added) by actual index
     const isLastItem = actualIndex === items.length - 1
-    
+
     switch (field) {
       case 'item_name':
         setEditValue(String(rowItem.item_name ?? ''))
@@ -247,12 +370,12 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   const hasItemError = (itemCode: string) => {
     return errorItems.includes(itemCode)
   }
-  
+
   const [activeField, setActiveField] = useState<EditField>('quantity');
   const [isEditing, setIsEditing] = useState(false);
   // Selected visual row index to avoid selecting all duplicates
   const [selectedRowIndex, setSelectedRowIndex] = useState(0)
-  
+
   // Notify parent component when editing state changes
   useEffect(() => {
     onEditingStateChange?.(isEditing)
@@ -317,13 +440,13 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     setInvalidUomMessage('')
     setForceFocus(0)
     setWarehouseAllocatedItems(new Set()) // Clear warehouse-allocated items
-    
+
     // Force a complete re-render by updating the force focus counter
     setTimeout(() => {
       setForceFocus(prev => prev + 1)
     }, 10)
   }
-  
+
   console.log('🔧 ItemsTable Debug:', {
     activeTabId,
     currentTabStatus: currentTab?.status,
@@ -339,7 +462,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       uom: item.uom
     }))
   });
-  
+
   // Warehouse popup state
   const [showWarehousePopup, setShowWarehousePopup] = useState(false)
   const [warehousePopupData, _setWarehousePopupData] = useState<{
@@ -392,7 +515,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         const filteredIndex = filteredItems.findIndex((item) => item.item_code === targetItemCode)
         const scrollIndex = filteredIndex >= 0 ? filteredIndex : Math.max(0, filteredItems.length - 1)
         scrollToSelectedItem(targetItemCode, scrollIndex)
-        
+
         // Use the actual items array index (S.No) for tracking
         setSelectedRowIndex(lastItemIndex)
 
@@ -426,23 +549,23 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     if (isEditing && activeField === 'quantity' && selectedRowIndex >= 0 && activeTabId && !isReadOnly) {
       // Check if this is the last item (newly added) using index
       const isLastItem = selectedRowIndex === items.length - 1
-      
+
       // Check if we've already initialized quantity for this index/field combination
-      const alreadyInitialized = quantityInitializedRef.current?.index === selectedRowIndex && 
-                                  quantityInitializedRef.current?.field === activeField
-      
+      const alreadyInitialized = quantityInitializedRef.current?.index === selectedRowIndex &&
+        quantityInitializedRef.current?.field === activeField
+
       // Only fix quantity once per editing session for newly added items
       // But only if the store value is still 1 (hasn't been edited by user)
       if (isLastItem && !alreadyInitialized) {
         const selectedItem = items[selectedRowIndex]
         const storeQty = selectedItem?.quantity
-        
+
         // Only set to 1 if store quantity is 1, undefined, or null (not yet edited)
         // If user has already edited it (storeQty !== 1), use the store value
         if (storeQty === 1 || storeQty === undefined || storeQty === null) {
           // Mark as initialized using index (S.No)
           quantityInitializedRef.current = { index: selectedRowIndex, field: activeField }
-          
+
           console.log('🔧 Setting quantity to 1 for newly added item at index:', selectedRowIndex, 'item_code:', selectedItem?.item_code, 'store quantity was:', storeQty)
           setEditValue('1')
           updateItemInTabByIndex(activeTabId, selectedRowIndex, { quantity: 1 })
@@ -491,11 +614,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     if (!isEditing || !selectedItemId || selectedRowIndex < 0) return
     // Avoid resetting value/caret when editing the label field
     if (activeField === 'item_description') return
-    
+
     // Get the item from filteredItems using selectedRowIndex (handles duplicates correctly)
     const filteredItem = filteredItems[selectedRowIndex]
     if (!filteredItem) return
-    
+
     // Find the actual index in items array by matching position
     // Count occurrences in filteredItems to find the correct duplicate in items
     let countBefore = 0
@@ -504,7 +627,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         countBefore++
       }
     }
-    
+
     // Find the nth occurrence in items array
     let found = 0
     let actualIndex = -1
@@ -517,30 +640,30 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         found++
       }
     }
-    
+
     // Use the item from the correct index, or fallback to filteredItem
     const item = actualIndex >= 0 ? items[actualIndex] : filteredItem
     if (!item) return
-    
+
     // Check if this is the last item (newly added) by actual index
     const isLastItem = actualIndex === items.length - 1
-    
+
     // Only set if editValue is empty or we switched fields
     if (editValue === '' || (activeField && String(item[activeField]) !== editValue)) {
-        // For quantity field: 
-        // - If it's the last item (newly added) and store value is 1/undefined/null, use '1'
-        // - Otherwise, use the store value for this specific item (by index)
-        let value = item[activeField]
-        if (activeField === 'quantity') {
-          const storeQty = item.quantity
-          if (isLastItem && (storeQty === 1 || storeQty === undefined || storeQty === null)) {
-            value = 1
-          } else {
-            value = storeQty ?? item[activeField]
-          }
+      // For quantity field: 
+      // - If it's the last item (newly added) and store value is 1/undefined/null, use '1'
+      // - Otherwise, use the store value for this specific item (by index)
+      let value = item[activeField]
+      if (activeField === 'quantity') {
+        const storeQty = item.quantity
+        if (isLastItem && (storeQty === 1 || storeQty === undefined || storeQty === null)) {
+          value = 1
+        } else {
+          value = storeQty ?? item[activeField]
         }
-        setEditValue(value?.toString() || '')
       }
+      setEditValue(value?.toString() || '')
+    }
     // Clear invalid UOM message when starting to edit
     if (activeField === 'uom') {
       setInvalidUomMessage('')
@@ -550,7 +673,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   // Handle focus after revert - more robust approach
   useEffect(() => {
     console.log('🎯 Focus effect triggered:', { forceFocus, isEditing, activeField, selectedItemId })
-    
+
     if (forceFocus > 0) {
       // Try multiple times to ensure focus works
       const attemptFocus = (attempt = 1) => {
@@ -568,7 +691,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         }
         return false
       }
-      
+
       setTimeout(() => attemptFocus(), 50)
     }
   }, [forceFocus, isEditing, activeField, selectedItemId])
@@ -579,13 +702,13 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       const item = items.find((i) => i.item_code === selectedItemId)
       const isSelected = item?.item_code === selectedItemId
       const isEditingUom = isSelected && isEditing && activeField === 'uom'
-      console.log('🔍 UOM editing state:', { 
-        selectedItemId, 
-        itemCode: item?.item_code, 
-        isSelected, 
-        isEditing, 
-        activeField, 
-        isEditingUom 
+      console.log('🔍 UOM editing state:', {
+        selectedItemId,
+        itemCode: item?.item_code,
+        isSelected,
+        isEditing,
+        activeField,
+        isEditingUom
       })
     }
   }, [selectedItemId, isEditing, activeField, items])
@@ -602,10 +725,10 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
           limit_page_length: 100
         }
       })
-      
+
       const allItems = Array.isArray(resp?.data?.data) ? resp.data.data : []
       const freshItem = allItems.find((i: any) => i.item_id === itemCode)
-      
+
       if (freshItem && activeTabId) {
         console.log('✅ Refreshed item data:', freshItem)
         const uomDetails = Array.isArray(freshItem?.uom_details) ? freshItem.uom_details : []
@@ -625,7 +748,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
           activeTabItems.find((it: any) => it.item_code === itemCode) ||
           items.find((it) => it.item_code === itemCode)
         const currentUomKey = String(currentUomOverride || existingItem?.uom || 'Nos').trim()
-        
+
         // Update the item with fresh data
         updateItemAndMarkEdited(itemCode, {
           uomRates,
@@ -749,7 +872,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       // Handle UOM validation
       try {
         console.log('🔍 Validating UOM for item:', item.item_code, 'UOM:', editValue)
-        
+
         // Fetch fresh UOM details from API for this specific item
         const resp = await api.get(API_Endpoints.PRODUCT_LIST_METHOD, {
           params: {
@@ -759,13 +882,13 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
             limit_page_length: 100
           }
         })
-        
+
         console.log('📡 API Response for UOM validation:', resp?.data)
-        
+
         // Find the exact item in the response
         const allItems = Array.isArray(resp?.data?.data) ? resp.data.data : []
         const exactItem = allItems.find((i: any) => i.item_id === item.item_code)
-        
+
         if (!exactItem) {
           console.error('❌ Item not found in API response:', item.item_code)
           toast.error(`Item ${item.item_code} not found in API. Please refresh and try again.`, {
@@ -774,11 +897,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
           setIsEditing(false)
           return
         }
-        
+
         console.log('✅ Found exact item:', exactItem.item_id, 'UOM details:', exactItem.uom_details)
-        
+
         const uomDetails = Array.isArray(exactItem?.uom_details) ? exactItem.uom_details : []
-        
+
         // Create a map of UOM -> rate for easy lookup
         const uomMap = Object.fromEntries(
           uomDetails.map((d: any) => [
@@ -792,9 +915,9 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
             }
           ])
         )
-        
+
         console.log('🗺️ UOM Map created:', uomMap)
-        
+
         const previousUom = String(item.uom || 'Nos')
         const editValueLower = String(editValue).toLowerCase()
         const uomInfo = uomMap[editValueLower]
@@ -804,49 +927,49 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         // Check if UOM exists in API response
         if (!uomInfo) {
           // UOM not found in API - just revert without popup
-        const prevUomInfo = uomMap[String(previousUom).toLowerCase()]
-        const fallbackRate = prevUomInfo?.rate || Number(item.standard_rate || 0)
-        const uomRates = Object.fromEntries(
-          uomDetails.map((d: any) => [String(d.uom || '').trim(), Number(d.rate ?? 0)])
-        )
-        const uomMinMax = Object.fromEntries(
-          uomDetails.map((d: any) => [
-            String(d.uom || '').trim(),
-            { min: Number(d.min_price ?? 0), max: Number(d.max_price ?? 0) }
-          ])
-        )
-          
+          const prevUomInfo = uomMap[String(previousUom).toLowerCase()]
+          const fallbackRate = prevUomInfo?.rate || Number(item.standard_rate || 0)
+          const uomRates = Object.fromEntries(
+            uomDetails.map((d: any) => [String(d.uom || '').trim(), Number(d.rate ?? 0)])
+          )
+          const uomMinMax = Object.fromEntries(
+            uomDetails.map((d: any) => [
+              String(d.uom || '').trim(),
+              { min: Number(d.min_price ?? 0), max: Number(d.max_price ?? 0) }
+            ])
+          )
+
           console.log('❌ UOM not found, reverting to:', previousUom, 'with rate:', fallbackRate)
-          
+
           // Update the item with previous UOM
-        const previousUomTrim = String(previousUom).trim()
-        updateItemAndMarkEdited(item.item_code, {
-          uom: previousUom,
-          standard_rate: Number(fallbackRate || 0),
-          uomRates,
-          uomMinMax,
-          min_price: uomMinMax[previousUomTrim]?.min ?? Number(fallbackRate || 0),
-          max_price: uomMinMax[previousUomTrim]?.max ?? Number(fallbackRate || 0)
-        })
-          
+          const previousUomTrim = String(previousUom).trim()
+          updateItemAndMarkEdited(item.item_code, {
+            uom: previousUom,
+            standard_rate: Number(fallbackRate || 0),
+            uomRates,
+            uomMinMax,
+            min_price: uomMinMax[previousUomTrim]?.min ?? Number(fallbackRate || 0),
+            max_price: uomMinMax[previousUomTrim]?.max ?? Number(fallbackRate || 0)
+          })
+
           // Set the edit value to the previous UOM
           setEditValue(previousUom)
-          
+
           // Set visual message instead of popup
           setInvalidUomMessage(`No ${String(editValue)} available. Reverted to ${previousUom}.`)
-          
+
           // Clear the message after 3 seconds
           setTimeout(() => {
             setInvalidUomMessage('')
           }, 3000)
-          
+
           // Just return without breaking the editing state
           return
         }
 
         // UOM exists in API - use the rate (regardless of qty)
         console.log('✅ UOM found, updating with rate:', uomInfo.rate)
-        
+
         const uomRates = Object.fromEntries(
           uomDetails.map((d: any) => [String(d.uom || '').trim(), Number(d.rate ?? 0)])
         )
@@ -856,7 +979,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
             { min: Number(d.min_price ?? 0), max: Number(d.max_price ?? 0) }
           ])
         )
-        
+
         const uomKey = String(uomInfo.uom || '').trim()
         const fallbackMin = Number(uomInfo.min_price ?? (uomInfo.rate ?? 0))
         const fallbackMax = Number(uomInfo.max_price ?? (uomInfo.rate ?? 0))
@@ -869,7 +992,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
           min_price: uomMinMax[uomKey]?.min ?? fallbackMin,
           max_price: uomMinMax[uomKey]?.max ?? fallbackMax
         })
-        
+
         // Refresh item data to ensure UI is updated
         setTimeout(() => {
           refreshItemData(item.item_code, uomInfo.uom)
@@ -947,7 +1070,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
     // Don't auto-navigate - let user use arrow keys for navigation
     // Just save the value and stay in current field
-      setIsEditing(false)
+    setIsEditing(false)
   }
 
   // Emergency reset hotkey
@@ -977,16 +1100,16 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         console.log('⚠️ Space blocked: Read-only mode')
         return
       }
-      
+
       // Check if we're actively editing in a text input field - if so, allow normal spacebar behavior
       // BUT: if item is selected and NOT in edit mode, spacebar should change UOM
       const activeElement = document.activeElement
       const isInputField = activeElement && (
-        activeElement.tagName === 'INPUT' || 
-        activeElement.tagName === 'TEXTAREA' || 
+        activeElement.tagName === 'INPUT' ||
+        activeElement.tagName === 'TEXTAREA' ||
         (activeElement as HTMLElement).contentEditable === 'true'
       )
-      
+
       // If editing UOM field, let the input's own handler take care of it
       // Don't prevent default here so the input can handle it
       if (isEditing && activeField === 'uom' && isInputField) {
@@ -994,13 +1117,13 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         // Don't prevent default - let the input's onKeyDown handle it
         return
       }
-      
+
       // If editing other text fields, allow normal spacebar for typing
       if (isEditing && isInputField && activeField !== 'uom') {
         console.log('⚠️ Space blocked: Actively editing text field, allowing normal spacebar')
         return // When actively editing a text field, allow normal spacebar for typing
       }
-      
+
       // Prevent default to stop page scroll or other default behaviors
       // We need to prevent default here since useHotkeys has preventDefault: false
       if (e) {
@@ -1011,9 +1134,9 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
           e.stopPropagation()
         }
       }
-      
+
       console.log('✅ Spacebar will cycle UOM for item:', selectedItemId)
-      
+
       // If not editing, spacebar should change UOM (even if some other element has focus)
       // This allows UOM change when item is selected but edit box is not open
 
@@ -1148,13 +1271,13 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
             updateItemAndMarkEdited(selectedItemId, { standard_rate: numValue })
           }
           // Navigate to quantity and keep editing
-        setActiveField('quantity')
+          setActiveField('quantity')
           // Check if this is the last item (newly added) - use '1' instead of item.quantity
           const itemIndex = items.findIndex((i) => i.item_code === selectedItemId)
           const isLastItem = itemIndex === items.length - 1
           const qtyValue = (isLastItem) ? '1' : String(item.quantity ?? '')
           setEditValue(qtyValue)
-        setIsEditing(true)
+          setIsEditing(true)
         }
       } else if (isEditing && selectedItemId && activeField === 'quantity' && !isReadOnly) {
         // If already at quantity, stay at quantity but keep editing
@@ -1211,7 +1334,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
           if (!isNaN(numValue) && numValue >= 0 && actualIndex >= 0) {
             updateItemInTabByIndex(activeTabId, actualIndex, { quantity: numValue })
             setTabEdited(activeTabId, true)
-            
+
             // Warehouse popup is now only triggered manually via Ctrl+Shift+W
             // Removed automatic popup trigger on quantity change
           }
@@ -1387,9 +1510,9 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       console.log('📦 Updated warehouse allocation for item at index:', warehousePopupData.itemIndex)
     } else {
       // Fallback to item_code update (updates first match)
-      updateItemAndMarkEdited(warehousePopupData.itemCode, { 
+      updateItemAndMarkEdited(warehousePopupData.itemCode, {
         quantity: totalAllocated,
-        warehouseAllocations: allocations 
+        warehouseAllocations: allocations
       })
       console.log('📦 Updated warehouse allocation for item by code:', warehousePopupData.itemCode)
     }
@@ -1401,7 +1524,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     setShowWarehousePopup(false)
 
     // Move focus to unit price field
-      setTimeout(() => {
+    setTimeout(() => {
       const item = items.find(i => i.item_code === warehousePopupData.itemCode)
       if (item) {
         selectItem(warehousePopupData.itemCode)
@@ -1413,24 +1536,75 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     }, 100)
   }
 
-  const { profile } = usePOSProfileStore();
+
+
+  const handleGlobalRefresh = async () => {
+    if (!currentTab?.orderId || !activeTabId) return
+
+    try {
+      console.log('🔁 Refreshing order data for', currentTab.orderId)
+      const toastId = toast.loading('Refreshing order data...')
+
+      const response = await window.electronAPI?.proxy?.request({
+        url: '/api/method/centro_pos_apis.api.order.get_sales_order_details',
+        params: { sales_order_id: currentTab.orderId }
+      })
+
+      const orderData = response?.data?.data
+      if (!orderData) {
+        toast.dismiss(toastId)
+        toast.error('Failed to refresh order data')
+        return
+      }
+
+      console.log('🔁 Order data refreshed:', orderData)
+
+      // Update Customer
+      if (orderData.customer) {
+        updateTabCustomer(activeTabId, {
+          name: orderData.customer_name,
+          gst: orderData.customer_gst || '',
+          customer_id: orderData.customer
+        })
+      }
+
+      // Update Posting Date
+      updateTabPostingDate(activeTabId, orderData.posting_date || getCurrentDate())
+
+      // Update Other Details
+      updateTabOtherDetails(activeTabId, {
+        po_no: orderData.po_no || null,
+        po_date: orderData.po_date || null,
+        internal_note: orderData.custom_internal_note || orderData.internal_note || null
+      })
+
+      // Update reservation status
+      if (orderData.is_reserved !== undefined) {
+        updateTabReservation(activeTabId, Number(orderData.is_reserved))
+      }
+
+      // Preserve _relatedData when updating orderData
+      const enrichedOrderData = {
+        ...orderData,
+        _relatedData: currentTab?.orderData?._relatedData
+      }
+
+      updateTabOrderData(activeTabId, enrichedOrderData)
+
+      // Dispatch event to notify other components (like OrderDetails)
+      window.dispatchEvent(new CustomEvent('pos-refresh'))
+
+      toast.dismiss(toastId)
+      toast.success('Order refreshed successfully')
+    } catch (error) {
+      console.error('Failed to refresh order data:', error)
+      toast.error('Failed to refresh order data')
+    }
+  }
+
   // const _allowDuplicateItems = Boolean(profile?.custom_allow_duplicate_items_in_cart === 1); // Unused
   const allowLabelEditing = Boolean(profile?.custom_allow_item_label_editing === 1);
 
-  // Get current date in local timezone (YYYY-MM-DD format)
-  const getCurrentDate = () => {
-    const now = new Date()
-    const year = now.getFullYear()
-    const month = String(now.getMonth() + 1).padStart(2, '0')
-    const day = String(now.getDate()).padStart(2, '0')
-    return `${year}-${month}-${day}`
-  }
-
-  // Other Details fields - sync with store
-  const [poRef, setPoRef] = useState<string>(currentTab?.po_no || '')
-  const [poRefDate, setPoRefDate] = useState<string>(currentTab?.po_date || getCurrentDate())
-  const [internalNote, setInternalNote] = useState<string>(currentTab?.internal_note || '')
-  
   // Use ref to track if we're syncing from store to prevent infinite loop
   const isSyncingFromStoreRef = React.useRef(false)
 
@@ -1441,7 +1615,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       const currentDate = getCurrentDate()
       const storePoDate = currentTab.po_date || currentDate // Default to current date if not set
       const storeInternalNote = currentTab.internal_note || ''
-      
+
       // If PO date is not set in store, initialize it with current date
       if (!currentTab.po_date) {
         updateTabOtherDetails(activeTabId, {
@@ -1450,7 +1624,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
           internal_note: currentTab.internal_note || null
         })
       }
-      
+
       // Only update if values are different to prevent unnecessary updates
       if (poRef !== storePoNo || poRefDate !== storePoDate || internalNote !== storeInternalNote) {
         isSyncingFromStoreRef.current = true
@@ -1480,11 +1654,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       const currentDate = getCurrentDate()
       const storePoDate = currentTab?.po_date || currentDate
       const storeInternalNote = currentTab?.internal_note || ''
-      
+
       const newPoNo = poRef.trim() || null
       const newPoDate = poRefDate || currentDate // Default to current date if empty
       const newInternalNote = internalNote.trim() || null
-      
+
       // Only update store if values actually changed
       if (
         newPoNo !== storePoNo ||
@@ -1504,865 +1678,913 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     <div className="px-4 pt-4 pb-0 bg-white h-full flex flex-col min-h-0 relative">
       <Tabs defaultValue="items" className="w-full h-full flex flex-col min-h-0">
         <div className="flex items-center justify-between flex-shrink-0 mb-0">
-        <div className="flex items-center gap-4">
-          <TabsList className="bg-transparent p-0 border-b border-gray-200">
-            <TabsTrigger
-              value="items"
-              className="rounded-t-md px-4 py-2 text-gray-700 hover:text-black hover:bg-gray-50 data-[state=active]:text-blue-700 data-[state=active]:bg-white data-[state=active]:border-b-2 data-[state=active]:border-blue-600"
-            >
-              Items
-            </TabsTrigger>
-            <TabsTrigger
-              value="other"
-              className="rounded-t-md px-4 py-2 text-gray-700 hover:text-black hover:bg-gray-50 data-[state=active]:text-blue-700 data-[state=active]:bg-white data-[state=active]:border-b-2 data-[state=active]:border-blue-600"
-            >
-              Other Details
-            </TabsTrigger>
-          </TabsList>
-          {activeTabId && (
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="reservation-checkbox"
-                checked={isReserved === 1}
-                onCheckedChange={(checked) => {
-                  if (activeTabId) {
-                    updateTabReservation(activeTabId, checked ? 1 : 0)
-                  }
-                }}
-              />
-              <label
-                htmlFor="reservation-checkbox"
-                className="text-sm font-medium text-gray-700 cursor-pointer"
+          <div className="flex items-center gap-4">
+            <TabsList className="bg-transparent p-0 border-b border-gray-200">
+              <TabsTrigger
+                value="items"
+                className="rounded-t-md px-4 py-2 text-gray-700 hover:text-black hover:bg-gray-50 data-[state=active]:text-blue-700 data-[state=active]:bg-white data-[state=active]:border-b-2 data-[state=active]:border-blue-600"
               >
-                Reservation
-              </label>
-            </div>
-          )}
-        </div>
-          <div className="relative w-1/4 min-w-[220px]">
-            <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search items..."
-              value={tableSearch}
-              onChange={(e) => setTableSearch(e.target.value)}
-              className="pl-8 h-8 text-sm"
-            />
-          </div>
-        </div>
-        <div className="relative flex-1 min-h-0">
-        <TabsContent value="items" className="absolute inset-0 flex flex-col min-h-0 data-[state=inactive]:hidden">
-          <div className="border rounded-lg flex flex-col min-h-0">
-            {/* Sticky table head, scrollable body only */}
-            <div className="bg-white sticky top-0 z-10">
-              <Table className="table-fixed w-full">
-              <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[50px] text-center font-bold">S.No</TableHead>
-                    <TableHead className="w-[110px]">
-                      <div className="flex items-center gap-2">
-                        <span>Product</span>
-                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-200 text-[10px] font-semibold">
-                          {totalProducts}
-                        </span>
-                      </div>
-                    </TableHead>
-                    <TableHead className="w-[300px]">Label</TableHead>
-                    <TableHead className="w-[70px] text-center">
-                      <div className="flex items-center justify-center gap-2">
-                        <span>Qty</span>
-                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-200 text-[10px] font-semibold">
-                          {totalQuantity}
-                        </span>
-                      </div>
-                    </TableHead>
-                  <TableHead className="w-[80px] text-center px-1">UOM</TableHead>
-                  <TableHead className="w-[80px] text-center">Discount</TableHead>
-                  <TableHead className="w-[100px] text-center font-bold">Unit Price</TableHead>
-                    <TableHead className="w-[100px] text-left pl-8">Total</TableHead>
-                  <TableHead className="w-[60px] text-center pl-1">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-            </Table>
-            </div>
-            {/* Only the body scrolls. Dynamically reduce height when error box is visible */}
-            <div
-              className={`flex-1 min-h-0 overflow-y-auto transition-[max-height] duration-200`}
-              style={{ maxHeight: hasBottomErrors ? '240px' : '336px' }}
-              ref={tableScrollRef}
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-                  e.preventDefault()
-                  localKeyHandlingRef.current = true
-                  const currentIndex = selectedRowIndex
-                  const nextIndex = e.key === 'ArrowDown'
-                    ? Math.min(currentIndex + 1, filteredItems.length - 1)
-                    : Math.max(currentIndex - 1, 0)
-                  const nextItem = filteredItems[nextIndex]
-                  if (nextItem) {
-                    selectItem(nextItem.item_code)
-                    setSelectedRowIndex(nextIndex)
-                    scrollToSelectedItem(nextItem.item_code, nextIndex)
-                  }
-                  setTimeout(() => {
-                    localKeyHandlingRef.current = false
-                  }, 30)
-                } else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && selectedItemId && !isEditing) {
-                  // When item is selected but not editing, left/right arrows focus quantity field
-                  e.preventDefault()
-                  e.stopPropagation()
-                  const selectedItem = filteredItems[selectedRowIndex]
-                  if (selectedItem) {
-                    moveToField(selectedItem.item_code, 'quantity')
-                  }
-                } else if (e.key === 'Delete') {
-                  // Fallback: handle Delete at the container level when not editing
-                  if (isProductModalOpen || isCustomerModalOpen) return
-                  if (showDeleteConfirm) return
-                  if (!selectedItemId || isReadOnly) return
-                  if (isEditing) return
-                  const filteredBefore = filteredItems.slice(0, selectedRowIndex)
-                  let itemsBeforeCount = 0
-                  let actualIndex = -1
-                  const term = tableSearch.trim().toLowerCase()
-                  for (let i = 0; i < items.length; i++) {
-                    const matchesFilter =
-                      !term ||
-                      String(items[i].item_code || '').toLowerCase().includes(term) ||
-                      String(items[i].item_name || '').toLowerCase().includes(term)
-                    if (matchesFilter) {
-                      if (itemsBeforeCount === filteredBefore.length) {
-                        actualIndex = i
-                        break
-                      }
-                      itemsBeforeCount++
+                Items
+              </TabsTrigger>
+              <TabsTrigger
+                value="other"
+                className="rounded-t-md px-4 py-2 text-gray-700 hover:text-black hover:bg-gray-50 data-[state=active]:text-blue-700 data-[state=active]:bg-white data-[state=active]:border-b-2 data-[state=active]:border-blue-600"
+              >
+                Other Details
+              </TabsTrigger>
+            </TabsList>
+            {activeTabId && (
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="reservation-checkbox"
+                  checked={isReserved === 1}
+                  onCheckedChange={(checked) => {
+                    if (activeTabId) {
+                      updateTabReservation(activeTabId, checked ? 1 : 0)
                     }
-                  }
-                  setDeleteCandidate(selectedItemId)
-                  setDeleteCandidateIndex(actualIndex >= 0 ? actualIndex : null)
-                  setShowDeleteConfirm(true)
-                }
-              }}
-              onClick={(e) => {
-                // Only trigger if clicking on empty space (not on table cells)
-                if (e.target === e.currentTarget || (e.target as HTMLElement).tagName === 'DIV') {
-                  console.log('🖱️ Items table area clicked - opening product modal')
-                  onAddItemClick?.()
-                }
-                // ensure container can receive arrow keys
-                ;(e.currentTarget as HTMLElement).focus()
-              }}
-            >
-              <Table className="table-fixed w-full">
-                <TableBody>
-                  {filteredItems.map((item, index) => {
-                    const isSelected = item.item_code === selectedItemId && index === selectedRowIndex
-                  const isEditingQuantity = isSelected && isEditing && activeField === 'quantity' && !isReadOnly
-                  const isEditingRate = isSelected && isEditing && activeField === 'standard_rate' && !isReadOnly
-                  const isEditingUom = isSelected && isEditing && activeField === 'uom' && !isReadOnly
-                  const isEditingDiscount =
-                    isSelected && isEditing && activeField === 'discount_percentage' && !isReadOnly
-                  const isEditingItemName = isSelected && isEditing && activeField === 'item_description' && !isReadOnly
-                  const hasError = hasItemError(item.item_code)
-                  const hasSplitWarehouse = item.warehouseAllocations && Array.isArray(item.warehouseAllocations) && item.warehouseAllocations.length > 0
-
-                  // Find the actual index in items array (Sno) for this item
-                  // This handles cases where there are duplicate items
-                  const actualItemIndex = items.findIndex((i) => i === item)
-
-                  // Create unique key for each row (even for duplicate items)
-                  // Include tab ID and index to ensure uniqueness across tab switches
-                  const uniqueKey = `${activeTabId || 'no-tab'}-item-${index}-${item.item_code}`
-                  
-                  return (
-                    <TableRow
-                      key={uniqueKey}
-                      data-item-code={item.item_code}
-                      data-row-index={index}
-                      data-item-index={actualItemIndex >= 0 ? actualItemIndex : undefined}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        console.log('🖱️ Row clicked:', item.item_code, 'isEditing:', isEditing, 'isReadOnly:', isReadOnly)
-                        if (!isEditing) {
-                          selectItem(item.item_code)
-                          setSelectedRowIndex(index)
-                          // Focus container so Arrow keys work when not editing
-                          tableScrollRef.current?.focus()
-                          scrollToSelectedItem(item.item_code, index)
-                        }
-                      }}
-                      className={`transition-all ${
-                        isSelected
-                          ? 'bg-gradient-to-r from-blue-50 to-blue-100 border-l-4 border-l-blue-500 shadow-md'
-                          : 'hover:bg-gray-50'
-                        }`}
-                    >
-                        <TableCell className="w-[50px] text-center font-bold">{index + 1}</TableCell>
-                      <TableCell className={`w-[110px]`}>
-                        <div className="flex flex-col">
-                          {(() => {
-                            let textColor = 'text-gray-800'
-                            if (hasError) {
-                              textColor = 'text-red-600 font-semibold'
-                            } else if (hasSplitWarehouse) {
-                              textColor = 'text-yellow-600 font-semibold'
-                            } else if (isSelected) {
-                              textColor = 'font-semibold text-blue-900'
-                            }
-                            return (
-                              <span className={`${textColor} text-[11px] leading-4 truncate`}>{item.item_code}</span>
-                            )
-                          })()}
-                          <span className={`text-[11px] leading-4 ${
-                            hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : isSelected ? 'text-blue-700' : 'text-gray-500'
-                          } truncate`}>{item.item_name}</span>
-                        </div>
-                      </TableCell>
-                      {/* Label Cell (uses item_description as label; item_name remains static) */}
-                      <TableCell
-                        className={`${hasError ? 'text-red-600 font-medium' : hasSplitWarehouse ? 'text-yellow-600 font-medium' : isSelected ? 'font-medium' : ''} w-[300px]`}
-                        data-item-code={item.item_code}
-                        data-field="item_description"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          console.log('🖱️ Label cell clicked:', item.item_code, 'isReadOnly:', isReadOnly)
-                          if (!allowLabelEditing) {
-                            return
-                          }
-                          if (isSelected && isEditing && activeField === 'item_description') {
-                            return
-                          }
-                          if (!isReadOnly) {
-                            // Always reset editing state first, regardless of current state
-                            resetEditingState()
-                            // Use a small delay to ensure reset is complete
-                            setTimeout(() => {
-                              selectItem(item.item_code)
-                              setSelectedRowIndex(index)
-                              setActiveField('item_description')
-                              setEditValue(String(item.item_description ?? item.item_name ?? ''))
-                              setIsEditing(true)
-                            console.log('✅ Started editing label for:', item.item_code)
-                            }, 50)
-                          }
-                        }}
-                      >
-                        {allowLabelEditing && isEditingItemName ? (
-                          <input
-                            key={`label-${item.item_code}-${isEditingItemName}-${forceFocus}`}
-                            ref={inputRef}
-                            type="text"
-                            value={editValue}
-                            onMouseDown={(e) => e.stopPropagation()}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => {
-                              const newValue = e.target.value
-                              setEditValue(newValue)
-                              // Real-time update for label (item_description)
-                              if (selectedItemId && activeTabId) {
-                                updateItemAndMarkEdited(selectedItemId, { item_description: newValue })
-                              }
-                            }}
-                            onKeyDown={(e) => {
-                              handleArrowNavigation(e, 'item_description', item.item_code)
-                              handleVerticalNavigation(e, 'item_description', item.item_code)
-                              if (e.key === 'Enter') {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                // Save label value and end editing
-                                if (activeTabId && selectedItemId) {
-                                  updateItemAndMarkEdited(selectedItemId, { item_description: editValue })
-                                }
-                                setIsEditing(false)
-                              } else if (e.key === 'Escape') {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                setIsEditing(false)
-                              }
-                            }}
-                            onBlur={(_e) => {
-                              if (navigatingRef.current) return
-                              handleSaveEdit()
-                            }}
-                            className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            placeholder={String(item.item_description ?? '')}
-                          />
-                        ) : (
-                          <span
-                            className={`block truncate ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}
-                            title={(item.item_description || item.item_name || '')}
-                          >
-                            {item.item_description || item.item_name || ''}
-                          </span>
-                        )}
-                      </TableCell>
-
-                      {/* Quantity Cell */}
-                      <TableCell
-                        className={`${hasError ? 'text-red-600 font-medium' : hasSplitWarehouse ? 'text-yellow-600 font-medium' : isSelected ? 'font-medium' : ''} w-[70px] text-center`}
-                        data-item-code={item.item_code}
-                        data-item-index={actualItemIndex >= 0 ? actualItemIndex : undefined}
-                        data-field="quantity"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          console.log('🖱️ Quantity cell clicked:', item.item_code, 'isReadOnly:', isReadOnly)
-                          if (!isReadOnly) {
-                            // Always reset editing state first, regardless of current state
-                            resetEditingState()
-                            
-                            // Use a small delay to ensure reset is complete
-                            setTimeout(() => {
-                            selectItem(item.item_code)
-                              setSelectedRowIndex(index)
-                            setActiveField('quantity')
-                            setIsEditing(true)
-                            // If this is a newly added item (last item in array), check store value first
-                            // Newly added items are always at the end of the items array
-                            // Check if this specific item (by index) is the last item, not just if item_code matches
-                            const isLastItem = index === items.length - 1
-                            const storeQty = item.quantity
-                            
-                            // For last item: use store value if it exists and is not 1 (user has edited)
-                            // Otherwise use '1' for first time
-                            const initialValue = isLastItem 
-                              ? (storeQty !== undefined && storeQty !== null && storeQty !== 1 ? String(storeQty) : '1')
-                              : String(item.quantity ?? '1')
-                            setEditValue(initialValue)
-                            
-                            // Only reset the edited ref if this is truly a new item (first time editing)
-                            // If store already has a custom value, don't reset - user has edited before
-                            if (isLastItem) {
-                              // Only reset if store quantity is 1 or undefined/null (not yet edited)
-                              // If store has a different value, user has edited before, keep the ref
-                              if (storeQty === 1 || storeQty === undefined || storeQty === null) {
-                                lastItemQtyEditedRef.current = null
-                              } else {
-                                // User has edited before, mark as edited so input shows store value
-                                lastItemQtyEditedRef.current = index
-                              }
-                            }
-                            
-                            // If it's a newly added item and store doesn't have a value yet, set to 1
-                            // Use updateItemInTabByIndex to only update this specific item, not all items with same item_code
-                            if (isLastItem && activeTabId && (storeQty === undefined || storeQty === null || storeQty === 1)) {
-                              updateItemInTabByIndex(activeTabId, index, { quantity: 1 })
-                            }
-                            console.log('✅ Started editing quantity for:', item.item_code, 'isLastItem:', isLastItem, 'initialValue:', initialValue)
-                            }, 50)
-                          }
-                        }}
-                      >
-                        {isEditingQuantity ? (
-                          <input
-                            key={`qty-${item.item_code}-${isEditingQuantity}-${forceFocus}`}
-                            ref={inputRef}
-                            type="number"
-                            data-item-code={item.item_code}
-                            data-item-index={actualItemIndex >= 0 ? actualItemIndex : undefined}
-                            data-field="quantity"
-                            value={(() => {
-                              // For the last item (newly added), check store value first
-                              // Once user has set a value, always use that value (from store or editValue)
-                              const isLastItem = index === items.length - 1
-                              if (isLastItem) {
-                                const storeQty = item.quantity
-                                
-                                // Check if user has already edited this item (ref matches index)
-                                const hasBeenEdited = lastItemQtyEditedRef.current === index
-                                
-                                // If user has edited in this session, use editValue
-                                if (hasBeenEdited) {
-                                  return editValue || String(storeQty ?? '1')
-                                }
-                                
-                                // If store has a custom value (not 1, undefined, or null), user has edited before
-                                // Use the store value instead of forcing '1'
-                                if (storeQty !== undefined && storeQty !== null && storeQty !== 1) {
-                                  // Store has a custom value, user has edited before, use it
-                                  // Also set editValue to match so it displays correctly
-                                  if (editValue === '' || editValue === '1') {
-                                    return String(storeQty)
-                                  }
-                                  return editValue
-                                }
-                                
-                                // First time focus and store is 1 or empty, show '1'
-                                return editValue || '1'
-                              }
-                              return editValue
-                            })()}
-                            onChange={(e) => {
-                              const newValue = e.target.value
-                              setEditValue(newValue)
-                              // Mark that user has edited the last item's quantity
-                              const isLastItem = index === items.length - 1
-                              if (isLastItem) {
-                                lastItemQtyEditedRef.current = index
-                              }
-                              // Real-time update for quantity
-                              // Use index directly to handle duplicates correctly
-                              if (activeTabId) {
-                                const numValue = parseFloat(newValue)
-                                if (!isNaN(numValue) && numValue >= 0) {
-                                  // Use updateItemInTabByIndex with the actual index to handle duplicates
-                                  updateItemInTabByIndex(activeTabId, index, { quantity: numValue })
-                                  setTabEdited(activeTabId, true)
-                                  
-                                  // Clear warehouse-allocated status when quantity changes
-                                  if (selectedItemId && warehouseAllocatedItems.has(selectedItemId)) {
-                                    console.log('🔄 Quantity changed for warehouse-allocated item, clearing allocation status:', selectedItemId)
-                                    setWarehouseAllocatedItems(prev => {
-                                      const newSet = new Set(prev)
-                                      newSet.delete(selectedItemId)
-                                      return newSet
-                                    })
-                                    
-                                    // Clear warehouse allocation data from the item
-                                    // Use index directly to handle duplicates correctly
-                                    updateItemInTabByIndex(activeTabId, index, { 
-                                      warehouseAllocations: [] // Clear previous warehouse allocations
-                                    })
-                                    console.log('🧹 Cleared warehouse allocation data for item:', selectedItemId)
-                                  }
-                                }
-                              }
-                            }}
-                            onKeyDown={async (e) => {
-                                handleArrowNavigation(e, 'quantity', item.item_code)
-                                handleVerticalNavigation(e, 'quantity', item.item_code)
-                              if (e.key === 'Enter') {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                // Save qty value directly without ending editing
-                                // Use index directly to handle duplicates correctly
-                                const numValue = parseFloat(editValue)
-                                if (!isNaN(numValue) && numValue >= 0 && activeTabId) {
-                                  updateItemInTabByIndex(activeTabId, index, { quantity: numValue })
-                                  setTabEdited(activeTabId, true)
-                                  
-                                  // Warehouse popup is now only triggered manually via Ctrl+Shift+W
-                                  // Removed automatic popup trigger on quantity change
-                                }
-                                // Navigate to unit price and keep editing
-                                  moveToField(item.item_code, 'standard_rate')
-                              } else if (e.key === 'Escape') {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                setIsEditing(false)
-                              }
-                            }}
-                            onBlur={() => {
-                              if (navigatingRef.current) return
-                              handleSaveEdit()
-                            }}
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            className="w-[50px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
-                            min="0"
-                            step="0.01"
-                          />
-                        ) : (
-                          <div className={`px-2 py-1 ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>
-                            {item.quantity}
-                          </div>
-                        )}
-                      </TableCell>
-
-                      {/* UOM Cell - Not clickable, only editable via spacebar */}
-                      <TableCell
-                        className={`${hasError ? 'text-red-600 font-medium' : hasSplitWarehouse ? 'text-yellow-600 font-medium' : isSelected ? 'font-medium' : ''} w-[80px] text-center`}
-                      >
-                        {isEditingUom ? (
-                          <input
-                            key={`uom-${item.item_code}-${isEditingUom}-${forceFocus}`}
-                            ref={inputRef}
-                            type="text"
-                            value={editValue}
-                              onChange={() => { /* disabled manual edit */ }}
-                            onKeyDown={async (e) => {
-                                // Handle spacebar FIRST before other handlers
-                                if (e.key === ' ' || e.key === 'Space') {
-                                  e.preventDefault()
-                                  e.stopPropagation()
-                                  console.log('⌨️ Spacebar pressed in UOM input field')
-                                  
-                                  try {
-                                    // Fetch UOM list for the exact item using electronAPI proxy (same as other successful calls)
-                                    const resp = await window.electronAPI?.proxy?.request({
-                                      method: 'GET',
-                                      url: '/api/method/centro_pos_apis.api.product.product_list',
-                                      params: {
-                                        price_list: 'Standard Selling',
-                                        item: item.item_code,
-                                        limit_start: 0,
-                                        limit_page_length: 100
-                                      }
-                                    })
-                                    const allItems = Array.isArray(resp?.data?.data) ? resp.data.data : []
-                                    const exactItem = allItems.find((i: any) => i.item_id === item.item_code)
-                                    const details: Array<{ uom: string; rate: number; qty?: number; min_price?: number; max_price?: number }> = Array.isArray(exactItem?.uom_details)
-                                      ? exactItem.uom_details
-                                      : []
-                                    
-                                    if (details.length === 0) {
-                                      console.warn('⚠️ No UOM details found for item:', item.item_code)
-                                      return
-                                    }
-
-                                    // Build ordered UOM list
-                                    const orderedUoms = details.map((d: any) => ({
-                                      uom: String(d.uom || '').trim(),
-                                      rate: Number(d.rate ?? d.min_price ?? 0),
-                                      min_price: Number(d.min_price ?? 0),
-                                      max_price: Number(d.max_price ?? 0)
-                                    }))
-                                    const currentUomLower = String(item.uom || 'Nos').trim().toLowerCase()
-                                    const currentIndex = Math.max(
-                                      0,
-                                      orderedUoms.findIndex((d) => d.uom.toLowerCase() === currentUomLower)
-                                    )
-                                    const nextIndex = (currentIndex + 1) % orderedUoms.length
-                                    const next = orderedUoms[nextIndex]
-                                    const ratesMap = Object.fromEntries(orderedUoms.map((d) => [d.uom, d.rate]))
-                                    const limitsMap = Object.fromEntries(
-                                      orderedUoms.map((d) => [d.uom, { min: d.min_price, max: d.max_price }])
-                                    )
-
-                                    console.log('🔁 Cycling UOM in input field:', {
-                                      current: item.uom,
-                                      next: next.uom,
-                                      nextRate: next.rate,
-                                      list: orderedUoms
-                                    })
-
-                                    setEditValue(next.uom)
-                                    if (activeTabId && selectedItemId) {
-                                      updateItemAndMarkEdited(selectedItemId, {
-                                        uom: next.uom,
-                                        standard_rate: Number(next.rate || 0),
-                                        uomRates: ratesMap,
-                                        uomMinMax: limitsMap,
-                                        min_price: next.min_price,
-                                        max_price: next.max_price
-                                      })
-                                    }
-                                    return // Exit early, don't process other keys
-                                  } catch (err) {
-                                    console.error('Space-to-cycle UOM in input field failed:', err)
-                                    // Fallback to using existing uomRates if available
-                                    const rates = item.uomRates || {}
-                                    const limits = item.uomMinMax || {}
-                                    const uoms = Object.keys(rates)
-                                    if (uoms.length > 0) {
-                                      const currentUom = String(item.uom || 'Nos')
-                                      const currentIndex = Math.max(0, uoms.indexOf(currentUom))
-                                      const nextIndex = (currentIndex + 1) % uoms.length
-                                      const nextUom = uoms[nextIndex]
-                                      setEditValue(nextUom)
-                                      if (activeTabId && selectedItemId) {
-                                        updateItemAndMarkEdited(selectedItemId, {
-                                          uom: nextUom,
-                                          standard_rate: rates[nextUom] ?? item.standard_rate,
-                                          uomRates: rates,
-                                          uomMinMax: limits,
-                                          min_price: limits[nextUom]?.min ?? item.min_price ?? 0,
-                                          max_price: limits[nextUom]?.max ?? item.max_price ?? 0
-                                        })
-                                      }
-                                    }
-                                    return
-                                  }
-                                }
-                                
-                                // Allow horizontal navigation to other fields
-                                handleArrowNavigation(e, 'uom', item.item_code)
-                                handleVerticalNavigation(e, 'uom', item.item_code)
-                                
-                                if (e.key === 'Escape') {
-                                e.preventDefault()
-                                setIsEditing(false)
-                              }
-                            }}
-                             onBlur={() => {
-                               if (navigatingRef.current) return
-                               handleSaveEdit()
-                             }}
-                            className="w-[70px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center truncate"
-                              readOnly
-                          />
-                        ) : (
-                          <div className={`px-2 py-1 ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>{item.uom || 'Nos'}</div>
-                        )}
-                      </TableCell>
-
-                      {/* Discount Cell */}
-                      <TableCell
-                        className={`${hasError ? 'text-red-600 font-medium' : hasSplitWarehouse ? 'text-yellow-600 font-medium' : isSelected ? 'font-medium' : ''} w-[80px] text-center`}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          if (!isReadOnly) {
-                            // Always reset editing state first, regardless of current state
-                            resetEditingState()
-                            
-                            // Use a small delay to ensure reset is complete
-                            setTimeout(() => {
-                            selectItem(item.item_code)
-                              setSelectedRowIndex(index)
-                            setActiveField('discount_percentage')
-                            setIsEditing(true)
-                            setEditValue(String(item.discount_percentage ?? '0'))
-                            }, 50)
-                          }
-                        }}
-                      >
-                        {isEditingDiscount ? (
-                          <input
-                            key={`discount-${item.item_code}-${isEditingDiscount}-${forceFocus}`}
-                            ref={inputRef}
-                            type="number"
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            onKeyDown={(e) => {
-                                handleArrowNavigation(e, 'discount_percentage', item.item_code)
-                                handleVerticalNavigation(e, 'discount_percentage', item.item_code)
-                              if (e.key === 'Enter') {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                handleSaveEdit()
-                              } else if (e.key === 'Escape') {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                setIsEditing(false)
-                              }
-                            }}
-                             onBlur={() => {
-                               if (navigatingRef.current) return
-                               handleSaveEdit()
-                             }}
-                            className="w-[60px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
-                            min="0"
-                            max="100"
-                            step="0.01"
-                          />
-                        ) : (
-                          <div className={`px-2 py-1 ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>{item.discount_percentage ?? 0}</div>
-                        )}
-                      </TableCell>
-
-                      {/* Unit Price (editable) */}
-                      <TableCell
-                        className={`${hasError ? 'text-red-600 font-medium' : hasSplitWarehouse ? 'text-yellow-600 font-medium' : isSelected ? 'font-medium' : ''} w-[100px] text-center ${priceLimitHighlight.has(item.item_code) ? 'bg-red-50' : ''}`}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          if (!isReadOnly) {
-                            // Always reset editing state first, regardless of current state
-                            resetEditingState()
-                            
-                            // Use a small delay to ensure reset is complete
-                            setTimeout(() => {
-                            selectItem(item.item_code)
-                              setSelectedRowIndex(index)
-                            setActiveField('standard_rate')
-                            setIsEditing(true)
-                            setEditValue(String(item.standard_rate ?? ''))
-                            }, 50)
-                          }
-                        }}
-                      >
-                        {isEditingRate ? (
-                          <input
-                            key={`rate-${item.item_code}-${isEditingRate}-${forceFocus}`}
-                            ref={inputRef}
-                            type="number"
-                            value={editValue}
-                            onChange={(e) => {
-                              const newValue = e.target.value
-                              setEditValue(newValue)
-                              // Real-time update for unit price
-                              if (selectedItemId && activeTabId) {
-                                const numValue = parseFloat(newValue)
-                                if (!isNaN(numValue) && numValue >= 0) {
-                                  updateItemAndMarkEdited(selectedItemId, { standard_rate: numValue })
-                                }
-                              }
-                            }}
-                            onKeyDown={(e) => {
-                                handleArrowNavigation(e, 'standard_rate', item.item_code)
-                                handleVerticalNavigation(e, 'standard_rate', item.item_code)
-                              if (e.key === 'Enter') {
-                                e.preventDefault()
-                                handleSaveEdit()
-                                // End editing - no further navigation
-                                setIsEditing(false)
-                                  
-                                  // If this is the last visible row, open product modal
-                                  if (index === filteredItems.length - 1) {
-                                    console.log('⌨️ Enter pressed on last item unit price - opening product modal')
-                                    onAddItemClick?.()
-                                  }
-                              } else if (e.key === 'Escape') {
-                                e.preventDefault()
-                                setIsEditing(false)
-                              }
-                            }}
-                            onBlur={handleSaveEdit}
-                            min="0"
-                            step="0.01"
-                            className={`w-[80px] mx-auto px-2 py-1 border ${priceLimitHighlight.has(item.item_code) ? 'border-red-500 bg-red-50' : 'border-gray-300'} rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center`}
-                          />
-                        ) : (
-                          <span className={`font-bold ${priceLimitHighlight.has(item.item_code) ? 'text-red-600' : hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>{Number(item.standard_rate || 0).toFixed(2)}</span>
-                        )}
-                      </TableCell>
-                      <TableCell className={`font-semibold ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : isSelected ? 'text-blue-900' : ''} w-[100px] text-left pl-8`}>
-                        {(
-                          Number(item.standard_rate || 0) *
-                          Number(item.quantity || 0) *
-                          (1 - Number(item.discount_percentage || 0) / 100)
-                        ).toFixed(2)}
-                      </TableCell>
-                      <TableCell className="w-[60px] text-center">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                            data-action="delete"
-                          id={`delete-btn-${index}`}
-                          data-row-index={index}
-                          tabIndex={isReadOnly ? -1 : 0}
-                          className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                              if (isReadOnly) return
-                              // Find the actual index in the items array
-                              // Since filteredItems preserves order from items, we can map the filtered index to original index
-                              // Count how many items before this one in filteredItems match the filter
-                              const filteredBefore = filteredItems.slice(0, index)
-                              let itemsBeforeCount = 0
-                              let actualIndex = -1
-                              
-                              for (let i = 0; i < items.length; i++) {
-                                // Check if this item would be in the filtered list
-                                const term = tableSearch.trim().toLowerCase()
-                                const matchesFilter = !term || 
-                                  String(items[i].item_code || '').toLowerCase().includes(term) ||
-                                  String(items[i].item_name || '').toLowerCase().includes(term)
-                                
-                                if (matchesFilter) {
-                                  // This item appears in filteredItems
-                                  if (itemsBeforeCount === filteredBefore.length) {
-                                    // This is the item at filteredItems[index]
-                                    actualIndex = i
-                                    break
-                                  }
-                                  itemsBeforeCount++
-                                }
-                              }
-                              
-                              setDeleteCandidate(item.item_code)
-                              setDeleteCandidateIndex(actualIndex >= 0 ? actualIndex : null)
-                              setShowDeleteConfirm(true)
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault()
-                                if (!isReadOnly) {
-                                  // Find the actual index in the items array
-                                  // Since filteredItems preserves order from items, we can map the filtered index to original index
-                                  const filteredBefore = filteredItems.slice(0, index)
-                                  let itemsBeforeCount = 0
-                                  let actualIndex = -1
-                                  
-                                  for (let i = 0; i < items.length; i++) {
-                                    // Check if this item would be in the filtered list
-                                    const term = tableSearch.trim().toLowerCase()
-                                    const matchesFilter = !term || 
-                                      String(items[i].item_code || '').toLowerCase().includes(term) ||
-                                      String(items[i].item_name || '').toLowerCase().includes(term)
-                                    
-                                    if (matchesFilter) {
-                                      // This item appears in filteredItems
-                                      if (itemsBeforeCount === filteredBefore.length) {
-                                        // This is the item at filteredItems[index]
-                                        actualIndex = i
-                                        break
-                                      }
-                                      itemsBeforeCount++
-                                    }
-                                  }
-                                  
-                                  setDeleteCandidate(item.item_code)
-                                  setDeleteCandidateIndex(actualIndex >= 0 ? actualIndex : null)
-                                  setShowDeleteConfirm(true)
-                                }
-                              } else if (e.key === 'ArrowLeft') {
-                                e.preventDefault()
-                                moveToField(item.item_code, 'standard_rate')
-                              } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-                                handleVerticalNavigation(e as any, 'standard_rate', item.item_code)
-                              }
-                          }}
-                          disabled={isReadOnly}
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-                </TableBody>
-              </Table>
-            </div>
-            
-            {/* Add Item button sticky at bottom of table card (compact) */}
-            <div className="bg-gray-50 border-t py-1.5 px-3 sticky bottom-0 z-10">
-              <Button
-                variant="ghost"
-                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 text-sm h-7 py-1"
-                onClick={() => {
-                  console.log('🖱️ Add item button clicked - opening product modal')
-                  onAddItemClick?.()
-                }}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Click or press &apos;Ctrl+I&apos; to add item • Space to switch UOM • ← → to navigate fields • ↑ ↓ to navigate rows
-              </Button>
-            </div>
-            {/* Invalid UOM Message (not sticky, stays above add button) */}
-            {invalidUomMessage && (
-              <div className="px-3 py-2 bg-red-50 border-t border-red-200 mb-2">
-                <div className="text-red-700 text-sm text-center">
-                  ⚠️ {invalidUomMessage}
-                </div>
+                  }}
+                />
+                <label
+                  htmlFor="reservation-checkbox"
+                  className="text-sm font-medium text-gray-700 cursor-pointer"
+                >
+                  Reservation
+                </label>
               </div>
             )}
           </div>
-        </TabsContent>
-        <TabsContent value="other" className="absolute inset-0 flex flex-col min-h-0 data-[state=inactive]:hidden">
-          <div className="border rounded-lg p-4 space-y-4 h-full overflow-auto">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-sm font-medium">PO Ref</label>
-                <Input value={poRef} onChange={(e)=>setPoRef(e.target.value)} placeholder="Enter PO reference" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-sm font-medium">PO Ref Date</label>
-                <Input type="date" value={poRefDate} onChange={(e)=>setPoRefDate(e.target.value)} />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm font-medium">Terms and Conditions / Internal Note</label>
-              <Textarea
-                value={internalNote}
-                onChange={(e)=>setInternalNote(e.target.value)}
-                placeholder="Enter notes..."
-                className="resize-none h-64"
+          <div className="flex items-center justify-end gap-2 w-1/4 min-w-[260px]">
+            <div className="relative w-full">
+              <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search Picked Items..."
+                value={tableSearch}
+                onChange={(e) => setTableSearch(e.target.value)}
+                className="pl-8 h-8 text-sm w-full"
               />
             </div>
+
+            {/* Refresh Button */}
+            {Boolean(currentTab?.orderId) && (
+              <button
+                type="button"
+                onClick={handleGlobalRefresh}
+                className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2 text-gray-600 shadow-sm hover:bg-gray-50 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 flex-shrink-0"
+                title="Refresh order data"
+              >
+                <RefreshCcw className="h-4 w-4" />
+              </button>
+            )}
           </div>
-        </TabsContent>
+        </div>
+        <div className="relative flex-1 min-h-0">
+          <TabsContent value="items" className="absolute inset-0 flex flex-col min-h-0 data-[state=inactive]:hidden">
+            <div className="border rounded-lg flex flex-col min-h-0">
+              {/* Sticky table head, scrollable body only */}
+              <div className="bg-white sticky top-0 z-10">
+                <Table className="table-fixed w-full">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[50px] text-center font-bold">S.No</TableHead>
+                      <TableHead className="w-[110px]">
+                        <div className="flex items-center gap-2">
+                          <span>Product</span>
+                          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-200 text-[10px] font-semibold">
+                            {totalProducts}
+                          </span>
+                        </div>
+                      </TableHead>
+                      <TableHead className="w-[300px]">Label</TableHead>
+                      <TableHead className="w-[70px] text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <span>Qty</span>
+                          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-200 text-[10px] font-semibold">
+                            {totalQuantity}
+                          </span>
+                        </div>
+                      </TableHead>
+                      <TableHead className="w-[80px] text-center px-1">UOM</TableHead>
+                      <TableHead className="w-[80px] text-center">Discount</TableHead>
+                      <TableHead className="w-[100px] text-center font-bold">Unit Price</TableHead>
+                      <TableHead className="w-[100px] text-left pl-8">Total</TableHead>
+                      <TableHead className="w-[60px] text-center pl-1">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                </Table>
+              </div>
+              {/* Only the body scrolls. Dynamically reduce height when error box is visible */}
+              <div
+                className={`flex-1 min-h-0 overflow-y-auto transition-[max-height] duration-200`}
+                ref={tableScrollRef}
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                    e.preventDefault()
+                    localKeyHandlingRef.current = true
+                    const currentIndex = selectedRowIndex
+                    const nextIndex = e.key === 'ArrowDown'
+                      ? Math.min(currentIndex + 1, filteredItems.length - 1)
+                      : Math.max(currentIndex - 1, 0)
+                    const nextItem = filteredItems[nextIndex]
+                    if (nextItem) {
+                      selectItem(nextItem.item_code)
+                      setSelectedRowIndex(nextIndex)
+                      scrollToSelectedItem(nextItem.item_code, nextIndex)
+                    }
+                    setTimeout(() => {
+                      localKeyHandlingRef.current = false
+                    }, 30)
+                  } else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && selectedItemId && !isEditing) {
+                    // When item is selected but not editing, left/right arrows focus quantity field
+                    e.preventDefault()
+                    e.stopPropagation()
+                    const selectedItem = filteredItems[selectedRowIndex]
+                    if (selectedItem) {
+                      moveToField(selectedItem.item_code, 'quantity')
+                    }
+                  } else if (e.key === 'Delete') {
+                    // Fallback: handle Delete at the container level when not editing
+                    if (isProductModalOpen || isCustomerModalOpen) return
+                    if (showDeleteConfirm) return
+                    if (!selectedItemId || isReadOnly) return
+                    if (isEditing) return
+                    const filteredBefore = filteredItems.slice(0, selectedRowIndex)
+                    let itemsBeforeCount = 0
+                    let actualIndex = -1
+                    const term = tableSearch.trim().toLowerCase()
+                    for (let i = 0; i < items.length; i++) {
+                      const matchesFilter =
+                        !term ||
+                        String(items[i].item_code || '').toLowerCase().includes(term) ||
+                        String(items[i].item_name || '').toLowerCase().includes(term)
+                      if (matchesFilter) {
+                        if (itemsBeforeCount === filteredBefore.length) {
+                          actualIndex = i
+                          break
+                        }
+                        itemsBeforeCount++
+                      }
+                    }
+                    setDeleteCandidate(selectedItemId)
+                    setDeleteCandidateIndex(actualIndex >= 0 ? actualIndex : null)
+                    setShowDeleteConfirm(true)
+                  }
+                }}
+                onClick={(e) => {
+                  // Only trigger if clicking on empty space (not on table cells)
+                  if (e.target === e.currentTarget || (e.target as HTMLElement).tagName === 'DIV') {
+                    console.log('🖱️ Items table area clicked - opening product modal')
+                    onAddItemClick?.()
+                  }
+                  // ensure container can receive arrow keys
+                  ; (e.currentTarget as HTMLElement).focus()
+                }}
+              >
+                <Table className="table-fixed w-full">
+                  <TableBody>
+                    {filteredItems.map((item, index) => {
+                      const isSelected = item.item_code === selectedItemId && index === selectedRowIndex
+                      const isEditingQuantity = isSelected && isEditing && activeField === 'quantity' && !isReadOnly
+                      const isEditingRate = isSelected && isEditing && activeField === 'standard_rate' && !isReadOnly
+                      const isEditingUom = isSelected && isEditing && activeField === 'uom' && !isReadOnly
+                      const isEditingDiscount =
+                        isSelected && isEditing && activeField === 'discount_percentage' && !isReadOnly
+                      const isEditingItemName = isSelected && isEditing && activeField === 'item_description' && !isReadOnly
+                      const hasError = hasItemError(item.item_code)
+                      const hasSplitWarehouse = item.warehouseAllocations && Array.isArray(item.warehouseAllocations) && item.warehouseAllocations.length > 0
+
+                      // Find the actual index in items array (Sno) for this item
+                      // This handles cases where there are duplicate items
+                      const actualItemIndex = items.findIndex((i) => i === item)
+
+                      // Create unique key for each row (even for duplicate items)
+                      // Include tab ID and index to ensure uniqueness across tab switches
+                      const uniqueKey = `${activeTabId || 'no-tab'}-item-${index}-${item.item_code}`
+
+                      return (
+                        <TableRow
+                          key={uniqueKey}
+                          data-item-code={item.item_code}
+                          data-row-index={index}
+                          data-item-index={actualItemIndex >= 0 ? actualItemIndex : undefined}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            console.log('🖱️ Row clicked:', item.item_code, 'isEditing:', isEditing, 'isReadOnly:', isReadOnly)
+                            if (!isEditing) {
+                              selectItem(item.item_code)
+                              setSelectedRowIndex(index)
+                              // Focus container so Arrow keys work when not editing
+                              tableScrollRef.current?.focus()
+                              scrollToSelectedItem(item.item_code, index)
+                            }
+                          }}
+                          className={`transition-all ${isSelected
+                            ? 'bg-gradient-to-r from-blue-50 to-blue-100 border-l-4 border-l-blue-500 shadow-md'
+                            : 'hover:bg-gray-50'
+                            }`}
+                        >
+                          <TableCell className="w-[50px] text-center font-bold">{index + 1}</TableCell>
+                          <TableCell className={`w-[110px]`}>
+                            <div className="flex flex-col">
+                              {(() => {
+                                let textColor = 'text-gray-800'
+                                if (hasError) {
+                                  textColor = 'text-red-600 font-semibold'
+                                } else if (hasSplitWarehouse) {
+                                  textColor = 'text-yellow-600 font-semibold'
+                                } else if (isSelected) {
+                                  textColor = 'font-semibold text-blue-900'
+                                }
+                                return (
+                                  <span className={`${textColor} text-[11px] leading-4 truncate`}>{item.item_code}</span>
+                                )
+                              })()}
+                              <span className={`text-[11px] leading-4 ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : isSelected ? 'text-blue-700' : 'text-gray-500'
+                                } truncate`}>{item.item_name}</span>
+                            </div>
+                          </TableCell>
+                          {/* Label Cell (uses item_description as label; item_name remains static) */}
+                          <TableCell
+                            className={`${hasError ? 'text-red-600 font-medium' : hasSplitWarehouse ? 'text-yellow-600 font-medium' : isSelected ? 'font-medium' : ''} w-[300px]`}
+                            data-item-code={item.item_code}
+                            data-field="item_description"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              console.log('🖱️ Label cell clicked:', item.item_code, 'isReadOnly:', isReadOnly)
+                              if (!allowLabelEditing) {
+                                return
+                              }
+                              if (isSelected && isEditing && activeField === 'item_description') {
+                                return
+                              }
+                              if (!isReadOnly) {
+                                // Always reset editing state first, regardless of current state
+                                resetEditingState()
+                                // Use a small delay to ensure reset is complete
+                                setTimeout(() => {
+                                  selectItem(item.item_code)
+                                  setSelectedRowIndex(index)
+                                  setActiveField('item_description')
+                                  setEditValue(String(item.item_description ?? item.item_name ?? ''))
+                                  setIsEditing(true)
+                                  console.log('✅ Started editing label for:', item.item_code)
+                                }, 50)
+                              }
+                            }}
+                          >
+                            {allowLabelEditing && isEditingItemName ? (
+                              <input
+                                key={`label-${item.item_code}-${isEditingItemName}-${forceFocus}`}
+                                ref={inputRef}
+                                type="text"
+                                value={editValue}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => {
+                                  const newValue = e.target.value
+                                  setEditValue(newValue)
+                                  // Real-time update for label (item_description)
+                                  if (selectedItemId && activeTabId) {
+                                    updateItemAndMarkEdited(selectedItemId, { item_description: newValue })
+                                  }
+                                }}
+                                onKeyDown={(e) => {
+                                  handleArrowNavigation(e, 'item_description', item.item_code)
+                                  handleVerticalNavigation(e, 'item_description', item.item_code)
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    // Save label value and end editing
+                                    if (activeTabId && selectedItemId) {
+                                      updateItemAndMarkEdited(selectedItemId, { item_description: editValue })
+                                    }
+                                    setIsEditing(false)
+                                  } else if (e.key === 'Escape') {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    setIsEditing(false)
+                                  }
+                                }}
+                                onBlur={(_e) => {
+                                  if (navigatingRef.current) return
+                                  handleSaveEdit()
+                                }}
+                                className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                placeholder={String(item.item_description ?? '')}
+                              />
+                            ) : (
+                              <span
+                                className={`block truncate ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}
+                                title={(item.item_description || item.item_name || '')}
+                              >
+                                {item.item_description || item.item_name || ''}
+                              </span>
+                            )}
+                          </TableCell>
+
+                          {/* Quantity Cell */}
+                          <TableCell
+                            className={`${hasError ? 'text-red-600 font-medium' : hasSplitWarehouse ? 'text-yellow-600 font-medium' : isSelected ? 'font-medium' : ''} w-[70px] text-center`}
+                            data-item-code={item.item_code}
+                            data-item-index={actualItemIndex >= 0 ? actualItemIndex : undefined}
+                            data-field="quantity"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              console.log('🖱️ Quantity cell clicked:', item.item_code, 'isReadOnly:', isReadOnly)
+                              if (!isReadOnly) {
+                                // Always reset editing state first, regardless of current state
+                                resetEditingState()
+
+                                // Use a small delay to ensure reset is complete
+                                setTimeout(() => {
+                                  selectItem(item.item_code)
+                                  setSelectedRowIndex(index)
+                                  setActiveField('quantity')
+                                  setIsEditing(true)
+                                  // If this is a newly added item (last item in array), check store value first
+                                  // Newly added items are always at the end of the items array
+                                  // Check if this specific item (by index) is the last item, not just if item_code matches
+                                  const isLastItem = index === items.length - 1
+                                  const storeQty = item.quantity
+
+                                  // For last item: use store value if it exists and is not 1 (user has edited)
+                                  // Otherwise use '1' for first time
+                                  const initialValue = isLastItem
+                                    ? (storeQty !== undefined && storeQty !== null && storeQty !== 1 ? String(storeQty) : '1')
+                                    : String(item.quantity ?? '1')
+                                  setEditValue(initialValue)
+
+                                  // Only reset the edited ref if this is truly a new item (first time editing)
+                                  // If store already has a custom value, don't reset - user has edited before
+                                  if (isLastItem) {
+                                    // Only reset if store quantity is 1 or undefined/null (not yet edited)
+                                    // If store has a different value, user has edited before, keep the ref
+                                    if (storeQty === 1 || storeQty === undefined || storeQty === null) {
+                                      lastItemQtyEditedRef.current = null
+                                    } else {
+                                      // User has edited before, mark as edited so input shows store value
+                                      lastItemQtyEditedRef.current = index
+                                    }
+                                  }
+
+                                  // If it's a newly added item and store doesn't have a value yet, set to 1
+                                  // Use updateItemInTabByIndex to only update this specific item, not all items with same item_code
+                                  if (isLastItem && activeTabId && (storeQty === undefined || storeQty === null || storeQty === 1)) {
+                                    updateItemInTabByIndex(activeTabId, index, { quantity: 1 })
+                                  }
+                                  console.log('✅ Started editing quantity for:', item.item_code, 'isLastItem:', isLastItem, 'initialValue:', initialValue)
+                                }, 50)
+                              }
+                            }}
+                          >
+                            {isEditingQuantity ? (
+                              <input
+                                key={`qty-${item.item_code}-${isEditingQuantity}-${forceFocus}`}
+                                ref={inputRef}
+                                type="number"
+                                data-item-code={item.item_code}
+                                data-item-index={actualItemIndex >= 0 ? actualItemIndex : undefined}
+                                data-field="quantity"
+                                value={(() => {
+                                  // For the last item (newly added), check store value first
+                                  // Once user has set a value, always use that value (from store or editValue)
+                                  const isLastItem = index === items.length - 1
+                                  if (isLastItem) {
+                                    const storeQty = item.quantity
+
+                                    // Check if user has already edited this item (ref matches index)
+                                    const hasBeenEdited = lastItemQtyEditedRef.current === index
+
+                                    // If user has edited in this session, use editValue
+                                    if (hasBeenEdited) {
+                                      return editValue || String(storeQty ?? '1')
+                                    }
+
+                                    // If store has a custom value (not 1, undefined, or null), user has edited before
+                                    // Use the store value instead of forcing '1'
+                                    if (storeQty !== undefined && storeQty !== null && storeQty !== 1) {
+                                      // Store has a custom value, user has edited before, use it
+                                      // Also set editValue to match so it displays correctly
+                                      if (editValue === '' || editValue === '1') {
+                                        return String(storeQty)
+                                      }
+                                      return editValue
+                                    }
+
+                                    // First time focus and store is 1 or empty, show '1'
+                                    return editValue || '1'
+                                  }
+                                  return editValue
+                                })()}
+                                onChange={(e) => {
+                                  const newValue = e.target.value
+                                  setEditValue(newValue)
+                                  // Mark that user has edited the last item's quantity
+                                  const isLastItem = index === items.length - 1
+                                  if (isLastItem) {
+                                    lastItemQtyEditedRef.current = index
+                                  }
+                                  // Real-time update for quantity
+                                  // Use index directly to handle duplicates correctly
+                                  if (activeTabId) {
+                                    const numValue = parseFloat(newValue)
+                                    if (!isNaN(numValue) && numValue >= 0) {
+                                      // Use updateItemInTabByIndex with the actual index to handle duplicates
+                                      updateItemInTabByIndex(activeTabId, index, { quantity: numValue })
+                                      setTabEdited(activeTabId, true)
+
+                                      // Clear warehouse-allocated status when quantity changes
+                                      if (selectedItemId && warehouseAllocatedItems.has(selectedItemId)) {
+                                        console.log('🔄 Quantity changed for warehouse-allocated item, clearing allocation status:', selectedItemId)
+                                        setWarehouseAllocatedItems(prev => {
+                                          const newSet = new Set(prev)
+                                          newSet.delete(selectedItemId)
+                                          return newSet
+                                        })
+
+                                        // Clear warehouse allocation data from the item
+                                        // Use index directly to handle duplicates correctly
+                                        updateItemInTabByIndex(activeTabId, index, {
+                                          warehouseAllocations: [] // Clear previous warehouse allocations
+                                        })
+                                        console.log('🧹 Cleared warehouse allocation data for item:', selectedItemId)
+                                      }
+                                    }
+                                  }
+                                }}
+                                onKeyDown={async (e) => {
+                                  handleArrowNavigation(e, 'quantity', item.item_code)
+                                  handleVerticalNavigation(e, 'quantity', item.item_code)
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    // Save qty value directly without ending editing
+                                    // Use index directly to handle duplicates correctly
+                                    const numValue = parseFloat(editValue)
+                                    if (!isNaN(numValue) && numValue >= 0 && activeTabId) {
+                                      updateItemInTabByIndex(activeTabId, index, { quantity: numValue })
+                                      setTabEdited(activeTabId, true)
+
+                                      // Warehouse popup is now only triggered manually via Ctrl+Shift+W
+                                      // Removed automatic popup trigger on quantity change
+                                    }
+                                    // Navigate to unit price and keep editing
+                                    moveToField(item.item_code, 'standard_rate')
+                                  } else if (e.key === 'Escape') {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    setIsEditing(false)
+                                  }
+                                }}
+                                onBlur={() => {
+                                  if (navigatingRef.current) return
+                                  handleSaveEdit()
+                                }}
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                className="w-[50px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
+                                min="0"
+                                step="0.01"
+                              />
+                            ) : (
+                              <div className={`px-2 py-1 ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>
+                                {item.quantity}
+                              </div>
+                            )}
+                          </TableCell>
+
+                          {/* UOM Cell - Not clickable, only editable via spacebar */}
+                          <TableCell
+                            className={`${hasError ? 'text-red-600 font-medium' : hasSplitWarehouse ? 'text-yellow-600 font-medium' : isSelected ? 'font-medium' : ''} w-[80px] text-center`}
+                          >
+                            {isEditingUom ? (
+                              <input
+                                key={`uom-${item.item_code}-${isEditingUom}-${forceFocus}`}
+                                ref={inputRef}
+                                type="text"
+                                value={editValue}
+                                onChange={() => { /* disabled manual edit */ }}
+                                onKeyDown={async (e) => {
+                                  // Handle spacebar FIRST before other handlers
+                                  if (e.key === ' ' || e.key === 'Space') {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    console.log('⌨️ Spacebar pressed in UOM input field')
+
+                                    try {
+                                      // Fetch UOM list for the exact item using electronAPI proxy (same as other successful calls)
+                                      const resp = await window.electronAPI?.proxy?.request({
+                                        method: 'GET',
+                                        url: '/api/method/centro_pos_apis.api.product.product_list',
+                                        params: {
+                                          price_list: 'Standard Selling',
+                                          item: item.item_code,
+                                          limit_start: 0,
+                                          limit_page_length: 100
+                                        }
+                                      })
+                                      const allItems = Array.isArray(resp?.data?.data) ? resp.data.data : []
+                                      const exactItem = allItems.find((i: any) => i.item_id === item.item_code)
+                                      const details: Array<{ uom: string; rate: number; qty?: number; min_price?: number; max_price?: number }> = Array.isArray(exactItem?.uom_details)
+                                        ? exactItem.uom_details
+                                        : []
+
+                                      if (details.length === 0) {
+                                        console.warn('⚠️ No UOM details found for item:', item.item_code)
+                                        return
+                                      }
+
+                                      // Build ordered UOM list
+                                      const orderedUoms = details.map((d: any) => ({
+                                        uom: String(d.uom || '').trim(),
+                                        rate: Number(d.rate ?? d.min_price ?? 0),
+                                        min_price: Number(d.min_price ?? 0),
+                                        max_price: Number(d.max_price ?? 0)
+                                      }))
+                                      const currentUomLower = String(item.uom || 'Nos').trim().toLowerCase()
+                                      const currentIndex = Math.max(
+                                        0,
+                                        orderedUoms.findIndex((d) => d.uom.toLowerCase() === currentUomLower)
+                                      )
+                                      const nextIndex = (currentIndex + 1) % orderedUoms.length
+                                      const next = orderedUoms[nextIndex]
+                                      const ratesMap = Object.fromEntries(orderedUoms.map((d) => [d.uom, d.rate]))
+                                      const limitsMap = Object.fromEntries(
+                                        orderedUoms.map((d) => [d.uom, { min: d.min_price, max: d.max_price }])
+                                      )
+
+                                      console.log('🔁 Cycling UOM in input field:', {
+                                        current: item.uom,
+                                        next: next.uom,
+                                        nextRate: next.rate,
+                                        list: orderedUoms
+                                      })
+
+                                      setEditValue(next.uom)
+                                      if (activeTabId && selectedItemId) {
+                                        updateItemAndMarkEdited(selectedItemId, {
+                                          uom: next.uom,
+                                          standard_rate: Number(next.rate || 0),
+                                          uomRates: ratesMap,
+                                          uomMinMax: limitsMap,
+                                          min_price: next.min_price,
+                                          max_price: next.max_price
+                                        })
+                                      }
+                                      return // Exit early, don't process other keys
+                                    } catch (err) {
+                                      console.error('Space-to-cycle UOM in input field failed:', err)
+                                      // Fallback to using existing uomRates if available
+                                      const rates = item.uomRates || {}
+                                      const limits = item.uomMinMax || {}
+                                      const uoms = Object.keys(rates)
+                                      if (uoms.length > 0) {
+                                        const currentUom = String(item.uom || 'Nos')
+                                        const currentIndex = Math.max(0, uoms.indexOf(currentUom))
+                                        const nextIndex = (currentIndex + 1) % uoms.length
+                                        const nextUom = uoms[nextIndex]
+                                        setEditValue(nextUom)
+                                        if (activeTabId && selectedItemId) {
+                                          updateItemAndMarkEdited(selectedItemId, {
+                                            uom: nextUom,
+                                            standard_rate: rates[nextUom] ?? item.standard_rate,
+                                            uomRates: rates,
+                                            uomMinMax: limits,
+                                            min_price: limits[nextUom]?.min ?? item.min_price ?? 0,
+                                            max_price: limits[nextUom]?.max ?? item.max_price ?? 0
+                                          })
+                                        }
+                                      }
+                                      return
+                                    }
+                                  }
+
+                                  // Allow horizontal navigation to other fields
+                                  handleArrowNavigation(e, 'uom', item.item_code)
+                                  handleVerticalNavigation(e, 'uom', item.item_code)
+
+                                  if (e.key === 'Escape') {
+                                    e.preventDefault()
+                                    setIsEditing(false)
+                                  }
+                                }}
+                                onBlur={() => {
+                                  if (navigatingRef.current) return
+                                  handleSaveEdit()
+                                }}
+                                className="w-[70px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center truncate"
+                                readOnly
+                              />
+                            ) : (
+                              <div className={`px-2 py-1 ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>{item.uom || 'Nos'}</div>
+                            )}
+                          </TableCell>
+
+                          {/* Discount Cell */}
+                          <TableCell
+                            className={`${hasError ? 'text-red-600 font-medium' : hasSplitWarehouse ? 'text-yellow-600 font-medium' : isSelected ? 'font-medium' : ''} w-[80px] text-center`}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (!isReadOnly) {
+                                // Always reset editing state first, regardless of current state
+                                resetEditingState()
+
+                                // Use a small delay to ensure reset is complete
+                                setTimeout(() => {
+                                  selectItem(item.item_code)
+                                  setSelectedRowIndex(index)
+                                  setActiveField('discount_percentage')
+                                  setIsEditing(true)
+                                  setEditValue(String(item.discount_percentage ?? '0'))
+                                }, 50)
+                              }
+                            }}
+                          >
+                            {isEditingDiscount ? (
+                              <input
+                                key={`discount-${item.item_code}-${isEditingDiscount}-${forceFocus}`}
+                                ref={inputRef}
+                                type="number"
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                  handleArrowNavigation(e, 'discount_percentage', item.item_code)
+                                  handleVerticalNavigation(e, 'discount_percentage', item.item_code)
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    handleSaveEdit()
+                                  } else if (e.key === 'Escape') {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    setIsEditing(false)
+                                  }
+                                }}
+                                onBlur={() => {
+                                  if (navigatingRef.current) return
+                                  handleSaveEdit()
+                                }}
+                                className="w-[60px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
+                                min="0"
+                                max="100"
+                                step="0.01"
+                              />
+                            ) : (
+                              <div className={`px-2 py-1 ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>{item.discount_percentage ?? 0}</div>
+                            )}
+                          </TableCell>
+
+                          {/* Unit Price (editable) */}
+                          <TableCell
+                            className={`${hasError ? 'text-red-600 font-medium' : hasSplitWarehouse ? 'text-yellow-600 font-medium' : isSelected ? 'font-medium' : ''} w-[100px] text-center ${priceLimitHighlight.has(item.item_code) ? 'bg-red-50' : ''}`}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (!isReadOnly) {
+                                // Always reset editing state first, regardless of current state
+                                resetEditingState()
+
+                                // Use a small delay to ensure reset is complete
+                                setTimeout(() => {
+                                  selectItem(item.item_code)
+                                  setSelectedRowIndex(index)
+                                  setActiveField('standard_rate')
+                                  setIsEditing(true)
+                                  setEditValue(String(item.standard_rate ?? ''))
+                                }, 50)
+                              }
+                            }}
+                          >
+                            {isEditingRate ? (
+                              <input
+                                key={`rate-${item.item_code}-${isEditingRate}-${forceFocus}`}
+                                ref={inputRef}
+                                type="number"
+                                value={editValue}
+                                onChange={(e) => {
+                                  const newValue = e.target.value
+                                  setEditValue(newValue)
+                                  // Real-time update for unit price
+                                  if (selectedItemId && activeTabId) {
+                                    const numValue = parseFloat(newValue)
+                                    if (!isNaN(numValue) && numValue >= 0) {
+                                      updateItemAndMarkEdited(selectedItemId, { standard_rate: numValue })
+                                    }
+                                  }
+                                }}
+                                onKeyDown={(e) => {
+                                  handleArrowNavigation(e, 'standard_rate', item.item_code)
+                                  handleVerticalNavigation(e, 'standard_rate', item.item_code)
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault()
+                                    handleSaveEdit()
+                                    // End editing - no further navigation
+                                    setIsEditing(false)
+
+                                    // If this is the last visible row, open product modal
+                                    if (index === filteredItems.length - 1) {
+                                      console.log('⌨️ Enter pressed on last item unit price - opening product modal')
+                                      onAddItemClick?.()
+                                    }
+                                  } else if (e.key === 'Escape') {
+                                    e.preventDefault()
+                                    setIsEditing(false)
+                                  }
+                                }}
+                                onBlur={handleSaveEdit}
+                                min="0"
+                                step="0.01"
+                                className={`w-[80px] mx-auto px-2 py-1 border ${priceLimitHighlight.has(item.item_code) ? 'border-red-500 bg-red-50' : 'border-gray-300'} rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center`}
+                              />
+                            ) : (
+                              <span className={`font-bold ${priceLimitHighlight.has(item.item_code) ? 'text-red-600' : hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>{Number(item.standard_rate || 0).toFixed(2)}</span>
+                            )}
+                          </TableCell>
+                          <TableCell className={`font-semibold ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : isSelected ? 'text-blue-900' : ''} w-[100px] text-left pl-8`}>
+                            {(
+                              Number(item.standard_rate || 0) *
+                              Number(item.quantity || 0) *
+                              (1 - Number(item.discount_percentage || 0) / 100)
+                            ).toFixed(2)}
+                          </TableCell>
+                          <TableCell className="w-[60px] text-center">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              data-action="delete"
+                              id={`delete-btn-${index}`}
+                              data-row-index={index}
+                              tabIndex={isReadOnly ? -1 : 0}
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                if (isReadOnly) return
+                                // Find the actual index in the items array
+                                // Since filteredItems preserves order from items, we can map the filtered index to original index
+                                // Count how many items before this one in filteredItems match the filter
+                                const filteredBefore = filteredItems.slice(0, index)
+                                let itemsBeforeCount = 0
+                                let actualIndex = -1
+
+                                for (let i = 0; i < items.length; i++) {
+                                  // Check if this item would be in the filtered list
+                                  const term = tableSearch.trim().toLowerCase()
+                                  const matchesFilter = !term ||
+                                    String(items[i].item_code || '').toLowerCase().includes(term) ||
+                                    String(items[i].item_name || '').toLowerCase().includes(term)
+
+                                  if (matchesFilter) {
+                                    // This item appears in filteredItems
+                                    if (itemsBeforeCount === filteredBefore.length) {
+                                      // This is the item at filteredItems[index]
+                                      actualIndex = i
+                                      break
+                                    }
+                                    itemsBeforeCount++
+                                  }
+                                }
+
+                                setDeleteCandidate(item.item_code)
+                                setDeleteCandidateIndex(actualIndex >= 0 ? actualIndex : null)
+                                setShowDeleteConfirm(true)
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  if (!isReadOnly) {
+                                    // Find the actual index in the items array
+                                    // Since filteredItems preserves order from items, we can map the filtered index to original index
+                                    const filteredBefore = filteredItems.slice(0, index)
+                                    let itemsBeforeCount = 0
+                                    let actualIndex = -1
+
+                                    for (let i = 0; i < items.length; i++) {
+                                      // Check if this item would be in the filtered list
+                                      const term = tableSearch.trim().toLowerCase()
+                                      const matchesFilter = !term ||
+                                        String(items[i].item_code || '').toLowerCase().includes(term) ||
+                                        String(items[i].item_name || '').toLowerCase().includes(term)
+
+                                      if (matchesFilter) {
+                                        // This item appears in filteredItems
+                                        if (itemsBeforeCount === filteredBefore.length) {
+                                          // This is the item at filteredItems[index]
+                                          actualIndex = i
+                                          break
+                                        }
+                                        itemsBeforeCount++
+                                      }
+                                    }
+
+                                    setDeleteCandidate(item.item_code)
+                                    setDeleteCandidateIndex(actualIndex >= 0 ? actualIndex : null)
+                                    setShowDeleteConfirm(true)
+                                  }
+                                } else if (e.key === 'ArrowLeft') {
+                                  e.preventDefault()
+                                  moveToField(item.item_code, 'standard_rate')
+                                } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                                  handleVerticalNavigation(e as any, 'standard_rate', item.item_code)
+                                }
+                              }}
+                              disabled={isReadOnly}
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Add Item button sticky at bottom of table card (compact) */}
+              <div className="bg-gray-50 border-t py-1.5 px-3 sticky bottom-0 z-10">
+                <Button
+                  variant="ghost"
+                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 text-sm h-7 py-1"
+                  onClick={() => {
+                    console.log('🖱️ Add item button clicked - opening product modal')
+                    onAddItemClick?.()
+                  }}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Click or press &apos;Ctrl+I&apos; to add item • Space to switch UOM • ← → to navigate fields • ↑ ↓ to navigate rows
+                </Button>
+              </div>
+              {/* Invalid UOM Message (not sticky, stays above add button) */}
+              {invalidUomMessage && (
+                <div className="px-3 py-2 bg-red-50 border-t border-red-200 mb-2">
+                  <div className="text-red-700 text-sm text-center">
+                    ⚠️ {invalidUomMessage}
+                  </div>
+                </div>
+              )}
+            </div>
+          </TabsContent>
+          <TabsContent value="other" className="absolute inset-0 flex flex-col min-h-0 data-[state=inactive]:hidden">
+            <div className="border rounded-lg p-4 space-y-4 h-full overflow-auto">
+              {/* Migrated Price List and Date Fields */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Price List</label>
+                  <Select
+                    value={selectedPriceList}
+                    onValueChange={handlePriceListChange}
+                    disabled={loadingPriceLists || isReadOnly}
+                  >
+                    <SelectTrigger className={`w-full bg-white border-gray-300 ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                      <SelectValue placeholder={loadingPriceLists ? "Loading..." : "Select Price List"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {loadingPriceLists ? (
+                        <SelectItem value="loading" disabled>Loading...</SelectItem>
+                      ) : priceLists.length > 0 ? (
+                        priceLists.map((pl) => (
+                          <SelectItem key={pl} value={pl}>{pl}</SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="Standard Selling">Standard Selling</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Order Date</label>
+                  <Input
+                    type="date"
+                    value={orderDate}
+                    onChange={handleDateChange}
+                    disabled={isReadOnly || !isDateChangeAllowed}
+                    className={`w-full bg-white border-gray-300 ${isReadOnly || !isDateChangeAllowed ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">PO Ref</label>
+                  <Input value={poRef} onChange={(e) => setPoRef(e.target.value)} placeholder="Enter PO reference" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">PO Ref Date</label>
+                  <Input type="date" value={poRefDate} onChange={(e) => setPoRefDate(e.target.value)} />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Terms and Conditions / Internal Note</label>
+                <Textarea
+                  value={internalNote}
+                  onChange={(e) => setInternalNote(e.target.value)}
+                  placeholder="Enter notes..."
+                  className="resize-none h-64"
+                />
+              </div>
+            </div>
+          </TabsContent>
         </div>
       </Tabs>
-      
+
       {/* Delete confirmation dialog */}
       <Dialog open={showDeleteConfirm} onOpenChange={(v) => setShowDeleteConfirm(v)}>
         <DialogContent className="max-w-sm" onKeyDown={(e) => {
@@ -2415,7 +2637,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      
+
       {/* Multi Warehouse Allocation Popup */}
       {warehousePopupData && (
         <MultiWarehousePopup
@@ -2430,7 +2652,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                 const qtyCell = document.querySelector(`[data-item-code="${selectedItemId}"] [data-field="quantity"]`)
                 if (qtyCell) {
                   console.log('🎯 Clicking on qty field')
-                  ;(qtyCell as HTMLElement).click()
+                    ; (qtyCell as HTMLElement).click()
                 } else {
                   console.log('❌ Qty cell not found for item:', selectedItemId)
                 }
