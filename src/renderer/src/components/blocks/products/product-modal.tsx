@@ -129,7 +129,7 @@ const ProductSearch: React.FC<{
       })
 
       if (requestId !== latestRequestId.current) return
-      const rows = Array.isArray(res?.data?.data) ? res.data.data : []
+      const rows = Array.isArray(res?.data?.message?.data) ? res.data.message.data : []
       console.log('[ProductModal] Received', rows.length, 'rows (cumulative)')
       setHasMore(false)
       setPage(pageToLoad)
@@ -204,13 +204,13 @@ const ProductSearch: React.FC<{
         e.preventDefault()
         if (selectedIndex >= 0 && productList[selectedIndex]) {
           const product = productList[selectedIndex]
-          
+
           // Handle different possible field names for item code
           const code = product.item_id || product.item_code || product.name || product.item_name || `ITEM-${selectedIndex}`
-          
+
           // Handle different possible field names for item name
           const itemName = product.item_name || product.name || product.label || 'Unknown Product'
-          
+
           // Handle UOM details - try different possible structures
           let primaryUOM = { uom: 'Nos', rate: 0 }
           if (Array.isArray(product.uom_details) && product.uom_details.length > 0) {
@@ -220,9 +220,9 @@ const ProductSearch: React.FC<{
           } else if (product.stock_uom && product.standard_rate) {
             primaryUOM = { uom: product.stock_uom, rate: product.standard_rate }
           }
-          
+
           const displayRate = Number(primaryUOM.rate || product.standard_rate || product.rate || 0)
-          
+
           console.log('⌨️ Enter key - selecting product:', {
             code,
             itemName,
@@ -230,7 +230,7 @@ const ProductSearch: React.FC<{
             primaryUOM,
             originalProduct: product
           })
-          
+
           onSelect({
             name: code,
             item_name: itemName,
@@ -303,13 +303,13 @@ const ProductSearch: React.FC<{
           <div className="space-y-1">
             {productList.map((product: any, index: number) => {
               console.log('🔍 Processing product:', product)
-              
+
               // Handle different possible field names for item code
               const code = product.item_id || product.item_code || product.name || product.item_name || `ITEM-${index}`
-              
+
               // Handle different possible field names for item name
               const itemName = product.item_name || product.name || product.label || 'Unknown Product'
-              
+
               // Handle UOM details - try different possible structures
               let primaryUOM = { uom: 'Nos', rate: 0 }
               if (Array.isArray(product.uom_details) && product.uom_details.length > 0) {
@@ -319,7 +319,7 @@ const ProductSearch: React.FC<{
               } else if (product.stock_uom && product.standard_rate) {
                 primaryUOM = { uom: product.stock_uom, rate: product.standard_rate }
               }
-              
+
               const displayRate = Number(primaryUOM.rate || product.standard_rate || product.rate || 0)
 
               // Compute On Hand quantity for default_uom
@@ -327,7 +327,7 @@ const ProductSearch: React.FC<{
               const onHandQty = Array.isArray(product.uom_details)
                 ? (product.uom_details.find((d: any) => String(d.uom).toLowerCase() === String(defaultUom).toLowerCase())?.qty ?? 0)
                 : 0
-              
+
               console.log('🔍 Processed product data:', {
                 code,
                 itemName,
@@ -335,61 +335,59 @@ const ProductSearch: React.FC<{
                 primaryUOM,
                 originalProduct: product
               })
-              
+
               return (
-              <div
-                ref={(el) => {
-                  itemRefs.current[index] = el
-                }}
-                key={code}
-                className={`p-3 rounded-lg cursor-pointer transition-all duration-200 ${
-                  selectedIndex === index ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
-                }`}
-                onClick={() => {
-                  console.log('🖱️ Product clicked:', product)
-                  onSelect({
-                    name: code,
-                    item_name: itemName,
-                    item_code: code,
-                    item_description: product.description || '',
-                    image: product.image,
-                    standard_rate: displayRate,
-                    uom: primaryUOM.uom,
-                    quantity: 1,
-                    discount_percentage: 0,
-                    uomRates: (Array.isArray(product.uom_details) ? Object.fromEntries(product.uom_details.map((d: any) => [d.uom, d.rate])) : {})
-                  } as any)
-                }}
+                <div
+                  ref={(el) => {
+                    itemRefs.current[index] = el
+                  }}
+                  key={code}
+                  className={`p-3 rounded-lg cursor-pointer transition-all duration-200 ${selectedIndex === index ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                    }`}
+                  onClick={() => {
+                    console.log('🖱️ Product clicked:', product)
+                    onSelect({
+                      name: code,
+                      item_name: itemName,
+                      item_code: code,
+                      item_description: product.description || '',
+                      image: product.image,
+                      standard_rate: displayRate,
+                      uom: primaryUOM.uom,
+                      quantity: 1,
+                      discount_percentage: 0,
+                      uomRates: (Array.isArray(product.uom_details) ? Object.fromEntries(product.uom_details.map((d: any) => [d.uom, d.rate])) : {})
+                    } as any)
+                  }}
                 // Disable cursor-driven navigation; cursor for click only
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <h4 className="font-medium text-sm leading-tight">{itemName}</h4>
-                    <p
-                      className={`text-xs mt-1 ${
-                        selectedIndex === index
-                          ? 'text-primary-foreground/80'
-                          : 'text-muted-foreground'
-                      }`}
-                    >
-                      {code}
-                    </p>
-                    <p
-                      className={`text-[11px] mt-1 ${
-                        selectedIndex === index
-                          ? 'text-primary-foreground/80'
-                          : 'text-muted-foreground'
-                      }`}
-                    >
-                      On Hand: {Number(onHandQty || 0)} {defaultUom || primaryUOM.uom}
-                    </p>
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <h4 className="font-medium text-sm leading-tight">{itemName}</h4>
+                      <p
+                        className={`text-xs mt-1 ${selectedIndex === index
+                            ? 'text-primary-foreground/80'
+                            : 'text-muted-foreground'
+                          }`}
+                      >
+                        {code}
+                      </p>
+                      <p
+                        className={`text-[11px] mt-1 ${selectedIndex === index
+                            ? 'text-primary-foreground/80'
+                            : 'text-muted-foreground'
+                          }`}
+                      >
+                        On Hand: {Number(onHandQty || 0)} {defaultUom || primaryUOM.uom}
+                      </p>
+                    </div>
+                    <Badge variant={selectedIndex === index ? 'secondary' : 'outline'}>
+                      {currencySymbol} {displayRate.toFixed(2)}
+                    </Badge>
                   </div>
-                  <Badge variant={selectedIndex === index ? 'secondary' : 'outline'}>
-                    {currencySymbol} {displayRate.toFixed(2)}
-                  </Badge>
                 </div>
-              </div>
-            )})}
+              )
+            })}
             {isFetchingMore && (
               <div className="flex items-center justify-center py-3 text-sm text-muted-foreground">
                 Loading more...
@@ -662,9 +660,9 @@ const ProductSearchModal: React.FC<ProductSearchModalProps> = ({
 
         {view === 'search' ? (
           <>
-            <ProductSearch 
-              onSelect={handleProductSelect} 
-              onCreateNew={() => setView('create')} 
+            <ProductSearch
+              onSelect={handleProductSelect}
+              onCreateNew={() => setView('create')}
               selectedPriceList={selectedPriceList}
               isOpen={open}
             />
