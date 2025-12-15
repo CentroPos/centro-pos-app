@@ -23,7 +23,6 @@ import { handleServerErrorMessages } from '@renderer/lib/error-handler'
 
 type Props = {
   onNavigateToPrints?: () => void
-  selectedPriceList?: string
   onSaveCompleted?: () => void
   isItemTableEditing?: boolean
   onInsufficientStockErrors?: (
@@ -179,7 +178,6 @@ const parseInsufficientStockErrors = (
 
 const ActionButtons: React.FC<Props> = ({
   onNavigateToPrints,
-  selectedPriceList = 'Standard Selling',
   onSaveCompleted,
   isItemTableEditing = false,
   onInsufficientStockErrors,
@@ -229,12 +227,16 @@ const ActionButtons: React.FC<Props> = ({
   const items = getCurrentTabItems()
   const currentTab = getCurrentTab()
   const globalDiscountPercent = getCurrentTabGlobalDiscount()
-  
+
+  // Derive selectedPriceList from the current tab's order data
+  // Fallback to 'Standard Selling' if not set
+  const selectedPriceList = currentTab?.orderData?.price_list || 'Standard Selling'
+
   // Fetch order details when tab is opened/selected (for previously opened orders)
   useEffect(() => {
     const fetchOrderDetails = async () => {
       if (!currentTab?.orderId || !currentTab?.id) return
-      
+
       try {
         console.log('📋 Fetching order details for tab:', currentTab.id, 'Order ID:', currentTab.orderId)
         const res = await window.electronAPI?.proxy?.request({
@@ -244,21 +246,21 @@ const ActionButtons: React.FC<Props> = ({
           },
           method: 'GET'
         })
-        
+
         if (res?.data?.data && currentTab.id) {
           const orderData = res.data.data
           const docstatus = Number(orderData.docstatus) || null
-          
+
           console.log('📋 Order details fetched for tab:', {
             tabId: currentTab.id,
             orderId: currentTab.orderId,
             docstatus: docstatus,
             isConfirmed: docstatus === 1
           })
-          
+
           // Update orderData to refresh status
           updateTabOrderData(currentTab.id, orderData)
-          
+
           // Update tab status based on docstatus
           if (docstatus === 1) {
             setTabStatus(currentTab.id, 'confirmed')
@@ -268,13 +270,13 @@ const ActionButtons: React.FC<Props> = ({
         console.error('Failed to fetch order details for tab:', e)
       }
     }
-    
+
     // Fetch when orderId exists (order is created)
     if (currentTab?.orderId) {
       fetchOrderDetails()
     }
   }, [currentTab?.orderId, currentTab?.id])
-  
+
   // Load Amount Due from customer insights API
   // If docstatus = 1, calculate as: Amount Due = (fetched Amount Due) - Order Amount
   // Otherwise, use fetched Amount Due as is
@@ -298,26 +300,26 @@ const ActionButtons: React.FC<Props> = ({
           if (!cancelled) setAmountDue('0.00')
           return
         }
-        
+
         const insightsRes = await window.electronAPI?.proxy?.request({
           url: '/api/method/centro_pos_apis.api.customer.customer_amount_insights',
           params: { customer_id: customerId }
         })
         const fetchedAmountDue = Number(insightsRes?.data?.data?.amount_due ?? 0)
-        
+
         // Check if order is confirmed (docstatus = 1)
         const docstatus = currentTab?.orderData ? Number(currentTab.orderData.docstatus) : null
         const isConfirmed = docstatus === 1
-        
+
         if (isConfirmed) {
           // For confirmed orders: Amount Due = (fetched Amount Due) - Order Amount
           const orderAmt = parseFloat(orderAmount || '0') || 0
           const calculatedAmountDue = Math.max(0, fetchedAmountDue - orderAmt)
-          
+
           console.log('📋 Confirmed order - Fetched Amount Due from API:', fetchedAmountDue)
           console.log('📋 Confirmed order - Order Amount:', orderAmt)
           console.log('📋 Confirmed order - Calculated Amount Due (fetched - order):', calculatedAmountDue)
-          
+
           if (!cancelled) setAmountDue(calculatedAmountDue.toFixed(2))
         } else {
           // For draft orders: Use fetched Amount Due as is
@@ -407,16 +409,16 @@ const ActionButtons: React.FC<Props> = ({
           }
         }
       }
-      
+
       // Try multiple times with increasing delays to ensure focus
       const timer1 = setTimeout(() => {
         focusAmount()
       }, 100)
-      
+
       const timer2 = setTimeout(() => {
         focusAmount()
       }, 250)
-      
+
       return () => {
         clearTimeout(timer1)
         clearTimeout(timer2)
@@ -475,7 +477,7 @@ const ActionButtons: React.FC<Props> = ({
     if (isConfirmed && hasSavedOrder) {
       const linkedInvoices = currentTab?.orderData?.linked_invoices
       let outstandingAmount: number | null = null
-      
+
       if (linkedInvoices) {
         if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
           outstandingAmount = normalize(linkedInvoices[0]?.outstanding_amount)
@@ -483,7 +485,7 @@ const ActionButtons: React.FC<Props> = ({
           outstandingAmount = normalize((linkedInvoices as any)?.outstanding_amount)
         }
       }
-      
+
       if (outstandingAmount !== null) {
         console.log('📋 Using outstanding_amount for confirmed order:', outstandingAmount)
         return outstandingAmount.toFixed(2)
@@ -919,7 +921,7 @@ const ActionButtons: React.FC<Props> = ({
           toast.success(`Order updated successfully! Order ID: ${currentTab.orderId}`, {
             duration: 2000
           })
-          
+
           // Fetch order details to refresh status ribbons
           try {
             if (currentTab.orderId) {
@@ -1044,7 +1046,7 @@ const ActionButtons: React.FC<Props> = ({
             onSaveCompleted?.()
             // Navigate to prints tab
             onNavigateToPrints?.()
-            
+
             // Fetch order details to refresh status ribbons
             try {
               const res = await window.electronAPI?.proxy?.request({
@@ -1233,7 +1235,7 @@ const ActionButtons: React.FC<Props> = ({
   const handleOrderConfirmation = async (paymentAmount: number = 0, isConfirmingMode: boolean = false) => {
     // Set processing state at the very beginning to ensure consistent hook calls
     setIsProcessingPayment(true)
-    
+
     try {
       if (!currentTab || !currentTab.orderId) {
         toast.error('No order found. Please save the order first.', {
@@ -1249,270 +1251,270 @@ const ActionButtons: React.FC<Props> = ({
         return
       }
 
-    // Check if order is already confirmed (docstatus = 1) - check BEFORE any API call
-    let isAlreadyConfirmed = false
-    try {
-      const orderDetailsCheck = await window.electronAPI?.proxy?.request({
-        url: '/api/method/centro_pos_apis.api.order.get_sales_order_details',
-        params: {
-          sales_order_id: currentTab.orderId
-        },
-        method: 'GET'
-      })
-      if (orderDetailsCheck?.data?.data) {
-        isAlreadyConfirmed = Number(orderDetailsCheck.data.data.docstatus) === 1
-        console.log('📋 Order docstatus checked BEFORE API call:', orderDetailsCheck.data.data.docstatus, 'isConfirmed:', isAlreadyConfirmed)
-      }
-    } catch (checkError) {
-      console.warn('⚠️ Failed to check order docstatus before API call, using cached value:', checkError)
-      // Fallback to cached value if API check fails
-      isAlreadyConfirmed = currentTab?.orderData && Number(currentTab.orderData.docstatus) === 1
-    }
-    
-    // If in Payment window (isConfirmingMode = false) and order is already confirmed and payment amount > 0, directly call payment entry API
-    // Skip this if in Confirm window mode
-    if (!isConfirmingMode && isAlreadyConfirmed && paymentAmount > 0) {
+      // Check if order is already confirmed (docstatus = 1) - check BEFORE any API call
+      let isAlreadyConfirmed = false
       try {
-        console.log('💳 ===== ORDER ALREADY CONFIRMED, CALLING PAYMENT ENTRY DIRECTLY =====')
-        console.log('💳 Payment Amount:', paymentAmount)
-        console.log('💳 Order ID:', currentTab.orderId)
-        
-        // Get invoice number from current tab or orderData
-        let invoiceNumber = getCurrentTabInvoiceNumber()
-        console.log('💳 Invoice Number Retrieved:', invoiceNumber)
-        if (!invoiceNumber && currentTab?.orderData?.linked_invoices) {
-          const linkedInvoices = currentTab.orderData.linked_invoices
-          if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
-            invoiceNumber = linkedInvoices[0]?.name || null
-          } else if (linkedInvoices && typeof linkedInvoices === 'object') {
-            invoiceNumber = linkedInvoices.name || null
-          }
-        }
-        
-        if (!invoiceNumber) {
-          console.log('⚠️ No invoice number found, fetching order details...')
-          // Fetch order details to get invoice number
-          const orderDetailsResponse = await window.electronAPI?.proxy?.request({
-            url: '/api/method/centro_pos_apis.api.order.get_sales_order_details',
-            params: {
-              sales_order_id: currentTab.orderId
-            }
-          })
-          
-          if (orderDetailsResponse?.data?.data) {
-            const orderData = orderDetailsResponse.data.data
-            const linkedInvoices = orderData.linked_invoices
-            if (linkedInvoices) {
-              if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
-                invoiceNumber = linkedInvoices[0]?.name || null
-              } else if (linkedInvoices && typeof linkedInvoices === 'object') {
-                invoiceNumber = linkedInvoices.name || null
-              }
-            }
-          }
-        }
-        
-        if (!invoiceNumber) {
-          toast.error('Invoice number not found. Cannot process payment.', {
-            duration: 5000
-          })
-          return
-        }
-        
-        // Get customer ID from multiple sources: tab customer, orderData, or store helper
-        let customerId = currentTab?.customer?.customer_id || null
-        
-        // If not found in tab customer, try orderData
-        if (!customerId && currentTab?.orderData?.customer) {
-          customerId = currentTab.orderData.customer
-          console.log('💳 Customer ID found in orderData:', customerId)
-        }
-        
-        // If still not found, try getCurrentTabCustomer
-        if (!customerId) {
-          const selectedCustomer = getCurrentTabCustomer()
-          customerId = selectedCustomer?.customer_id || null
-          if (customerId) {
-            console.log('💳 Customer ID found via getCurrentTabCustomer:', customerId)
-          }
-        }
-        
-        console.log('💳 Customer ID (final):', customerId)
-        console.log('💳 Customer sources checked:', {
-          tabCustomer: currentTab?.customer?.customer_id,
-          orderDataCustomer: currentTab?.orderData?.customer,
-          storeCustomer: getCurrentTabCustomer()?.customer_id
+        const orderDetailsCheck = await window.electronAPI?.proxy?.request({
+          url: '/api/method/centro_pos_apis.api.order.get_sales_order_details',
+          params: {
+            sales_order_id: currentTab.orderId
+          },
+          method: 'GET'
         })
-        
-        if (!customerId) {
-          console.log('❌ Customer ID not found in any source, cannot proceed with payment')
-          toast.error('Customer not found. Cannot process payment.', {
-            duration: 5000
-          })
-          return
+        if (orderDetailsCheck?.data?.data) {
+          isAlreadyConfirmed = Number(orderDetailsCheck.data.data.docstatus) === 1
+          console.log('📋 Order docstatus checked BEFORE API call:', orderDetailsCheck.data.data.docstatus, 'isConfirmed:', isAlreadyConfirmed)
         }
-        
-        // Get posting date from store (selected date from order details) or use payment date
-        const selectedPostingDate = getCurrentTabPostingDate()
-        const formattedDate = selectedPostingDate || date || getCurrentDate()
-        console.log('📅 Using posting date for payment entry:', formattedDate, 'from store:', selectedPostingDate)
-        console.log('💳 Payment Mode:', mode)
-        console.log('💳 Payment Date:', date)
-        
-        const paymentEntryData = {
-          payment_type: 'Receive',
-          party_type: 'Customer',
-          party: customerId,
-          posting_date: formattedDate,
-          paid_amount: paymentAmount,
-          mode_of_payment: mode,
-          references: [
-            {
-              reference_doctype: 'Sales Invoice',
-              reference_name: invoiceNumber,
-              allocated_amount: paymentAmount
-            }
-          ]
-        }
-        
-        console.log('💳 ===== CREATE PAYMENT ENTRY API CALL =====')
-        console.log('💳 API URL: /api/method/centro_pos_apis.api.order.create_payment_entry')
-        console.log('💳 Request Method: POST')
-        console.log('💳 Request Body:', JSON.stringify(paymentEntryData, null, 2))
-        console.log('💳 Full Request Data:', paymentEntryData)
-        console.log('💳 Payment Entry Data Details:', {
-          payment_type: paymentEntryData.payment_type,
-          party_type: paymentEntryData.party_type,
-          party: paymentEntryData.party,
-          posting_date: paymentEntryData.posting_date,
-          paid_amount: paymentEntryData.paid_amount,
-          mode_of_payment: paymentEntryData.mode_of_payment,
-          references_count: paymentEntryData.references.length,
-          reference_doctype: paymentEntryData.references[0]?.reference_doctype,
-          reference_name: paymentEntryData.references[0]?.reference_name,
-          allocated_amount: paymentEntryData.references[0]?.allocated_amount
-        })
-        console.log('💳 ===== END API CALL =====')
-        
-        const paymentEntryResponse = await window.electronAPI?.proxy?.request({
-          method: 'POST',
-          url: '/api/method/centro_pos_apis.api.order.create_payment_entry',
-          data: paymentEntryData
-        })
-        
-        console.log('💳 ===== CREATE PAYMENT ENTRY API RESPONSE =====')
-        console.log('💳 Full Response Object:', paymentEntryResponse)
-        console.log('💳 Response Status:', paymentEntryResponse?.status)
-        console.log('💳 Response Success:', paymentEntryResponse?.success)
-        console.log('💳 Response Data:', JSON.stringify(paymentEntryResponse?.data, null, 2))
-        console.log('💳 Response Headers:', paymentEntryResponse?.headers)
-        
-        // Log full response message/details
-        if (paymentEntryResponse?.data?.message) {
-          console.log('💳 Response Message:', paymentEntryResponse.data.message)
-        }
-        if (paymentEntryResponse?.data?.data?.message) {
-          console.log('💳 Response Data Message:', paymentEntryResponse.data.data.message)
-        }
-        if (paymentEntryResponse?.data?.data) {
-          console.log('💳 Response Data Object:', paymentEntryResponse.data.data)
-        }
-        if (paymentEntryResponse?.data?._server_messages) {
-          console.log('💳 Server Messages:', paymentEntryResponse.data._server_messages)
-        }
-        if (paymentEntryResponse?.data?.error) {
-          console.log('💳 Response Error:', paymentEntryResponse.data.error)
-        }
-        if (paymentEntryResponse?.data?.exc) {
-          console.log('💳 Response Exception:', paymentEntryResponse.data.exc)
-        }
-        if (paymentEntryResponse?.data?.exc_type) {
-          console.log('💳 Exception Type:', paymentEntryResponse.data.exc_type)
-        }
-        
-        // Log complete response structure
-        console.log('💳 Complete Response Structure:', {
-          status: paymentEntryResponse?.status,
-          success: paymentEntryResponse?.success,
-          data: paymentEntryResponse?.data,
-          message: paymentEntryResponse?.data?.message || paymentEntryResponse?.data?.data?.message,
-          error: paymentEntryResponse?.data?.error,
-          serverMessages: paymentEntryResponse?.data?._server_messages
-        })
-        
-        console.log('💳 ===== END API RESPONSE =====')
-        
-        if (paymentEntryResponse?.success) {
-          console.log('✅ Payment entry created successfully!')
-          toast.success(`Payment processed successfully! Order ID: ${currentTab.orderId}`, {
-            duration: 2000
-          })
-          
-          // Extract pdf_download_url if available
-          const pdfUrl = paymentEntryResponse.data?.data?.pdf_download_url || paymentEntryResponse.data?.pdf_download_url
-          if (pdfUrl) {
-            updateTabInstantPrintUrl(currentTab.id, pdfUrl)
-          }
-          
-          // Update tab status to paid
-          setTabStatus(currentTab.id, 'paid')
-          
-          // Fetch order details to refresh outstanding_amount after payment
-          try {
-            if (currentTab.orderId) {
-              const orderDetailsRes = await window.electronAPI?.proxy?.request({
-                url: '/api/method/centro_pos_apis.api.order.get_sales_order_details',
-                params: {
-                  sales_order_id: currentTab.orderId
-                },
-                method: 'GET'
-              })
-              if (orderDetailsRes?.data?.data && currentTab.id) {
-                const orderData = orderDetailsRes.data.data
-                console.log('🎨 Order details after payment - Status colors:', {
-                  status_color: orderData.status_color,
-                  zatca_color: orderData.zatca_color,
-                  main_status: orderData.main_status,
-                  zatca_status: orderData.zatca_status
-                })
-                updateTabOrderData(currentTab.id, orderData)
-                console.log('📋 Order details refreshed after payment. Outstanding amount:', orderData?.linked_invoices?.[0]?.outstanding_amount)
-              }
-            }
-          } catch (e) {
-            console.error('Failed to refresh order details after payment:', e)
-          }
-          
-          // Close dialog and navigate to prints
-          setOpen(false)
-          onNavigateToPrints?.()
-        } else {
-          handleServerErrorMessages(paymentEntryResponse?.data?._server_messages, '')
-        }
-        
-        return
-      } catch (paymentError: any) {
-        console.error('💳 ===== ERROR CREATING PAYMENT ENTRY =====')
-        console.error('💳 Error Object:', paymentError)
-        console.error('💳 Error Message:', paymentError?.message)
-        console.error('💳 Error Stack:', paymentError?.stack)
-        console.error('💳 Error Response:', paymentError?.response)
-        console.error('💳 Error Response Data:', paymentError?.response?.data)
-        console.error('💳 Error Response Status:', paymentError?.response?.status)
-        console.error('💳 Server Messages:', paymentError?.response?.data?._server_messages)
-        console.error('💳 ===== END ERROR =====')
-        handleServerErrorMessages(paymentError?.response?.data?._server_messages, '')
-        return
+      } catch (checkError) {
+        console.warn('⚠️ Failed to check order docstatus before API call, using cached value:', checkError)
+        // Fallback to cached value if API check fails
+        isAlreadyConfirmed = currentTab?.orderData && Number(currentTab.orderData.docstatus) === 1
       }
-    }
 
-    // If we reach here:
-    // - In Confirm window: Always call confirmation API (payment API is skipped)
-    // - In Payment window: Order is not confirmed, so call confirmation API first, then check docstatus and call payment API if needed
-    console.log('🔄 ===== ORDER CONFIRMATION API CALL START =====')
-    console.log('🔄 Mode:', isConfirmingMode ? 'Confirm Window' : 'Payment Window')
+      // If in Payment window (isConfirmingMode = false) and order is already confirmed and payment amount > 0, directly call payment entry API
+      // Skip this if in Confirm window mode
+      if (!isConfirmingMode && isAlreadyConfirmed && paymentAmount > 0) {
+        try {
+          console.log('💳 ===== ORDER ALREADY CONFIRMED, CALLING PAYMENT ENTRY DIRECTLY =====')
+          console.log('💳 Payment Amount:', paymentAmount)
+          console.log('💳 Order ID:', currentTab.orderId)
+
+          // Get invoice number from current tab or orderData
+          let invoiceNumber = getCurrentTabInvoiceNumber()
+          console.log('💳 Invoice Number Retrieved:', invoiceNumber)
+          if (!invoiceNumber && currentTab?.orderData?.linked_invoices) {
+            const linkedInvoices = currentTab.orderData.linked_invoices
+            if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
+              invoiceNumber = linkedInvoices[0]?.name || null
+            } else if (linkedInvoices && typeof linkedInvoices === 'object') {
+              invoiceNumber = linkedInvoices.name || null
+            }
+          }
+
+          if (!invoiceNumber) {
+            console.log('⚠️ No invoice number found, fetching order details...')
+            // Fetch order details to get invoice number
+            const orderDetailsResponse = await window.electronAPI?.proxy?.request({
+              url: '/api/method/centro_pos_apis.api.order.get_sales_order_details',
+              params: {
+                sales_order_id: currentTab.orderId
+              }
+            })
+
+            if (orderDetailsResponse?.data?.data) {
+              const orderData = orderDetailsResponse.data.data
+              const linkedInvoices = orderData.linked_invoices
+              if (linkedInvoices) {
+                if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
+                  invoiceNumber = linkedInvoices[0]?.name || null
+                } else if (linkedInvoices && typeof linkedInvoices === 'object') {
+                  invoiceNumber = linkedInvoices.name || null
+                }
+              }
+            }
+          }
+
+          if (!invoiceNumber) {
+            toast.error('Invoice number not found. Cannot process payment.', {
+              duration: 5000
+            })
+            return
+          }
+
+          // Get customer ID from multiple sources: tab customer, orderData, or store helper
+          let customerId = currentTab?.customer?.customer_id || null
+
+          // If not found in tab customer, try orderData
+          if (!customerId && currentTab?.orderData?.customer) {
+            customerId = currentTab.orderData.customer
+            console.log('💳 Customer ID found in orderData:', customerId)
+          }
+
+          // If still not found, try getCurrentTabCustomer
+          if (!customerId) {
+            const selectedCustomer = getCurrentTabCustomer()
+            customerId = selectedCustomer?.customer_id || null
+            if (customerId) {
+              console.log('💳 Customer ID found via getCurrentTabCustomer:', customerId)
+            }
+          }
+
+          console.log('💳 Customer ID (final):', customerId)
+          console.log('💳 Customer sources checked:', {
+            tabCustomer: currentTab?.customer?.customer_id,
+            orderDataCustomer: currentTab?.orderData?.customer,
+            storeCustomer: getCurrentTabCustomer()?.customer_id
+          })
+
+          if (!customerId) {
+            console.log('❌ Customer ID not found in any source, cannot proceed with payment')
+            toast.error('Customer not found. Cannot process payment.', {
+              duration: 5000
+            })
+            return
+          }
+
+          // Get posting date from store (selected date from order details) or use payment date
+          const selectedPostingDate = getCurrentTabPostingDate()
+          const formattedDate = selectedPostingDate || date || getCurrentDate()
+          console.log('📅 Using posting date for payment entry:', formattedDate, 'from store:', selectedPostingDate)
+          console.log('💳 Payment Mode:', mode)
+          console.log('💳 Payment Date:', date)
+
+          const paymentEntryData = {
+            payment_type: 'Receive',
+            party_type: 'Customer',
+            party: customerId,
+            posting_date: formattedDate,
+            paid_amount: paymentAmount,
+            mode_of_payment: mode,
+            references: [
+              {
+                reference_doctype: 'Sales Invoice',
+                reference_name: invoiceNumber,
+                allocated_amount: paymentAmount
+              }
+            ]
+          }
+
+          console.log('💳 ===== CREATE PAYMENT ENTRY API CALL =====')
+          console.log('💳 API URL: /api/method/centro_pos_apis.api.order.create_payment_entry')
+          console.log('💳 Request Method: POST')
+          console.log('💳 Request Body:', JSON.stringify(paymentEntryData, null, 2))
+          console.log('💳 Full Request Data:', paymentEntryData)
+          console.log('💳 Payment Entry Data Details:', {
+            payment_type: paymentEntryData.payment_type,
+            party_type: paymentEntryData.party_type,
+            party: paymentEntryData.party,
+            posting_date: paymentEntryData.posting_date,
+            paid_amount: paymentEntryData.paid_amount,
+            mode_of_payment: paymentEntryData.mode_of_payment,
+            references_count: paymentEntryData.references.length,
+            reference_doctype: paymentEntryData.references[0]?.reference_doctype,
+            reference_name: paymentEntryData.references[0]?.reference_name,
+            allocated_amount: paymentEntryData.references[0]?.allocated_amount
+          })
+          console.log('💳 ===== END API CALL =====')
+
+          const paymentEntryResponse = await window.electronAPI?.proxy?.request({
+            method: 'POST',
+            url: '/api/method/centro_pos_apis.api.order.create_payment_entry',
+            data: paymentEntryData
+          })
+
+          console.log('💳 ===== CREATE PAYMENT ENTRY API RESPONSE =====')
+          console.log('💳 Full Response Object:', paymentEntryResponse)
+          console.log('💳 Response Status:', paymentEntryResponse?.status)
+          console.log('💳 Response Success:', paymentEntryResponse?.success)
+          console.log('💳 Response Data:', JSON.stringify(paymentEntryResponse?.data, null, 2))
+          console.log('💳 Response Headers:', paymentEntryResponse?.headers)
+
+          // Log full response message/details
+          if (paymentEntryResponse?.data?.message) {
+            console.log('💳 Response Message:', paymentEntryResponse.data.message)
+          }
+          if (paymentEntryResponse?.data?.data?.message) {
+            console.log('💳 Response Data Message:', paymentEntryResponse.data.data.message)
+          }
+          if (paymentEntryResponse?.data?.data) {
+            console.log('💳 Response Data Object:', paymentEntryResponse.data.data)
+          }
+          if (paymentEntryResponse?.data?._server_messages) {
+            console.log('💳 Server Messages:', paymentEntryResponse.data._server_messages)
+          }
+          if (paymentEntryResponse?.data?.error) {
+            console.log('💳 Response Error:', paymentEntryResponse.data.error)
+          }
+          if (paymentEntryResponse?.data?.exc) {
+            console.log('💳 Response Exception:', paymentEntryResponse.data.exc)
+          }
+          if (paymentEntryResponse?.data?.exc_type) {
+            console.log('💳 Exception Type:', paymentEntryResponse.data.exc_type)
+          }
+
+          // Log complete response structure
+          console.log('💳 Complete Response Structure:', {
+            status: paymentEntryResponse?.status,
+            success: paymentEntryResponse?.success,
+            data: paymentEntryResponse?.data,
+            message: paymentEntryResponse?.data?.message || paymentEntryResponse?.data?.data?.message,
+            error: paymentEntryResponse?.data?.error,
+            serverMessages: paymentEntryResponse?.data?._server_messages
+          })
+
+          console.log('💳 ===== END API RESPONSE =====')
+
+          if (paymentEntryResponse?.success) {
+            console.log('✅ Payment entry created successfully!')
+            toast.success(`Payment processed successfully! Order ID: ${currentTab.orderId}`, {
+              duration: 2000
+            })
+
+            // Extract pdf_download_url if available
+            const pdfUrl = paymentEntryResponse.data?.data?.pdf_download_url || paymentEntryResponse.data?.pdf_download_url
+            if (pdfUrl) {
+              updateTabInstantPrintUrl(currentTab.id, pdfUrl)
+            }
+
+            // Update tab status to paid
+            setTabStatus(currentTab.id, 'paid')
+
+            // Fetch order details to refresh outstanding_amount after payment
+            try {
+              if (currentTab.orderId) {
+                const orderDetailsRes = await window.electronAPI?.proxy?.request({
+                  url: '/api/method/centro_pos_apis.api.order.get_sales_order_details',
+                  params: {
+                    sales_order_id: currentTab.orderId
+                  },
+                  method: 'GET'
+                })
+                if (orderDetailsRes?.data?.data && currentTab.id) {
+                  const orderData = orderDetailsRes.data.data
+                  console.log('🎨 Order details after payment - Status colors:', {
+                    status_color: orderData.status_color,
+                    zatca_color: orderData.zatca_color,
+                    main_status: orderData.main_status,
+                    zatca_status: orderData.zatca_status
+                  })
+                  updateTabOrderData(currentTab.id, orderData)
+                  console.log('📋 Order details refreshed after payment. Outstanding amount:', orderData?.linked_invoices?.[0]?.outstanding_amount)
+                }
+              }
+            } catch (e) {
+              console.error('Failed to refresh order details after payment:', e)
+            }
+
+            // Close dialog and navigate to prints
+            setOpen(false)
+            onNavigateToPrints?.()
+          } else {
+            handleServerErrorMessages(paymentEntryResponse?.data?._server_messages, '')
+          }
+
+          return
+        } catch (paymentError: any) {
+          console.error('💳 ===== ERROR CREATING PAYMENT ENTRY =====')
+          console.error('💳 Error Object:', paymentError)
+          console.error('💳 Error Message:', paymentError?.message)
+          console.error('💳 Error Stack:', paymentError?.stack)
+          console.error('💳 Error Response:', paymentError?.response)
+          console.error('💳 Error Response Data:', paymentError?.response?.data)
+          console.error('💳 Error Response Status:', paymentError?.response?.status)
+          console.error('💳 Server Messages:', paymentError?.response?.data?._server_messages)
+          console.error('💳 ===== END ERROR =====')
+          handleServerErrorMessages(paymentError?.response?.data?._server_messages, '')
+          return
+        }
+      }
+
+      // If we reach here:
+      // - In Confirm window: Always call confirmation API (payment API is skipped)
+      // - In Payment window: Order is not confirmed, so call confirmation API first, then check docstatus and call payment API if needed
+      console.log('🔄 ===== ORDER CONFIRMATION API CALL START =====')
+      console.log('🔄 Mode:', isConfirmingMode ? 'Confirm Window' : 'Payment Window')
       console.log('🔄 API Endpoint: /api/method/centro_pos_apis.api.order.order_confirmation')
-      
+
       // Context Information
       console.log('📋 ===== CONTEXT INFORMATION =====')
       console.log('📋 Current Tab ID:', currentTab.id)
@@ -1521,7 +1523,7 @@ const ActionButtons: React.FC<Props> = ({
       console.log('📋 Tab Type:', currentTab.type)
       console.log('📋 Tab Display Name:', currentTab.displayName)
       console.log('📋 Tab Is Edited:', currentTab.isEdited)
-      
+
       // Customer Information
       const customer = getCurrentTabCustomer()
       console.log('👤 Customer Information:', {
@@ -1529,7 +1531,7 @@ const ActionButtons: React.FC<Props> = ({
         customer_id: customer?.customer_id || 'N/A',
         gst: customer?.gst || 'N/A'
       })
-      
+
       // Order Items
       const tabItems = getCurrentTabItems()
       console.log('📦 Order Items Count:', tabItems.length)
@@ -1540,37 +1542,37 @@ const ActionButtons: React.FC<Props> = ({
         rate: item.standard_rate,
         discount_percentage: item.discount_percentage
       })))
-      
+
       // Price List
       console.log('💰 Selected Price List:', selectedPriceList)
-      
+
       // Order Amounts
       console.log('💵 Order Amount:', orderAmount)
       console.log('💵 Amount Due:', amountDue)
       console.log('💵 Total Pending:', totalPending)
-      
+
       // Payment Information
       console.log('💳 Payment Amount:', paymentAmount)
       console.log('💳 Payment Mode:', mode)
       console.log('💳 Payment Date:', date)
-      
+
       // POS Profile
       console.log('🏪 POS Profile:', {
         name: profile.name,
         company: (profile as any).company || 'N/A',
         warehouse: (profile as any).warehouse || 'N/A'
       })
-      
+
       // Other Details
       console.log('📝 Other Details:', {
         po_no: currentTab.po_no || null,
         po_date: currentTab.po_date || null,
         internal_note: currentTab.internal_note || null
       })
-      
+
       // Rounding
       console.log('🔢 Rounding Enabled:', getCurrentTabRoundingEnabled())
-      
+
       console.log('📋 ===== END CONTEXT INFORMATION =====')
 
       const confirmationData = {
@@ -1603,8 +1605,8 @@ const ActionButtons: React.FC<Props> = ({
       if (response?.success) {
         console.log('✅ ===== ORDER CONFIRMATION SUCCESS =====')
         console.log('✅ Order confirmed successfully!')
-      console.log('✅ Payment Amount:', paymentAmount)
-      console.log('✅ Payment Mode:', mode)
+        console.log('✅ Payment Amount:', paymentAmount)
+        console.log('✅ Payment Mode:', mode)
         console.log('✅ Order ID:', currentTab.orderId)
 
         // Extract pdf_download_url from response
@@ -1621,16 +1623,16 @@ const ActionButtons: React.FC<Props> = ({
           console.log('📋 ===== FETCHING ORDER DETAILS AFTER CONFIRMATION =====')
           console.log('📋 Fetching order details to get invoice number...')
           console.log('📋 Order ID:', currentTab.orderId)
-          
+
           const orderDetailsResponse = await window.electronAPI?.proxy?.request({
             url: '/api/method/centro_pos_apis.api.order.get_sales_order_details',
             params: {
               sales_order_id: currentTab.orderId
             }
           })
-          
+
           console.log('📋 Order Details API Response:', orderDetailsResponse)
-          
+
           if (orderDetailsResponse?.data?.data) {
             const orderData = orderDetailsResponse.data.data
             console.log('📋 ===== ORDER DETAILS FETCHED =====')
@@ -1646,7 +1648,7 @@ const ActionButtons: React.FC<Props> = ({
               sub_status: orderData.sub_status,
               zatca_status: orderData.zatca_status
             })
-            
+
             // Prepare fresh orderData with _relatedData preserved and cleared
             const freshOrderData = {
               ...orderData, // Fresh data from API (includes status_color, zatca_color, etc.)
@@ -1656,44 +1658,44 @@ const ActionButtons: React.FC<Props> = ({
                 customerDetails: null
               } : undefined
             }
-            
+
             // Update orderData in the tab with fresh data (preserving _relatedData structure but clearing cache)
             updateTabOrderData(currentTab.id, freshOrderData)
             console.log('✅ Order data updated in tab with fresh status colors')
-            
+
             // Extract and handle ZATCA responses from order details API AFTER order data is updated
             // zatca_response is in the order details API response, not the order confirmation API
             const zatcaResponseData = orderData.zatca_response
-            
+
             console.log('📦 ===== CHECKING FOR ZATCA RESPONSE IN ORDER DETAILS =====')
             console.log('📦 ZATCA Response Data:', JSON.stringify(zatcaResponseData, null, 2))
-            
+
             if (zatcaResponseData && onZatcaResponses) {
               console.log('📦 ===== ZATCA RESPONSE FOUND =====')
-              
+
               // Handle both array and single object responses
-              const zatcaResponses = Array.isArray(zatcaResponseData) 
-                ? zatcaResponseData 
+              const zatcaResponses = Array.isArray(zatcaResponseData)
+                ? zatcaResponseData
                 : [zatcaResponseData]
-              
+
               console.log('📦 Parsed ZATCA Responses:', zatcaResponses)
               console.log('📦 Calling onZatcaResponses with:', zatcaResponses)
               onZatcaResponses(zatcaResponses)
             } else {
               console.log('📦 No ZATCA response found in order details or onZatcaResponses not available')
             }
-            
+
             // Extract invoice number, status, and custom_reverse_status from linked_invoices
             const linkedInvoices = orderData.linked_invoices
             let invoiceNumber = null
             let invoiceStatus = null
             let invoiceCustomReverseStatus = null
-            
+
             console.log('📋 ===== EXTRACTING INVOICE NUMBER =====')
             console.log('📋 Linked invoices raw data:', JSON.stringify(linkedInvoices, null, 2))
             console.log('📋 Linked invoices type:', typeof linkedInvoices)
             console.log('📋 Is array:', Array.isArray(linkedInvoices))
-            
+
             if (linkedInvoices) {
               if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
                 console.log('📋 Linked invoices is an array with length:', linkedInvoices.length)
@@ -1716,7 +1718,7 @@ const ActionButtons: React.FC<Props> = ({
               } else {
                 console.log('⚠️ Linked invoices is neither array nor object:', linkedInvoices)
               }
-              
+
               if (invoiceNumber) {
                 console.log('✅ Invoice number successfully extracted:', invoiceNumber)
                 console.log('✅ Invoice status:', invoiceStatus)
@@ -1731,13 +1733,13 @@ const ActionButtons: React.FC<Props> = ({
               console.log('⚠️ No linked_invoices found in order data')
               console.log('⚠️ Order data keys:', orderData ? Object.keys(orderData) : 'No order data')
             }
-            
+
             console.log('📋 ===== END EXTRACTING INVOICE NUMBER =====')
-            
+
             // Check docstatus AFTER confirmation API call
             const isOrderConfirmed = Number(orderData.docstatus) === 1
             console.log('📋 Order docstatus checked AFTER confirmation API:', orderData.docstatus, 'isConfirmed:', isOrderConfirmed)
-            
+
             // Only call payment API if:
             // 1. NOT in Confirm window mode (isConfirmingMode = false)
             // 2. Order is confirmed (docstatus = 1)
@@ -1747,16 +1749,16 @@ const ActionButtons: React.FC<Props> = ({
               try {
                 console.log('💳 ===== CREATING PAYMENT ENTRY FOR CONFIRMED ORDER =====')
                 console.log('💳 Order is confirmed, calling create_payment_entry API...')
-                
+
                 // Get customer ID from multiple sources: tab customer, orderData, or store helper
                 let customerId = currentTab?.customer?.customer_id || null
-                
+
                 // If not found in tab customer, try orderData
                 if (!customerId && orderData?.customer) {
                   customerId = orderData.customer
                   console.log('💳 Customer ID found in orderData (confirmed order):', customerId)
                 }
-                
+
                 // If still not found, try getCurrentTabCustomer
                 if (!customerId) {
                   const selectedCustomer = getCurrentTabCustomer()
@@ -1765,14 +1767,14 @@ const ActionButtons: React.FC<Props> = ({
                     console.log('💳 Customer ID found via getCurrentTabCustomer (confirmed order):', customerId)
                   }
                 }
-                
+
                 console.log('💳 Customer ID (final, confirmed order):', customerId)
                 console.log('💳 Customer sources checked (confirmed order):', {
                   tabCustomer: currentTab?.customer?.customer_id,
                   orderDataCustomer: orderData?.customer,
                   storeCustomer: getCurrentTabCustomer()?.customer_id
                 })
-                
+
                 if (!customerId) {
                   console.log('⚠️ No customer ID found in any source, cannot create payment entry')
                 } else {
@@ -1780,7 +1782,7 @@ const ActionButtons: React.FC<Props> = ({
                   const selectedPostingDate = getCurrentTabPostingDate()
                   const formattedDate = selectedPostingDate || date || getCurrentDate()
                   console.log('📅 Using posting date for payment entry (confirmed order):', formattedDate, 'from store:', selectedPostingDate)
-                  
+
                   const paymentEntryData = {
                     payment_type: 'Receive',
                     party_type: 'Customer',
@@ -1796,27 +1798,27 @@ const ActionButtons: React.FC<Props> = ({
                       }
                     ]
                   }
-                  
+
                   console.log('💳 ===== CREATE PAYMENT ENTRY API CALL (CONFIRMED ORDER) =====')
                   console.log('💳 API URL: /api/method/centro_pos_apis.api.order.create_payment_entry')
                   console.log('💳 Request Method: POST')
                   console.log('💳 Request Body:', JSON.stringify(paymentEntryData, null, 2))
                   console.log('💳 Full Request Data:', paymentEntryData)
                   console.log('💳 ===== END API CALL =====')
-                  
+
                   const paymentEntryResponse = await window.electronAPI?.proxy?.request({
                     method: 'POST',
                     url: '/api/method/centro_pos_apis.api.order.create_payment_entry',
                     data: paymentEntryData
                   })
-                  
+
                   console.log('💳 ===== CREATE PAYMENT ENTRY API RESPONSE (CONFIRMED ORDER) =====')
                   console.log('💳 Full Response Object:', paymentEntryResponse)
                   console.log('💳 Response Status:', paymentEntryResponse?.status)
                   console.log('💳 Response Success:', paymentEntryResponse?.success)
                   console.log('💳 Response Data:', JSON.stringify(paymentEntryResponse?.data, null, 2))
                   console.log('💳 Response Headers:', paymentEntryResponse?.headers)
-                  
+
                   // Log full response message/details
                   if (paymentEntryResponse?.data?.message) {
                     console.log('💳 Response Message:', paymentEntryResponse.data.message)
@@ -1839,7 +1841,7 @@ const ActionButtons: React.FC<Props> = ({
                   if (paymentEntryResponse?.data?.exc_type) {
                     console.log('💳 Exception Type:', paymentEntryResponse.data.exc_type)
                   }
-                  
+
                   // Log complete response structure
                   console.log('💳 Complete Response Structure:', {
                     status: paymentEntryResponse?.status,
@@ -1849,12 +1851,12 @@ const ActionButtons: React.FC<Props> = ({
                     error: paymentEntryResponse?.data?.error,
                     serverMessages: paymentEntryResponse?.data?._server_messages
                   })
-                  
+
                   console.log('💳 ===== END API RESPONSE =====')
-                  
+
                   if (paymentEntryResponse?.success) {
                     console.log('✅ Payment entry created successfully!')
-                    
+
                     // Fetch order details to refresh outstanding_amount after payment
                     try {
                       if (currentTab.orderId) {
@@ -1908,7 +1910,7 @@ const ActionButtons: React.FC<Props> = ({
                 console.log('📋 No invoice number available, skipping payment entry API call')
               }
             }
-            
+
             console.log('📋 ===== END ORDER DETAILS =====')
           } else {
             console.log('⚠️ No order data in response')
@@ -1930,7 +1932,7 @@ const ActionButtons: React.FC<Props> = ({
         console.log('✅ Payment Amount:', paymentAmount)
         setTabStatus(currentTab.id, newStatus)
         console.log('✅ Tab status updated')
-        
+
         // Note: _relatedData clearing is now done in the order details update above
         // to preserve status colors from the fresh API response
 
@@ -1947,7 +1949,7 @@ const ActionButtons: React.FC<Props> = ({
         // Navigate to prints tab
         console.log('✅ Navigating to prints tab')
         onNavigateToPrints?.()
-        
+
         // Final context summary
         console.log('📋 ===== FINAL CONTEXT SUMMARY =====')
         const updatedTab = getCurrentTab()
@@ -1956,7 +1958,7 @@ const ActionButtons: React.FC<Props> = ({
         console.log('📋 Updated Tab Instant Print URL:', updatedTab?.instantPrintUrl)
         console.log('📋 Updated Tab Order Data Docstatus:', updatedTab?.orderData?.docstatus)
         console.log('📋 ===== END FINAL CONTEXT SUMMARY =====')
-        
+
         console.log('✅ ===== ORDER CONFIRMATION SUCCESS END =====')
       } else {
         console.log('❌ ===== ORDER CONFIRMATION FAILED =====')
@@ -2041,11 +2043,11 @@ const ActionButtons: React.FC<Props> = ({
             updateTabOrderData(currentTab.id, doc)
             if (Number(doc.docstatus) === 1) {
               setTabStatus(currentTab.id, 'confirmed')
-              
+
               // Update orderAmount to use outstanding_amount for confirmed orders
               const linkedInvoices = doc.linked_invoices
               let outstandingAmount = 0
-              
+
               if (linkedInvoices) {
                 if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
                   outstandingAmount = Number(linkedInvoices[0]?.outstanding_amount ?? 0)
@@ -2053,10 +2055,10 @@ const ActionButtons: React.FC<Props> = ({
                   outstandingAmount = Number((linkedInvoices as any)?.outstanding_amount ?? 0)
                 }
               }
-              
+
               // Update Order Amount to use outstanding_amount
               setOrderAmount(outstandingAmount.toFixed(2))
-              
+
               // Fetch Amount Due from customer insights API and calculate: Amount Due = (fetched) - Order Amount
               try {
                 let customerId = currentTab?.customer?.customer_id
@@ -2069,21 +2071,21 @@ const ActionButtons: React.FC<Props> = ({
                   const match = list.find((c: any) => c.customer_name === currentTab?.customer?.name)
                   customerId = match?.name
                 }
-                
+
                 if (customerId) {
                   const insightsRes = await window.electronAPI?.proxy?.request({
                     url: '/api/method/centro_pos_apis.api.customer.customer_amount_insights',
                     params: { customer_id: customerId }
                   })
                   const fetchedAmountDue = Number(insightsRes?.data?.data?.amount_due ?? 0)
-                  
+
                   // Calculate Amount Due = (fetched Amount Due) - Order Amount
                   const calculatedAmountDue = Math.max(0, fetchedAmountDue - outstandingAmount)
-                  
+
                   console.log('📋 Order confirmed - Fetched Amount Due from API:', fetchedAmountDue)
                   console.log('📋 Order confirmed - Order Amount (outstanding_amount):', outstandingAmount)
                   console.log('📋 Order confirmed - Calculated Amount Due (fetched - order):', calculatedAmountDue)
-                  
+
                   setAmountDue(calculatedAmountDue.toFixed(2))
                 }
               } catch (err) {
@@ -2203,13 +2205,13 @@ const ActionButtons: React.FC<Props> = ({
 
   return (
     <>
-      <div className="p-3 bg-white/40 backdrop-blur border-b border-white/20">
-        <div className="flex justify-between items-center">
+      <div className="p-3">
+        <div className="flex justify-end items-center">
           <div className="flex gap-4">
             {/* Save Button - Always show, disable based on conditions */}
             <Button
               data-testid="save-button"
-              className="px-2 py-2 bg-gradient-to-r from-yellow-400 to-yellow-500 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-2 py-1 bg-gradient-to-r from-yellow-400 to-yellow-500 text-white font-medium rounded-lg hover:shadow-lg transition-all duration-300 flex items-center gap-1.5 text-[9px] disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={!currentUserPrivileges?.sales || currentTab?.status === 'confirmed' || currentTab?.status === 'paid' || !currentTab?.isEdited || isSaving || isItemTableEditing}
               onClick={async () => {
                 // Wrap in try-catch to prevent errors from propagating to React error boundary
@@ -2221,37 +2223,37 @@ const ActionButtons: React.FC<Props> = ({
                 }
               }}
             >
-                {isSaving ? (
-                  <>
-                    <i className="fas fa-spinner fa-spin text-lg"></i>
-                    {currentTab?.orderId ? 'Updating Order...' : 'Creating Order...'}
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="floppy-disk" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" fill="currentColor">
-                      <path d="M64 32C28.7 32 0 60.7 0 96V416c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V173.3c0-17-6.7-33.3-18.7-45.3L352 18.7C340 6.7 323.7 0 306.7 0H64zm0 96H384V416H64V128zM224 288a64 64 0 1 1 0 128 64 64 0 1 1 0-128z"></path>
-                    </svg>
-                    {currentTab?.orderId ? 'Update Order' : 'Save Order'}{' '}
-                    <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">
-                      Ctrl+S
-                    </span>
-                  </>
-                )}
+              {isSaving ? (
+                <>
+                  <i className="fas fa-spinner fa-spin text-xs"></i>
+                  {currentTab?.orderId ? 'Updating...' : 'Creating...'}
+                </>
+              ) : (
+                <>
+                  <svg className="w-3 h-3" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="floppy-disk" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" fill="currentColor">
+                    <path d="M64 32C28.7 32 0 60.7 0 96V416c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V173.3c0-17-6.7-33.3-18.7-45.3L352 18.7C340 6.7 323.7 0 306.7 0H64zm0 96H384V416H64V128zM224 288a64 64 0 1 1 0 128 64 64 0 1 1 0-128z"></path>
+                  </svg>
+                  {currentTab?.orderId ? 'Update' : 'Save'}
+                  <span className="text-[8px] opacity-80 bg-white/20 px-1 py-0 rounded ml-0.5">
+                    Ctrl+S
+                  </span>
+                </>
+              )}
             </Button>
 
             {/* Confirm Button - Only enable if order is created (has orderId) */}
             <Button
-              className="px-2 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-2 py-1 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-medium rounded-lg hover:shadow-lg transition-all duration-300 flex items-center gap-1.5 text-[9px] disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={!currentUserPrivileges?.billing || !currentTab?.orderId || currentTab?.status === 'confirmed' || currentTab?.status === 'paid' || isItemTableEditing}
               onClick={handleConfirm}
             >
-                <svg className="w-4 h-4" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="paper-plane" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="currentColor">
-                  <path d="M498.1 5.6c10.1 7 15.4 19.1 13.5 31.2l-64 416c-1.5 9.7-7.4 18.2-16 23s-18.9 5.4-28 1.6L284 427.7l-68.5 74.1c-8.9 9.7-22.9 12.9-35.2 8.1S160 493.2 160 480V396.4c0-4 1.5-7.8 4.2-10.7L331.8 202.8c5.8-6.3 5.6-16-.4-22s-15.7-6.4-22-.7L106 360.8 17.7 316.6C7.1 311.3 .3 300.7 0 288.9s5.9-22.8 16.1-28.7l448-256c10.7-6.1 23.9-5.5 34 1.4z"></path>
-                </svg>
-              Confirm{' '}
-              <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+Shift+S</span>
+              <svg className="w-3 h-3" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="paper-plane" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="currentColor">
+                <path d="M498.1 5.6c10.1 7 15.4 19.1 13.5 31.2l-64 416c-1.5 9.7-7.4 18.2-16 23s-18.9 5.4-28 1.6L284 427.7l-68.5 74.1c-8.9 9.7-22.9 12.9-35.2 8.1S160 493.2 160 480V396.4c0-4 1.5-7.8 4.2-10.7L331.8 202.8c5.8-6.3 5.6-16-.4-22s-15.7-6.4-22-.7L106 360.8 17.7 316.6C7.1 311.3 .3 300.7 0 288.9s5.9-22.8 16.1-28.7l448-256c10.7-6.1 23.9-5.5 34 1.4z"></path>
+              </svg>
+              Confirm
+              <span className="text-[8px] opacity-80 bg-white/20 px-1 py-0 rounded ml-0.5">Shift+S</span>
             </Button>
-            
+
             {/* Pay Button - Only enable if order is created (has orderId) */}
             {(() => {
               // Check if outstanding_amount is 0.0 in linked_invoices[0]
@@ -2262,18 +2264,18 @@ const ActionButtons: React.FC<Props> = ({
               const docstatus = currentTab?.orderData ? Number(currentTab.orderData.docstatus) : null
               const isConfirmed = docstatus === 1
               const shouldDisablePayButton = !currentUserPrivileges?.billing || !currentTab?.orderId || outstandingAmount === 0.0 || outstandingAmount === 0 || !isConfirmed
-              
+
               return (
                 <Button
-                  className="px-2 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-2 py-1 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium rounded-lg hover:shadow-lg transition-all duration-300 flex items-center gap-1.5 text-[9px] disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={shouldDisablePayButton || isItemTableEditing}
                   onClick={handlePay}
                 >
-                  <svg className="w-4 h-4" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="credit-card" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512" fill="currentColor">
+                  <svg className="w-3 h-3" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="credit-card" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512" fill="currentColor">
                     <path d="M64 32C28.7 32 0 60.7 0 96v32H576V96c0-35.3-28.7-64-64-64H64zM576 224H0V416c0 35.3 28.7 64 64 64H512c35.3 0 64-28.7 64-64V224zM112 352h64c8.8 0 16 7.2 16 16s-7.2 16-16 16H112c-8.8 0-16-7.2-16-16s7.2-16 16-16zm112 16c0-8.8 7.2-16 16-16H368c8.8 0 16 7.2 16 16s-7.2 16-16 16H240c-8.8 0-16-7.2-16-16z"></path>
                   </svg>
-                  Pay{' '}
-                  <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+Shift+F</span>
+                  Pay
+                  <span className="text-[8px] opacity-80 bg-white/20 px-1 py-0 rounded ml-0.5">Shift+F</span>
                 </Button>
               )
             })()}
@@ -2281,7 +2283,7 @@ const ActionButtons: React.FC<Props> = ({
             {/* Return Button - Only enable if order is confirmed (docstatus = 1) */}
             <Button
               data-testid="return-button"
-              className="relative px-2 py-2 bg-gradient-to-r from-orange-500 to-orange-600 text-white font-medium rounded-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-3  text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+              className="relative px-2 py-1 bg-gradient-to-r from-orange-500 to-orange-600 text-white font-medium rounded-lg hover:shadow-lg transition-all duration-300 flex items-center gap-1.5 text-[9px] disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={(() => {
                 // Check if order is confirmed (docstatus = 1)
                 const docstatus = currentTab?.orderData ? Number(currentTab.orderData.docstatus) : null
@@ -2299,16 +2301,16 @@ const ActionButtons: React.FC<Props> = ({
                 }
               }}
             >
-                {typeof currentTab?.orderData?.return_count === 'number' && currentTab.orderData.return_count > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-white text-orange-600 text-[10px] font-bold flex items-center justify-center shadow">
-                    {currentTab.orderData.return_count}
-                  </span>
-                )}
-              <svg className="w-4 h-4" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="arrow-rotate-left" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="currentColor">
+              {typeof currentTab?.orderData?.return_count === 'number' && currentTab.orderData.return_count > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[12px] h-[12px] px-0.5 rounded-full bg-white text-orange-600 text-[8px] font-bold flex items-center justify-center shadow">
+                  {currentTab.orderData.return_count}
+                </span>
+              )}
+              <svg className="w-3 h-3" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="arrow-rotate-left" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="currentColor">
                 <path d="M125.7 160H176c17.7 0 32 14.3 32 32s-14.3 32-32 32H48c-17.7 0-32-14.3-32-32V64c0-17.7 14.3-32 32-32s32 14.3 32 32v51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
               </svg>
-              Return{' '}
-              <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+R</span>
+              Return
+              <span className="text-[8px] opacity-80 bg-white/20 px-1 py-0 rounded ml-0.5">Ctrl+R</span>
             </Button>
           </div>
           <div className="text-sm font-semibold text-gray-700">
@@ -2319,7 +2321,7 @@ const ActionButtons: React.FC<Props> = ({
 
       {/* Payment / Confirm Dialog */}
       <Dialog open={!!open} onOpenChange={(v) => setOpen(v ? open || 'confirm' : false)}>
-        <DialogContent 
+        <DialogContent
           className="max-w-4xl w-[90vw] bg-white border-2 shadow-2xl"
           onOpenAutoFocus={(e) => {
             e.preventDefault()

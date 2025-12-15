@@ -106,16 +106,16 @@ const Header: React.FC<HeaderProps> = ({ onNewOrder }) => {
   }
 
   return (
-    <div className="p-3 bg-slate-50 border-b border-gray-200">
+    <div className="p-3">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-2">
           <Button
-            className="px-5 py-3 bg-gradient-to-r from-primary to-slate-700 text-white font-medium rounded-xl hover:shadow-lg transition-all duration-300 flex items-center gap-3 "
+            className="px-2 py-1.5 bg-gradient-to-r from-primary to-slate-700 text-white font-medium rounded-lg hover:shadow-lg transition-all duration-300 flex items-center gap-1.5 text-[10px]"
             onClick={handleNewOrder}
           >
-            <i className="fas fa-plus text-lg"></i>
-            New Order{' '}
-            <span className="text-xs opacity-80 bg-white/10 px-2 py-1 rounded-lg ml-2">Ctrl+N</span>
+            <i className="fas fa-plus text-xs"></i>
+            New
+            <span className="text-[9px] opacity-80 bg-white/10 px-1 py-0.5 rounded ml-0.5">Ctrl+N</span>
           </Button>
 
           {/* Tabs */}
@@ -123,9 +123,9 @@ const Header: React.FC<HeaderProps> = ({ onNewOrder }) => {
             {tabs.map((tab) => (
               <div
                 key={tab.id}
-                className={`flex items-center px-3 py-2 rounded-xl cursor-pointer transition-all duration-200 ${activeTabId === tab.id
-                  ? 'bg-white text-gray-900 font-bold shadow-md shadow-gray-300'
-                  : 'bg-white/60 text-gray-800 hover:bg-white/80'
+                className={`flex items-center px-3 py-2 rounded-lg cursor-pointer transition-all duration-200 text-xs border ${activeTabId === tab.id
+                  ? 'bg-white text-gray-900 font-bold shadow-sm shadow-gray-300 border-primary'
+                  : 'bg-white/60 text-gray-800 hover:bg-white/80 border-transparent'
                   }`}
                 onClick={() => setActiveTab(tab.id)}
                 aria-selected={activeTabId === tab.id}
@@ -133,12 +133,12 @@ const Header: React.FC<HeaderProps> = ({ onNewOrder }) => {
               >
                 <span className="flex items-center gap-2">
                   {activeTabId === tab.id && (
-                    <span className="inline-block w-2 h-2 rounded-full bg-gray-300" />
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-gray-300" />
                   )}
                   {tab.displayName || (tab.orderId ? abbreviateOrderId(tab.orderId) : tab.type === 'new' ? 'New' : 'Order')}
                 </span>
                 <button
-                  className="ml-2 text-gray-400 hover:text-red-500"
+                  className="ml-2 text-gray-400 hover:text-red-500 text-base leading-none"
                   onClick={(e) => {
                     e.stopPropagation()
                     handleAttemptClose(tab.id)
@@ -154,12 +154,6 @@ const Header: React.FC<HeaderProps> = ({ onNewOrder }) => {
 
 
 
-        <div className="ml-auto text-right bg-white/60 backdrop-blur rounded-xl p-4 shadow-lg">
-          <div className="font-bold text-lg">{new Date().toLocaleDateString('en-GB').replace(/\//g, '-')}</div>
-          <div className="text-sm text-gray-600">
-            {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </div>
-        </div>
       </div>
       {/* Confirm close dialog */}
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>

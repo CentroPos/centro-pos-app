@@ -2,6 +2,8 @@ import React from 'react'
 import { Link, useLocation } from '@tanstack/react-router'
 import { ShoppingCart, Package, ShoppingBag } from 'lucide-react'
 import { cn } from '@renderer/lib/utils'
+import ProfileDropdown from '@renderer/components/common/ProfileDropdown'
+import Clock from '@renderer/components/common/Clock'
 
 interface MainLayoutProps {
     children: React.ReactNode
@@ -67,6 +69,12 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         )
                     })}
                 </nav>
+
+                {/* Right Side Widgets: Date/Time & Profile */}
+                <div className="ml-auto flex items-center gap-4">
+                    <Clock />
+                    <ProfileDropdown />
+                </div>
             </div>
 
             {/* Main Content Area */}

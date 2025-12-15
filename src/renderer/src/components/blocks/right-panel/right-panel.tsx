@@ -5,7 +5,7 @@ import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@renderer/components/ui/select'
 import { toast } from 'sonner'
-import { useAuthStore } from '@renderer/store/useAuthStore'
+
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 import { useHotkeys } from 'react-hotkeys-hook'
@@ -34,7 +34,7 @@ const PrintsTabContent: React.FC = () => {
   const printItemsCache = useRef<Record<string, any[]>>({})
   const pdfPreviewsCache = useRef<Record<string, string>>({})
   const isMountedRef = useRef(true)
-  
+
   // Track mount status to prevent state updates on unmounted component
   useEffect(() => {
     isMountedRef.current = true
@@ -110,11 +110,11 @@ const PrintsTabContent: React.FC = () => {
     if (!isMountedRef.current) {
       return
     }
-    
+
     const itemKey = getItemKey(item)
     const formatUrl =
       formatUrlOverride || item.selected_format_url || getDefaultFormatUrl(item)
-    
+
     const previewKey = `${itemKey}-${formatUrl}`
 
     // Check both current state and persistent cache
@@ -196,7 +196,7 @@ const PrintsTabContent: React.FC = () => {
     if (!isMountedRef.current) {
       return
     }
-    
+
     const currentInstantPrintUrl = currentTab?.instantPrintUrl || null
     const instantPrintUrlJustSet = currentInstantPrintUrl && currentInstantPrintUrl !== prevInstantPrintUrlForSelectionRef.current
 
@@ -352,7 +352,7 @@ const PrintsTabContent: React.FC = () => {
           console.log('🖨️ Processed print items data:', data)
           console.log('🖨️ Data length:', data.length)
           const normalizedData = data.map(normalizePrintItem)
-          
+
           // Only update state if component is still mounted
           if (isMountedRef.current) {
             setPrintItems(normalizedData)
@@ -436,16 +436,16 @@ const PrintsTabContent: React.FC = () => {
   useEffect(() => {
     const isInstantPrintActive = activePrintTab === 'instant-print'
     if (isInstantPrintActive) return
-    
+
     const selectedItem = printItems.find((item) => getItemKey(item) === activePrintTab)
     if (!selectedItem) return
-    
+
     const activeFormatUrl = selectedItem.selected_format_url || getDefaultFormatUrl(selectedItem)
     if (!activeFormatUrl) return
-    
+
     const activeItemKey = getItemKey(selectedItem)
     const activePreviewKey = `${activeItemKey}-${activeFormatUrl}`
-    
+
     if (!pdfPreviews[activePreviewKey] && !pdfPreviewsCache.current[activePreviewKey]) {
       void loadPDFPreview(selectedItem, activeFormatUrl)
     }
@@ -589,11 +589,10 @@ const PrintsTabContent: React.FC = () => {
           <div className="flex border-b border-gray-200/60 mb-4 overflow-x-auto">
             {/* Instant Print Tab - Always present as first tab */}
             <button
-              className={`px-4 py-3 font-bold text-sm border-b-2 whitespace-nowrap transition-all ${
-                isInstantPrintActive
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'text-gray-500 hover:text-black hover:bg-white/40 border-transparent'
-              }`}
+              className={`px-4 py-3 font-bold text-sm border-b-2 whitespace-nowrap transition-all ${isInstantPrintActive
+                ? 'border-blue-500 bg-blue-50 text-blue-700'
+                : 'text-gray-500 hover:text-black hover:bg-white/40 border-transparent'
+                }`}
               onClick={() => setActivePrintTab('instant-print')}
             >
               Instant Print
@@ -605,11 +604,10 @@ const PrintsTabContent: React.FC = () => {
               return (
                 <button
                   key={index}
-                  className={`px-4 py-3 font-bold text-sm border-b-2 whitespace-nowrap transition-all ${
-                    isActive
-                      ? 'border-blue-500 bg-blue-50 text-blue-700'
-                      : 'text-gray-500 hover:text-black hover:bg-white/40 border-transparent'
-                  }`}
+                  className={`px-4 py-3 font-bold text-sm border-b-2 whitespace-nowrap transition-all ${isActive
+                    ? 'border-blue-500 bg-blue-50 text-blue-700'
+                    : 'text-gray-500 hover:text-black hover:bg-white/40 border-transparent'
+                    }`}
                   onClick={() => setActivePrintTab(itemKey)}
                 >
                   {item.report_title}
@@ -726,46 +724,46 @@ const PrintsTabContent: React.FC = () => {
                     )
                   ) : selectedItem ? (
                     activePreviewKey && pdfPreviews[activePreviewKey] ? (
-                    <iframe
-                      src={pdfPreviews[activePreviewKey]}
-                      className="w-full h-full border-0"
-                      style={{ minHeight: '100%', minWidth: '100%' }}
-                      title={selectedItem.report_title}
-                      onLoad={() => console.log('📄 PDF preview loaded:', selectedItem.report_title)}
-                    />
-                  ) : (
-                    <div className="flex items-center justify-center h-full">
-                      <div className="text-center">
-                        <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                          <svg
-                            className="w-6 h-6 text-gray-400 animate-spin"
-                            fill="none"
-                            viewBox="0 0 24 24"
+                      <iframe
+                        src={pdfPreviews[activePreviewKey]}
+                        className="w-full h-full border-0"
+                        style={{ minHeight: '100%', minWidth: '100%' }}
+                        title={selectedItem.report_title}
+                        onLoad={() => console.log('📄 PDF preview loaded:', selectedItem.report_title)}
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center h-full">
+                        <div className="text-center">
+                          <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                            <svg
+                              className="w-6 h-6 text-gray-400 animate-spin"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                            >
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                              ></circle>
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                              ></path>
+                            </svg>
+                          </div>
+                          <p className="text-sm text-gray-500">Loading preview...</p>
+                          <button
+                            onClick={() => loadPDFPreview(selectedItem, activeFormatUrl)}
+                            className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline"
                           >
-                            <circle
-                              className="opacity-25"
-                              cx="12"
-                              cy="12"
-                              r="10"
-                              stroke="currentColor"
-                              strokeWidth="4"
-                            ></circle>
-                            <path
-                              className="opacity-75"
-                              fill="currentColor"
-                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                            ></path>
-                          </svg>
+                            Click to load preview
+                          </button>
                         </div>
-                        <p className="text-sm text-gray-500">Loading preview...</p>
-                        <button
-                          onClick={() => loadPDFPreview(selectedItem, activeFormatUrl)}
-                          className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline"
-                        >
-                          Click to load preview
-                        </button>
                       </div>
-                    </div>
                     )
                   ) : null}
                 </div>
@@ -820,21 +818,21 @@ const RightPanel: React.FC<RightPanelProps> = ({
     orders: 0
   })
   const refreshBypassRef = useRef<{ token?: number; pending?: Set<'recent' | 'most' | 'details'> }>({})
-  
+
   const [currencySymbol, setCurrencySymbol] = useState('$')
   const { profile } = usePOSProfileStore()
   const hideCostAndMargin = profile?.custom_hide_cost_and_margin_info === 1
   const showPurchaseHistory = profile?.custom_show_purchase_history === 1
-  
+
   // Tab configuration - filter based on profile setting
   const productTabs = [
     { id: 'sales-history', label: 'Sales History', color: 'blue' },
     { id: 'customer-history', label: 'Customer History', color: 'emerald' },
     ...(showPurchaseHistory ? [{ id: 'purchase-history', label: 'Purchase History', color: 'purple' }] : [])
   ]
-  
+
   const shouldScrollTabs = productTabs.length >= 4
-  
+
   // If purchase history is disabled and user is on that tab, switch to sales-history
   useEffect(() => {
     if (!showPurchaseHistory && productSubTab === 'purchase-history') {
@@ -842,30 +840,30 @@ const RightPanel: React.FC<RightPanelProps> = ({
       setProductSubTab('sales-history')
     }
   }, [showPurchaseHistory, productSubTab])
-  const { updateItemInTab, getCurrentTab, updateTabOrderData, clearAllTabs } = usePOSTabStore()
+  const { updateItemInTab, getCurrentTab, updateTabOrderData } = usePOSTabStore()
   const { openTab } = usePOSTabStore()
   const { tabs, setActiveTab } = usePOSTabStore()
   const currentTab = getCurrentTab()
   const [isOpeningOrder, setIsOpeningOrder] = useState(false)
-  
+
   // Function to open order (reusable)
   const handleOpenOrder = async (orderId: string, skipConfirm: boolean = false) => {
     if (!orderId) return
-    
+
     // Check if order is already open
     const existing = tabs.find(t => t.orderId === String(orderId))
     if (existing) {
       setActiveTab(existing.id)
       return
     }
-    
+
     // Show confirmation dialog if not skipping (for sales/customer/recent orders)
     if (!skipConfirm) {
       setPendingOrderData({ orderId, orderName: orderId })
       setShowOpenOrderConfirm(true)
       return
     }
-    
+
     // Open order directly (from orders tab)
     setIsOpeningOrder(true)
     try {
@@ -877,10 +875,10 @@ const RightPanel: React.FC<RightPanelProps> = ({
         }
       })
       const orderData = res?.data?.data || null
-      
+
       if (orderData) {
         const customerId = orderData.customer || null
-        
+
         // Fetch all related data in parallel
         console.log('📞 API Call: get_customer_details (Order Open)', {
           url: '/api/method/centro_pos_apis.api.customer.get_customer_details',
@@ -911,13 +909,13 @@ const RightPanel: React.FC<RightPanelProps> = ({
             params: { customer_id: customerId, limit_start: 1, limit_page_length: 3 }
           }) : Promise.resolve(null)
         ])
-        
+
         // Fetch sales/purchase history for each item
         const itemHistories = await Promise.allSettled(
           (orderData.items || []).map(async (item: any) => {
             const itemCode = item.item_code || item.item_id
             if (!itemCode) return null
-            
+
             const [salesHistoryRes, purchaseHistoryRes] = await Promise.allSettled([
               window.electronAPI?.proxy?.request({
                 url: '/api/method/centro_pos_apis.api.product.get_product_sales_history',
@@ -928,7 +926,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                 params: { item_id: itemCode, limit_start: 1, limit_page_length: 4 }
               })
             ])
-            
+
             return {
               item_code: itemCode,
               sales_history: salesHistoryRes.status === 'fulfilled' ? salesHistoryRes.value?.data?.data : null,
@@ -936,7 +934,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
             }
           })
         )
-        
+
         // Fetch print items
         let printItemsData = null
         try {
@@ -948,16 +946,16 @@ const RightPanel: React.FC<RightPanelProps> = ({
         } catch (printErr) {
           console.warn('⚠️ Failed to fetch print items:', printErr)
         }
-        
+
         const isConfirmed = Number(orderData.docstatus) === 1
         const orderStatus = isConfirmed ? 'confirmed' : 'draft'
-        
+
         // Extract invoice info
         let invoiceNumber = null
         let invoiceStatus = null
         let invoiceCustomReverseStatus = null
         const linkedInvoices = orderData.linked_invoices
-        
+
         if (linkedInvoices) {
           if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
             const firstInvoice = linkedInvoices[0]
@@ -970,7 +968,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
             invoiceCustomReverseStatus = linkedInvoices.custom_reverse_status || null
           }
         }
-        
+
         const enrichedOrderData = {
           ...orderData,
           _relatedData: {
@@ -984,9 +982,9 @@ const RightPanel: React.FC<RightPanelProps> = ({
             printItems: printItemsData
           }
         }
-        
+
         openTab(String(orderId), enrichedOrderData, orderStatus)
-        
+
         // Update invoice number if available
         if (invoiceNumber) {
           const { updateTabInvoiceNumber } = usePOSTabStore.getState()
@@ -1005,7 +1003,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
       setIsOpeningOrder(false)
     }
   }
-  
+
   // Handle confirmed order open
   const handleConfirmOpenOrder = () => {
     if (pendingOrderData) {
@@ -1039,27 +1037,27 @@ const RightPanel: React.FC<RightPanelProps> = ({
       toast.error('Please select an item with stock to use Split Wise')
       return
     }
-    
+
     // Find all items with the selected item_code (for duplicate items)
     const matchingItems = items.filter((item: any) => item.item_code === selectedItemId)
-    
+
     if (matchingItems.length === 0) {
       toast.error('Selected item not found')
       return
     }
-    
+
     // If there are multiple items with the same code, we need to find the one that's currently selected
     // Since we don't have row index, we'll use the first one that doesn't have warehouse allocations yet
     // (assuming the user wants to add allocations to the one without them)
     // Otherwise, use the first match
     let selectedItemFromTable = matchingItems[0]
     let selectedItemIndex = items.findIndex((item: any) => item === selectedItemFromTable)
-    
+
     // If there are duplicates, try to find the one without warehouse allocations
     if (matchingItems.length > 1) {
-      const itemWithoutAllocations = matchingItems.find((item: any) => 
-        !item.warehouseAllocations || 
-        !Array.isArray(item.warehouseAllocations) || 
+      const itemWithoutAllocations = matchingItems.find((item: any) =>
+        !item.warehouseAllocations ||
+        !Array.isArray(item.warehouseAllocations) ||
         item.warehouseAllocations.length === 0
       )
       if (itemWithoutAllocations) {
@@ -1074,17 +1072,17 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
     // Get current UOM from selected item
     const currentUom = selectedItemFromTable.uom || 'Nos'
-    
+
     // Check if item already has warehouse allocations (split warehouse state)
-    const existingAllocations = selectedItemFromTable.warehouseAllocations && Array.isArray(selectedItemFromTable.warehouseAllocations) 
-      ? selectedItemFromTable.warehouseAllocations 
+    const existingAllocations = selectedItemFromTable.warehouseAllocations && Array.isArray(selectedItemFromTable.warehouseAllocations)
+      ? selectedItemFromTable.warehouseAllocations
       : []
-    
+
     // Check if this is a non-applied item (no existing allocations)
     const hasNoAllocations = existingAllocations.length === 0
     const enteredQty = Number(selectedItemFromTable.quantity || 0)
     const defaultWarehouseName = profile?.warehouse
-    
+
     // Transform warehouseStock to MultiWarehousePopup format
     const warehouses = warehouseStock.map((warehouse) => {
       // Find quantity for current UOM
@@ -1095,10 +1093,10 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
       // Check if this warehouse has an existing allocation
       const existingAlloc = existingAllocations.find((alloc: any) => alloc.name === warehouse.name)
-      
+
       let isSelected: boolean
       let allocated: number
-      
+
       if (existingAlloc) {
         // Item has existing allocations - use them
         isSelected = true
@@ -1159,8 +1157,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
     { enableOnFormTags: true }
   )
 
-  // Get logout function from useAuthStore
-  const { logout } = useAuthStore()
+
 
   // Load POS profile data
   const loadPOSProfile = async () => {
@@ -1190,17 +1187,17 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
   const triggerTabRefresh = useCallback(
     (tab: 'product' | 'customer' | 'prints' | 'payments' | 'orders') => {
-    setRefreshTokens((prev) => {
-      const next = {
-        ...prev,
-        [tab]: prev[tab] + 1
-      }
-      if (tab === 'customer') {
-        refreshBypassRef.current.token = next.customer
-        refreshBypassRef.current.pending = new Set(['recent', 'most', 'details'])
-      }
-      return next
-    })
+      setRefreshTokens((prev) => {
+        const next = {
+          ...prev,
+          [tab]: prev[tab] + 1
+        }
+        if (tab === 'customer') {
+          refreshBypassRef.current.token = next.customer
+          refreshBypassRef.current.pending = new Set(['recent', 'most', 'details'])
+        }
+        return next
+      })
     },
     []
   )
@@ -1252,7 +1249,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
         logApiCall(stage, method, payload)
         const resp = await window.electronAPI?.proxy?.request({
           method,
-        url: '/api/method/centro_pos_apis.api.product.product_list',
+          url: '/api/method/centro_pos_apis.api.product.product_list',
           ...(useParams ? { params: payload } : { data: payload })
         })
         console.log(`📡 Product list API response (${stage}):`, resp)
@@ -1284,9 +1281,9 @@ const RightPanel: React.FC<RightPanelProps> = ({
           'search-text-get',
           'GET',
           {
-          price_list: 'Standard Selling',
-          search_text: itemCode,
-          limit_start: 0,
+            price_list: 'Standard Selling',
+            search_text: itemCode,
+            limit_start: 0,
             limit_page_length: 100
           },
           true
@@ -1328,12 +1325,12 @@ const RightPanel: React.FC<RightPanelProps> = ({
         productData = findProduct(list)
       }
 
-        if (productData) {
-          console.log('✅ Product list data set:', productData)
-          console.log('📊 UOM details:', productData.uom_details)
+      if (productData) {
+        console.log('✅ Product list data set:', productData)
+        console.log('📊 UOM details:', productData.uom_details)
         setProductListData(productData)
-        } else {
-          console.log('❌ No product data found for item:', itemCode)
+      } else {
+        console.log('❌ No product data found for item:', itemCode)
         console.log('🔍 Available items:', list.map((item: any) => item.item_id))
       }
     } catch (error) {
@@ -1696,21 +1693,21 @@ const RightPanel: React.FC<RightPanelProps> = ({
     const selectedRate = selectedUomRates[displayUomKey] ?? selectedItem?.standard_rate
     const standardRate = Number(
       matchingUomDetail?.rate ??
-        selectedRate ??
-        rateFromApi ??
-        selectedItem?.standard_rate ??
-        0
+      selectedRate ??
+      rateFromApi ??
+      selectedItem?.standard_rate ??
+      0
     )
-    
+
     // For margin calculation, use unit price from item table if manually changed, otherwise use API rate
     const marginCalculationRate = Number(
       selectedItem?.standard_rate ??
-        selectedRate ??
-        matchingUomDetail?.rate ??
-        rateFromApi ??
-        0
+      selectedRate ??
+      matchingUomDetail?.rate ??
+      rateFromApi ??
+      0
     )
-    
+
     // Calculate on-hand qty for the current UOM (selected item's UOM)
     const onHandQty = (() => {
       if (!uomDetails || uomDetails.length === 0) return 0
@@ -1724,15 +1721,15 @@ const RightPanel: React.FC<RightPanelProps> = ({
     const marginPct = marginCalculationRate > 0 ? ((marginCalculationRate - costPrice) / marginCalculationRate) * 100 : 0
     const minPrice = Number(
       (matchingUomDetail as any)?.min_price ??
-        selectedUomMinMax[displayUomKey]?.min ??
-        selectedItem?.min_price ??
-        0
+      selectedUomMinMax[displayUomKey]?.min ??
+      selectedItem?.min_price ??
+      0
     )
     const maxPrice = Number(
       (matchingUomDetail as any)?.max_price ??
-        selectedUomMinMax[displayUomKey]?.max ??
-        selectedItem?.max_price ??
-        0
+      selectedUomMinMax[displayUomKey]?.max ??
+      selectedItem?.max_price ??
+      0
     )
 
     console.log('🧮 [RightPanel] Pricing info resolved for Product tab:', {
@@ -1779,25 +1776,25 @@ const RightPanel: React.FC<RightPanelProps> = ({
       return
     }
     let cancelled = false
-    ;(async () => {
-      try {
-        const res = await window.electronAPI?.proxy.request({
-          url: `/api/resource/Item/${code}`
-        })
-        const itemData = res?.data?.data
-        if (!cancelled) {
-          setProductArabicName(itemData?.custom_item_name_arabic || '')
-          setItemGroup(itemData?.item_group || '')
-          setItemBrand(itemData?.brand || '')
+      ; (async () => {
+        try {
+          const res = await window.electronAPI?.proxy.request({
+            url: `/api/resource/Item/${code}`
+          })
+          const itemData = res?.data?.data
+          if (!cancelled) {
+            setProductArabicName(itemData?.custom_item_name_arabic || '')
+            setItemGroup(itemData?.item_group || '')
+            setItemBrand(itemData?.brand || '')
+          }
+        } catch (e) {
+          if (!cancelled) {
+            setProductArabicName('')
+            setItemGroup('')
+            setItemBrand('')
+          }
         }
-      } catch (e) {
-        if (!cancelled) {
-          setProductArabicName('')
-          setItemGroup('')
-          setItemBrand('')
-        }
-      }
-    })()
+      })()
     return () => {
       cancelled = true
     }
@@ -1810,13 +1807,13 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [salesHistoryLoading, setSalesHistoryLoading] = useState(false)
   const [customerHistoryLoading, setCustomerHistoryLoading] = useState(false)
   const [purchaseHistoryLoading, setPurchaseHistoryLoading] = useState(false)
-  
+
   // Order open confirmation dialog state (moved before handleOpenOrder to avoid hoisting issues)
   const [showOpenOrderConfirm, setShowOpenOrderConfirm] = useState(false)
   const [pendingOrderData, setPendingOrderData] = useState<{ orderId: string; orderName?: string } | null>(null)
   const openOrderConfirmBtnRef = useRef<HTMLButtonElement>(null)
   const openOrderCancelBtnRef = useRef<HTMLButtonElement>(null)
-  
+
   // Focus confirm button when dialog opens
   useEffect(() => {
     if (showOpenOrderConfirm) {
@@ -1830,7 +1827,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
   useEffect(() => {
     if (productSubTab !== 'sales-history' || !selectedItemId) return
     if (prevSalesSearchRef.current === salesHistorySearch) return
-    
+
     const handler = setTimeout(() => {
       setSalesHistory([])
       setSalesHistoryPage(1)
@@ -1845,7 +1842,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
   useEffect(() => {
     if (productSubTab !== 'customer-history' || !selectedItemId) return
     if (prevCustomerSearchRef.current === customerHistorySearch) return
-    
+
     const handler = setTimeout(() => {
       setCustomerHistory([])
       setCustomerHistoryPage(1)
@@ -1860,7 +1857,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
   useEffect(() => {
     if (productSubTab !== 'purchase-history' || !selectedItemId) return
     if (prevPurchaseSearchRef.current === purchaseHistorySearch) return
-    
+
     const handler = setTimeout(() => {
       setPurchaseHistory([])
       setPurchaseHistoryPage(1)
@@ -1900,14 +1897,14 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
     // Only debounce if search term actually changed
     if (prevRecentOrdersSearchRef.current === recentOrdersSearch) return
-    
+
     console.log('🔄 Recent Orders search changed, debouncing...', {
       oldSearch: prevRecentOrdersSearchRef.current,
       newSearch: recentOrdersSearch,
       isEmpty: !recentOrdersSearch || recentOrdersSearch.trim() === '',
       currentPage: recentPage
     })
-    
+
     const handler = setTimeout(() => {
       console.log('⏰ Recent Orders debounce timeout, resetting page and clearing results', {
         searchTerm: recentOrdersSearch,
@@ -1954,14 +1951,14 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
     // Only debounce if search term actually changed
     if (prevMostOrderedSearchRef.current === mostOrderedSearch) return
-    
+
     console.log('🔄 Most Ordered search changed, debouncing...', {
       oldSearch: prevMostOrderedSearchRef.current,
       newSearch: mostOrderedSearch,
       isEmpty: !mostOrderedSearch || mostOrderedSearch.trim() === '',
       currentPage: mostPage
     })
-    
+
     const handler = setTimeout(() => {
       console.log('⏰ Most Ordered debounce timeout, resetting page and clearing results', {
         searchTerm: mostOrderedSearch,
@@ -2039,8 +2036,6 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
   // Profile data and dropdown
   const [showProfileDropdown, setShowProfileDropdown] = useState(false)
-  const [appVersion, setAppVersion] = useState<string>('')
-  const profileLoading = false
 
   // Use data directly - server handles all filtering via search_term parameter
   // No client-side filtering needed since API already filters results
@@ -2086,24 +2081,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [showProfileDropdown])
 
-  // Load app version on mount for display in profile dropdown
-  useEffect(() => {
-    const loadVersion = async () => {
-      try {
-        const api = window.electronAPI?.app
-        if (!api?.getVersion) {
-          return
-        }
-        const version = await api.getVersion()
-        if (version) {
-          setAppVersion(version)
-        }
-      } catch (error) {
-        console.warn('Failed to load app version', error)
-      }
-    }
-    loadVersion()
-  }, [])
+
 
   useEffect(() => {
     let cancelled = false
@@ -2154,8 +2132,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
             uom: String(qq.uom || ''),
             qty: Number(qq.qty || 0)
           })).filter((qty: any) => qty.qty > 0) // Only show UOMs with quantity > 0
-          return { 
-            name: w.warehouse, 
+          return {
+            name: w.warehouse,
             quantities: quantities
           }
         }).filter((w: any) => w.quantities.length > 0) // Only show warehouses with stock
@@ -2163,25 +2141,25 @@ const RightPanel: React.FC<RightPanelProps> = ({
         if (!cancelled)
           setWarehouseStock(mapped)
 
-          // Add test command to window for debugging
-        ;(window as any).testStockAPI = async (itemCode: string) => {
-          try {
-            const res = await window.electronAPI?.proxy?.request({
-              url: '/api/method/centro_pos_apis.api.product.item_stock_warehouse_list',
-              params: {
-                item_id: itemCode,
-                search_text: '',
-                limit_start: 0,
-                limit_page_length: 20
+            // Add test command to window for debugging
+            ; (window as any).testStockAPI = async (itemCode: string) => {
+              try {
+                const res = await window.electronAPI?.proxy?.request({
+                  url: '/api/method/centro_pos_apis.api.product.item_stock_warehouse_list',
+                  params: {
+                    item_id: itemCode,
+                    search_text: '',
+                    limit_start: 0,
+                    limit_page_length: 20
+                  }
+                })
+                console.log('🧪 Test API result:', res)
+                return res
+              } catch (e) {
+                console.error('🧪 Test API error:', e)
+                return e
               }
-            })
-            console.log('🧪 Test API result:', res)
-            return res
-          } catch (e) {
-            console.error('🧪 Test API error:', e)
-            return e
-          }
-        }
+            }
       } catch (e: any) {
         console.error('❌ Stock loading error:', e)
         if (!cancelled) setStockError(e?.message || 'Failed to load stock')
@@ -2226,7 +2204,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
         setRecentOrders([])
         return
       }
-      
+
       // Check if we have pre-fetched data from order opening (only for page 1, no search, and never searched)
       // Skip pre-fetched data if user has ever searched (even if cleared) to ensure fresh API call
       const shouldUsePreFetched = page === 1 && !searchTerm && recentOrdersSearch === '' && !hasRecentOrdersSearchedRef.current
@@ -2243,14 +2221,14 @@ const RightPanel: React.FC<RightPanelProps> = ({
           return
         }
       }
-      
+
       // If search term is empty or was cleared, ensure we call API
       if (!searchTerm || searchTerm.trim() === '') {
         console.log('🔄 Calling API with empty search term (search cleared or no search)', {
           hasSearchedBefore: hasRecentOrdersSearchedRef.current
         })
       }
-      
+
       try {
         setOrdersLoading(true)
         setOrdersError(null)
@@ -2300,33 +2278,33 @@ const RightPanel: React.FC<RightPanelProps> = ({
         console.log('   Data:', res?.data)
         console.log('   Full Response:', res)
 
-          if (!cancelled) {
+        if (!cancelled) {
           const actualData = res?.data?.data || res?.data
           const orders = Array.isArray(actualData) ? actualData : []
-            if (orders.length === 0) {
-              setRecentHasMore(false)
-              if (page > 1) setRecentPage(page - 1)
-              return
-            }
-            setRecentHasMore(orders.length === PAGE_LEN_LOCAL)
-            setRecentOrders(orders)
+          if (orders.length === 0) {
+            setRecentHasMore(false)
+            if (page > 1) setRecentPage(page - 1)
+            return
+          }
+          setRecentHasMore(orders.length === PAGE_LEN_LOCAL)
+          setRecentOrders(orders)
 
-            if (orders.length === PAGE_LEN_LOCAL) {
-              try {
-                const probe = await window.electronAPI?.proxy?.request({
-                  url: '/api/method/centro_pos_apis.api.customer.get_customer_recent_orders',
-                params: { 
-                  customer_id: customerId, 
-                  limit_start: page + 1, 
+          if (orders.length === PAGE_LEN_LOCAL) {
+            try {
+              const probe = await window.electronAPI?.proxy?.request({
+                url: '/api/method/centro_pos_apis.api.customer.get_customer_recent_orders',
+                params: {
+                  customer_id: customerId,
+                  limit_start: page + 1,
                   limit_page_length: PAGE_LEN_LOCAL,
                   search_term: searchTerm || '' // Always include search_term
                 }
-                })
-                const nextItems = Array.isArray(probe?.data?.data) ? probe.data.data : []
-                setRecentHasMore(nextItems.length > 0)
-              } catch (_) {
-                // If probe fails, keep previous hasMore assumption
-              }
+              })
+              const nextItems = Array.isArray(probe?.data?.data) ? probe.data.data : []
+              setRecentHasMore(nextItems.length > 0)
+            } catch (_) {
+              // If probe fails, keep previous hasMore assumption
+            }
           }
         }
       } catch (err) {
@@ -2391,7 +2369,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
         setMostOrdered([])
         return
       }
-      
+
       // Check if we have pre-fetched data from order opening (only for page 1, no search, and never searched)
       // Skip pre-fetched data if user has ever searched (even if cleared) to ensure fresh API call
       const shouldUsePreFetched = page === 1 && !searchTerm && mostOrderedSearch === '' && !hasMostOrderedSearchedRef.current
@@ -2408,14 +2386,14 @@ const RightPanel: React.FC<RightPanelProps> = ({
           return
         }
       }
-      
+
       // If search term is empty or was cleared, ensure we call API
       if (!searchTerm || searchTerm.trim() === '') {
         console.log('🔄 Calling API with empty search term (search cleared or no search)', {
           hasSearchedBefore: hasMostOrderedSearchedRef.current
         })
       }
-      
+
       try {
         setMostLoading(true)
         setMostError(null)
@@ -2434,8 +2412,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
           return
         }
         const mostOrderedParams = {
-          customer_id: customerId, 
-          limit_start: page, 
+          customer_id: customerId,
+          limit_start: page,
           limit_page_length: PAGE_LEN_LOCAL,
           search_term: searchTerm || '' // Always include search_term
         }
@@ -2462,16 +2440,16 @@ const RightPanel: React.FC<RightPanelProps> = ({
             if (page > 1) setMostPage(page - 1)
             return
           }
-            setMostHasMore(items.length === PAGE_LEN_LOCAL)
+          setMostHasMore(items.length === PAGE_LEN_LOCAL)
           setMostOrdered(items)
 
           if (items.length === PAGE_LEN_LOCAL) {
             try {
               const probe = await window.electronAPI?.proxy?.request({
                 url: '/api/method/centro_pos_apis.api.customer.get_customer_most_ordered_products',
-                params: { 
-                  customer_id: customerId, 
-                  limit_start: page + 1, 
+                params: {
+                  customer_id: customerId,
+                  limit_start: page + 1,
                   limit_page_length: PAGE_LEN_LOCAL,
                   search_term: searchTerm || '' // Always include search_term
                 }
@@ -2512,7 +2490,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
   // Track previous active tab to detect tab switches
   const prevActiveTabRef = useRef<string | null>(null)
-  
+
   // Fetch customer details and insights when customer is selected
   useEffect(() => {
     console.log('🔄 Customer details useEffect triggered:', {
@@ -2522,18 +2500,18 @@ const RightPanel: React.FC<RightPanelProps> = ({
       currentTabStatus: currentTab?.status,
       refreshToken: refreshTokens.customer
     })
-    
+
     // Only fetch when customer tab is active
     if (activeTab !== 'customer') {
       prevActiveTabRef.current = activeTab
       return
     }
-    
+
     let cancelled = false
     const bypassPrefetch =
       refreshBypassRef.current.token === refreshTokens.customer &&
       refreshBypassRef.current.pending?.has('details')
-    
+
     // Check if order status changed - if so, bypass cache to get fresh insights
     // Also bypass if orderId changed (order was just saved)
     // Also bypass cache when switching to customer tab to always get fresh data
@@ -2543,10 +2521,10 @@ const RightPanel: React.FC<RightPanelProps> = ({
     const orderIdChanged = lastKnownOrderId !== undefined && currentTab?.orderId && currentTab.orderId !== lastKnownOrderId
     const justSwitchedToCustomer = prevActiveTabRef.current !== 'customer' && activeTab === 'customer'
     const shouldBypassCache = bypassPrefetch || orderStatusChanged || orderIdChanged || justSwitchedToCustomer
-    
+
     // Update ref for next comparison
     prevActiveTabRef.current = activeTab
-    
+
     async function loadCustomerDetails() {
       if (!selectedCustomer) {
         console.log('⚠️ No customer selected, clearing details')
@@ -2556,7 +2534,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
         resolveCustomerBypass('details')
         return
       }
-      
+
       console.log('🔄 Loading customer details for:', selectedCustomer.name, {
         shouldBypassCache,
         bypassPrefetch,
@@ -2564,19 +2542,19 @@ const RightPanel: React.FC<RightPanelProps> = ({
         orderIdChanged,
         justSwitchedToCustomer
       })
-      
+
       // Check if we have pre-fetched data from order opening
       // Skip cache if order status changed (save/confirm/pay/return happened)
       // Always bypass cache when switching to customer tab to get fresh insights
       const preFetched = currentTab?.orderData?._relatedData
-      
+
       if ((preFetched?.customerDetails || preFetched?.customerInsights) && !shouldBypassCache) {
         console.log('✅ Using pre-fetched customer data from order')
         if (!cancelled) {
           setCustomerDetails(preFetched.customerDetails || null)
           setCustomerInsights(preFetched.customerInsights || null)
           setCustomerDetailsLoading(false)
-          
+
           // Set _lastKnownStatus and _lastKnownOrderId so we can detect changes later
           if (currentTab?.id && currentTab?.orderData && !(currentTab.orderData as any)?._lastKnownStatus) {
             const updatedOrderData = {
@@ -2590,14 +2568,14 @@ const RightPanel: React.FC<RightPanelProps> = ({
         resolveCustomerBypass('details')
         return
       }
-      
+
       // If we reach here, we need to fetch fresh data
       console.log('🔄 Fetching fresh customer details (bypassing cache)')
-      
+
       if (justSwitchedToCustomer) {
         console.log('🔄 Just switched to customer tab, fetching fresh insights')
       }
-      
+
       // If we should bypass cache, clear cached insights from orderData
       if (shouldBypassCache && currentTab?.orderData?._relatedData) {
         console.log('🔄 Bypassing cache, clearing cached customer insights', {
@@ -2616,7 +2594,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
         }
         updateTabOrderData(currentTab.id, updatedOrderData)
       }
-      
+
       try {
         setCustomerDetailsLoading(true)
         setCustomerDetailsError(null)
@@ -2638,7 +2616,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
           resolveCustomerBypass('details')
           return
         }
-        
+
         console.log('✅ Found customer ID:', customerId, 'for customer:', selectedCustomer.name)
 
         // Step 2: Fetch customer details
@@ -2665,14 +2643,14 @@ const RightPanel: React.FC<RightPanelProps> = ({
         if (!cancelled) {
           const details = detailsRes?.data?.data || null
           const insights = insightsRes?.data?.data || null
-          console.log('✅ Customer details loaded:', { 
-            hasDetails: !!details, 
+          console.log('✅ Customer details loaded:', {
+            hasDetails: !!details,
             hasInsights: !!insights,
             customerName: details?.customer_name || selectedCustomer.name
           })
           setCustomerDetails(details)
           setCustomerInsights(insights)
-          
+
           // Update orderData with fresh insights and track status/orderId
           if (currentTab?.id && currentTab?.orderData) {
             const updatedOrderData = {
@@ -2740,8 +2718,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
         setOrdersTabLoading(true);
         setOrdersTabError(null);
         const ordersParams = {
-            is_returned: 0,
-            limit_start: page,
+          is_returned: 0,
+          limit_start: page,
           limit_page_length: pageLength,
           search_term: searchTerm || '' // Always include search_term
         };
@@ -2763,8 +2741,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
         if (!cancelled) setOrdersTabError(err instanceof Error ? err.message : 'Failed to load orders');
       } finally {
         if (!cancelled) setOrdersTabLoading(false);
-        }
       }
+    }
     if (activeTab === 'orders' && subTab === 'orders') {
       loadOrdersPaginated(ordersPage, ordersSearch);
     }
@@ -2794,7 +2772,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
     // Only debounce if search term actually changed
     if (prevSearchRef.current === ordersSearch) return;
-    
+
     const handler = setTimeout(() => {
       prevSearchRef.current = ordersSearch; // Update ref after debounce
       setOrdersPage((prev) => (prev === 1 ? prev : 1)); // Reset to first page if needed
@@ -2829,8 +2807,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
         setOrdersTabLoading(true);
         setOrdersTabError(null);
         const returnsParams = {
-            is_returned: 1,
-            limit_start: page,
+          is_returned: 1,
+          limit_start: page,
           limit_page_length: pageLength,
           search_term: searchTerm || '' // Always include search_term
         };
@@ -2851,8 +2829,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
         if (!cancelled) setOrdersTabError(err instanceof Error ? err.message : 'Failed to load returns');
       } finally {
         if (!cancelled) setOrdersTabLoading(false);
-        }
       }
+    }
     if (activeTab === 'orders' && subTab === 'returns') {
       loadReturnsPaginated(returnsPage, returnsSearch);
     }
@@ -2864,7 +2842,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
   // Debounced search effect for Returns - resets pagination and triggers API call when search changes
   const prevReturnsSearchRef = useRef<string>('');
   const isReturnsInitialMount = useRef<boolean>(true);
-  
+
   useEffect(() => {
     if (activeTab !== 'orders' || subTab !== 'returns') {
       isReturnsInitialMount.current = true; // Reset on tab change
@@ -2882,7 +2860,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
     // Only debounce if search term actually changed
     if (prevReturnsSearchRef.current === returnsSearch) return;
-    
+
     const handler = setTimeout(() => {
       prevReturnsSearchRef.current = returnsSearch; // Update ref after debounce
       setReturnsPage((prev) => (prev === 1 ? prev : 1)); // Reset to first page if needed
@@ -2916,164 +2894,52 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
   return (
     <div className="w-[480px] bg-white/60 backdrop-blur border-l border-white/20 flex flex-col overflow-y-auto scrollbar-hide">
-      <div className="flex justify-end border-b border-gray-200/60 bg-white/80 pl-2 pr-2">
+      <div className="flex w-full border-b border-gray-200/60 bg-white/80 h-14">
         <button
-          className={`px-4 py-3 font-semibold text-sm border-b-3 ${
-            activeTab === 'product'
-              ? 'border-accent bg-white/90 text-accent'
-              : 'border-transparent text-gray-500 hover:text-black hover:bg-white/40 transition-all'
-          }`}
+          className={`flex-1 px-4 font-semibold text-sm border-b-3 transition-all h-full ${activeTab === 'product'
+            ? 'border-accent bg-white/90 text-accent'
+            : 'border-transparent text-gray-500 hover:text-black hover:bg-white/40'
+            }`}
           onClick={() => handleTabChange('product')}
         >
           Product
         </button>
         <button
-          className={`px-4 py-3 font-medium text-sm border-b-3 ${
-            activeTab === 'customer'
-              ? 'border-accent bg-white/90 text-accent font-semibold'
-              : 'border-transparent text-gray-500 hover:text-black hover:bg-white/40 transition-all'
-          }`}
+          className={`flex-1 px-4 font-medium text-sm border-b-3 transition-all h-full ${activeTab === 'customer'
+            ? 'border-accent bg-white/90 text-accent font-semibold'
+            : 'border-transparent text-gray-500 hover:text-black hover:bg-white/40'
+            }`}
           onClick={() => handleTabChange('customer')}
         >
           Customer
         </button>
         <button
-          className={`px-4 py-3 font-medium text-sm border-b-3 ${
-            activeTab === 'prints'
-              ? 'border-accent bg-white/90 text-accent font-semibold'
-              : 'border-transparent text-gray-500 hover:text-black hover:bg-white/40 transition-all'
-          }`}
+          className={`flex-1 px-4 font-medium text-sm border-b-3 transition-all h-full ${activeTab === 'prints'
+            ? 'border-accent bg-white/90 text-accent font-semibold'
+            : 'border-transparent text-gray-500 hover:text-black hover:bg-white/40'
+            }`}
           onClick={() => handleTabChange('prints')}
         >
           Prints
         </button>
         <button
-          className={`px-4 py-3 font-medium text-sm border-b-3 ${
-            activeTab === 'payments'
-              ? 'border-accent bg-white/90 text-accent font-semibold'
-              : 'border-transparent text-gray-500 hover:text-black hover:bg-white/40 transition-all'
-          }`}
+          className={`flex-1 px-4 font-medium text-sm border-b-3 transition-all h-full ${activeTab === 'payments'
+            ? 'border-accent bg-white/90 text-accent font-semibold'
+            : 'border-transparent text-gray-500 hover:text-black hover:bg-white/40'
+            }`}
           onClick={() => handleTabChange('payments')}
         >
           Payments
         </button>
         <button
-          className={`px-4 py-3 font-medium text-sm border-b-3 ${
-            activeTab === 'orders'
-              ? 'border-accent bg-white/90 text-accent font-semibold'
-              : 'border-transparent text-gray-500 hover:text-black hover:bg-white/40 transition-all'
-          }`}
+          className={`flex-1 px-4 font-medium text-sm border-b-3 transition-all h-full ${activeTab === 'orders'
+            ? 'border-accent bg-white/90 text-accent font-semibold'
+            : 'border-transparent text-gray-500 hover:text-black hover:bg-white/40'
+            }`}
           onClick={() => handleTabChange('orders')}
         >
           Orders
         </button>
-
-        {/* Profile Circle */}
-        <div className="relative ml-2 mr-2 flex items-center">
-          <button
-            className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-xs font-semibold hover:from-blue-600 hover:to-purple-700 transition-all"
-            onClick={() => setShowProfileDropdown(!showProfileDropdown)}
-          >
-            {profileLoading ? (
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-            ) : profile?.name ? (
-              profile.name.substring(0, 2).toUpperCase()
-            ) : (
-              'U'
-            )}
-          </button>
-
-          {/* Profile Dropdown */}
-          {showProfileDropdown && (
-            <div
-              className="absolute right-0 top-10 bg-white rounded-lg shadow-lg border border-gray-200 py-2 min-w-48 z-50"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="px-4 py-2 border-b border-gray-100">
-                <div className="text-sm font-semibold text-gray-800">
-                  {profile?.name || 'User Profile'}
-                </div>
-                {appVersion && (
-                  <div className="text-xs text-gray-500 mt-1">
-                    Version {appVersion}
-                  </div>
-                )}
-              </div>
-              <button
-                className="w-full px-4 py-2 text-left text-sm font-semibold text-black hover:bg-gray-100 transition-colors"
-                onMouseDown={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  console.log('=== DROPDOWN LOGOUT BUTTON MOUSE DOWN ===')
-                }}
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  console.log('=== DROPDOWN LOGOUT BUTTON CLICKED ===')
-
-                  // Don't close dropdown immediately - let logout handle it
-
-                  const performLogout = async () => {
-                    try {
-                      // Clear the auth store
-                      console.log('1. Calling logout from store...')
-                      logout()
-                      console.log('2. Store logout completed')
-
-                      // Also clear the proxy session
-                      console.log('3. Calling proxy logout...')
-                      await window.electronAPI?.proxy?.logout()
-                      console.log('4. Proxy logout completed')
-
-                      // Clear POS tab state and authentication data
-                      console.log('5. Clearing POS tab state...')
-                      clearAllTabs()
-                      localStorage.removeItem('pos-tab-store')
-                      const tabStorePersist = (usePOSTabStore as any).persist
-                      if (tabStorePersist?.clearStorage) {
-                        await tabStorePersist.clearStorage()
-                      }
-                      console.log('6. POS tab state cleared')
-
-                      console.log('7. Clearing authentication data...')
-                      localStorage.removeItem('userData')
-                      localStorage.removeItem('auth-store')
-                      console.log('8. Authentication data cleared')
-
-                      // Close dropdown
-                      setShowProfileDropdown(false)
-                      console.log('9. Dropdown closed')
-
-                      // FORCE reload to login page
-                      console.log('10. Reloading page to login...')
-                      window.location.href = '/'
-                      console.log('11. Page reload initiated')
-                    } catch (error) {
-                      console.error('=== DROPDOWN LOGOUT FAILED ===', error)
-                      // Force reload even if logout fails
-                      console.log('Fallback: Force reloading page...')
-                      setShowProfileDropdown(false)
-                      localStorage.removeItem('userData')
-                      localStorage.removeItem('auth-store')
-                      clearAllTabs()
-                      localStorage.removeItem('pos-tab-store')
-                      const tabStorePersistFallback = (usePOSTabStore as any).persist
-                      if (tabStorePersistFallback?.clearStorage) {
-                        await tabStorePersistFallback.clearStorage()
-                      }
-                      window.location.href = '/'
-                    }
-                  }
-
-                  // Execute logout
-                  performLogout()
-                }}
-              >
-                Logout
-              </button>
-            </div>
-          )}
-        </div>
       </div>
 
       {activeTab === 'product' && (
@@ -3169,18 +3035,18 @@ const RightPanel: React.FC<RightPanelProps> = ({
                   </div>
                   {!hideCostAndMargin && (
                     <>
-                  <div className="p-3 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl">
-                    <div className="text-xs text-gray-600">Cost</div>
-                    <div className="font-bold text-orange-600">
-                      {currencySymbol} {productData.cost.toFixed(2)}
-                    </div>
-                  </div>
-                  <div className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl">
-                    <div className="text-xs text-gray-600">Margin</div>
-                    <div className="font-bold text-purple-600">
-                      {productData.margin.toFixed(1)}%
-                    </div>
-                  </div>
+                      <div className="p-3 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl">
+                        <div className="text-xs text-gray-600">Cost</div>
+                        <div className="font-bold text-orange-600">
+                          {currencySymbol} {productData.cost.toFixed(2)}
+                        </div>
+                      </div>
+                      <div className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl">
+                        <div className="text-xs text-gray-600">Margin</div>
+                        <div className="font-bold text-purple-600">
+                          {productData.margin.toFixed(1)}%
+                        </div>
+                      </div>
                     </>
                   )}
                   <div className="p-3 bg-gradient-to-r from-red-50 to-pink-50 rounded-xl col-span-2">
@@ -3224,61 +3090,60 @@ const RightPanel: React.FC<RightPanelProps> = ({
                         })
                       })
                       const uniqueUoms = Array.from(allUoms).sort()
-                      
+
                       // Get selected item's UOM
                       const selectedItemUom = selectedItem?.uom || ''
-                      
+
                       return warehouseStock.map((warehouse, index) => {
                         // Get current warehouse from profile
                         const currentWarehouse = profile?.warehouse || ''
                         const isCurrentWarehouse = warehouse.name === currentWarehouse
-                        
+
                         return (
-                      <div
-                        key={index}
-                            className={`p-2 rounded-lg text-xs ${
-                              isCurrentWarehouse 
-                                ? 'bg-gradient-to-r from-gray-100 to-gray-200 border-2 border-gray-400' 
-                                : 'bg-gradient-to-r from-gray-50 to-slate-50'
-                            }`}
-                      >
-                        <div className="flex justify-between items-center">
+                          <div
+                            key={index}
+                            className={`p-2 rounded-lg text-xs ${isCurrentWarehouse
+                              ? 'bg-gradient-to-r from-gray-100 to-gray-200 border-2 border-gray-400'
+                              : 'bg-gradient-to-r from-gray-50 to-slate-50'
+                              }`}
+                          >
+                            <div className="flex justify-between items-center">
                               <div className={`font-semibold ${isCurrentWarehouse ? 'text-gray-700' : 'text-primary'}`}>
                                 {warehouse.name}
-                          </div>
+                              </div>
                               <div className="flex items-center gap-4 justify-end">
                                 {uniqueUoms.map((uom) => {
                                   // Find quantity for this UOM in current warehouse
                                   const qtyItem = warehouse.quantities.find(
                                     (item) => (item.uom || '').trim().toLowerCase() === uom.trim().toLowerCase()
                                   )
-                                  
+
                                   if (!qtyItem) {
                                     // If this UOM doesn't exist for this warehouse, show empty space for alignment
                                     return (
                                       <div key={uom} className="w-16 text-right">
                                         <span className="text-transparent">-</span>
-                        </div>
+                                      </div>
                                     )
                                   }
-                                  
+
                                   // Normalize UOM strings for comparison
                                   const qtyItemUom = (qtyItem.uom || '').trim().toLowerCase()
                                   const selectedUomNormalized = (selectedItemUom || '').trim().toLowerCase()
                                   const isSelectedUom = qtyItemUom === selectedUomNormalized
-                                  
+
                                   // Highlight based on UOM match only
                                   const isHighlighted = isSelectedUom && selectedItemUom !== ''
-                                  
+
                                   return (
-                                    <div 
-                                      key={uom} 
+                                    <div
+                                      key={uom}
                                       className="text-right"
                                       style={{ minWidth: '60px' }}
                                     >
                                       <div className={`font-semibold ${isHighlighted ? 'text-blue-700' : 'text-gray-700'}`}>
                                         {qtyItem.qty}
-                      </div>
+                                      </div>
                                       <div className={`text-[10px] ${isHighlighted ? 'font-bold text-blue-700' : 'text-gray-700 font-normal'}`}>
                                         {qtyItem.uom}
                                       </div>
@@ -3302,11 +3167,10 @@ const RightPanel: React.FC<RightPanelProps> = ({
                 <div className={`flex border-b border-gray-200/60 ${shouldScrollTabs ? 'overflow-x-auto scrollbar-hide scroll-smooth' : ''}`}>
                   <div className={`flex ${shouldScrollTabs ? 'min-w-max' : 'w-full'}`}>
                     <button
-                      className={`px-4 py-3 font-bold text-sm border-b-2 ${shouldScrollTabs ? 'whitespace-nowrap' : 'flex-1'} ${
-                        productSubTab === 'sales-history'
-                          ? 'border-blue-500 bg-blue-50 text-blue-700'
-                          : 'text-gray-500 hover:text-black hover:bg-white/40'
-                      }`}
+                      className={`px-4 py-3 font-bold text-sm border-b-2 ${shouldScrollTabs ? 'whitespace-nowrap' : 'flex-1'} ${productSubTab === 'sales-history'
+                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : 'text-gray-500 hover:text-black hover:bg-white/40'
+                        }`}
                       onClick={() => {
                         console.log('🔄 Switching to Sales History tab')
                         setProductSubTab('sales-history')
@@ -3319,11 +3183,10 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       Sales History
                     </button>
                     <button
-                      className={`px-4 py-3 font-bold text-sm border-b-2 ${shouldScrollTabs ? 'whitespace-nowrap' : 'flex-1'} ${
-                        productSubTab === 'customer-history'
-                          ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                          : 'text-gray-500 hover:text-black hover:bg-white/40'
-                      }`}
+                      className={`px-4 py-3 font-bold text-sm border-b-2 ${shouldScrollTabs ? 'whitespace-nowrap' : 'flex-1'} ${productSubTab === 'customer-history'
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                        : 'text-gray-500 hover:text-black hover:bg-white/40'
+                        }`}
                       onClick={() => {
                         console.log('🔄 Switching to Customer History tab')
                         setProductSubTab('customer-history')
@@ -3337,11 +3200,10 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     </button>
                     {showPurchaseHistory && (
                       <button
-                        className={`px-4 py-3 font-bold text-sm border-b-2 ${shouldScrollTabs ? 'whitespace-nowrap' : 'flex-1'} ${
-                          productSubTab === 'purchase-history'
-                            ? 'border-purple-500 bg-purple-50 text-purple-700'
-                            : 'text-gray-500 hover:text-black hover:bg-white/40'
-                        }`}
+                        className={`px-4 py-3 font-bold text-sm border-b-2 ${shouldScrollTabs ? 'whitespace-nowrap' : 'flex-1'} ${productSubTab === 'purchase-history'
+                          ? 'border-purple-500 bg-purple-50 text-purple-700'
+                          : 'text-gray-500 hover:text-black hover:bg-white/40'
+                          }`}
                         onClick={() => {
                           console.log('🔄 Switching to Purchase History tab')
                           setProductSubTab('purchase-history')
@@ -3424,7 +3286,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                               const unitPrice = Number(item.unit_price || 0).toFixed(2)
                               // Extract order ID from item
                               const orderId = item.sales_order_id || item.sales_order_no || item.invoice_no || item.name
-                              
+
                               return (
                                 <div
                                   key={index}
@@ -3485,9 +3347,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     {/* Pagination Controls */}
                     <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
                       <button
-                        className={`px-3 py-1 text-sm rounded border ${
-                          salesHistoryPage > 1 ? 'bg-white hover:bg-gray-50' : 'opacity-40 cursor-not-allowed'
-                        }`}
+                        className={`px-3 py-1 text-sm rounded border ${salesHistoryPage > 1 ? 'bg-white hover:bg-gray-50' : 'opacity-40 cursor-not-allowed'
+                          }`}
                         disabled={salesHistoryPage <= 1}
                         onClick={() => {
                           const prev = Math.max(1, salesHistoryPage - 1)
@@ -3500,9 +3361,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       </button>
                       <div className="text-sm text-gray-600">Page {salesHistoryPage}</div>
                       <button
-                        className={`px-3 py-1 text-sm rounded border ${
-                          salesHasMoreRef.current ? 'bg-white hover:bg-gray-50' : 'opacity-40 cursor-not-allowed'
-                        }`}
+                        className={`px-3 py-1 text-sm rounded border ${salesHasMoreRef.current ? 'bg-white hover:bg-gray-50' : 'opacity-40 cursor-not-allowed'
+                          }`}
                         disabled={!salesHasMoreRef.current}
                         onClick={() => {
                           const next = salesHistoryPage + 1
@@ -3578,7 +3438,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                             const unitPrice = Number(item.unit_price || 0).toFixed(2)
                             // Extract order ID from item
                             const orderId = item.sales_order_id || item.sales_order_no || item.invoice_no || item.name
-                            
+
                             return (
                               <div
                                 key={index}
@@ -3816,199 +3676,199 @@ const RightPanel: React.FC<RightPanelProps> = ({
                 <div className="text-sm text-red-600">{customerDetailsError}</div>
               </div>
             )}
-            {!customerDetailsLoading && !customerDetailsError && customerDetails && 
-             typeof customerDetails === 'object' && 
-             (customerDetails.customer_name || customerDetails.name) && 
-             !customerDetails.status && 
-             !customerDetails.message && (
-              <>
-                <div className="flex items-center gap-4 mb-6 justify-between">
-                  <div className="flex items-center gap-4 flex-1">
-                  <div className="w-12 h-12 bg-gradient-to-r from-primary to-slate-700 rounded-full flex items-center justify-center">
-                    <svg className="w-6 h-6 text-white" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="user" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" fill="currentColor">
-                      <path d="M224 256A128 128 0 1 0 224 0a128 128 0 1 0 0 256zm-45.7 48C79.8 304 0 383.8 0 482.3C0 498.7 13.3 512 29.7 512H418.3c16.4 0 29.7-13.3 29.7-29.7C448 383.8 368.2 304 269.7 304H178.3z"></path>
-                    </svg>
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between gap-3">
-                      <h3 className="font-bold text-lg">
-                        {String(customerDetails.customer_name || customerDetails.name || '')}
-                      </h3>
-                      <button
-                        type="button"
-                        onClick={() => triggerTabRefresh('customer')}
-                        className="inline-flex items-center justify-center rounded-full p-2 text-gray-500 hover:text-black hover:bg-gray-100 transition-colors"
-                        title="Refresh customer data"
-                      >
-                        <RefreshCcw className="h-4 w-4" />
-                      </button>
+            {!customerDetailsLoading && !customerDetailsError && customerDetails &&
+              typeof customerDetails === 'object' &&
+              (customerDetails.customer_name || customerDetails.name) &&
+              !customerDetails.status &&
+              !customerDetails.message && (
+                <>
+                  <div className="flex items-center gap-4 mb-6 justify-between">
+                    <div className="flex items-center gap-4 flex-1">
+                      <div className="w-12 h-12 bg-gradient-to-r from-primary to-slate-700 rounded-full flex items-center justify-center">
+                        <svg className="w-6 h-6 text-white" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="user" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" fill="currentColor">
+                          <path d="M224 256A128 128 0 1 0 224 0a128 128 0 1 0 0 256zm-45.7 48C79.8 304 0 383.8 0 482.3C0 498.7 13.3 512 29.7 512H418.3c16.4 0 29.7-13.3 29.7-29.7C448 383.8 368.2 304 269.7 304H178.3z"></path>
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between gap-3">
+                          <h3 className="font-bold text-lg">
+                            {String(customerDetails.customer_name || customerDetails.name || '')}
+                          </h3>
+                          <button
+                            type="button"
+                            onClick={() => triggerTabRefresh('customer')}
+                            className="inline-flex items-center justify-center rounded-full p-2 text-gray-500 hover:text-black hover:bg-gray-100 transition-colors"
+                            title="Refresh customer data"
+                          >
+                            <RefreshCcw className="h-4 w-4" />
+                          </button>
+                        </div>
+                        <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">VAT: {String(customerDetails.tax_id || 'Not Applicable')}</p>
+                        <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">Type: {String(customerDetails.customer_type || '—')}</p>
+                        <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">Mobile: {String(customerDetails.mobile_no || '—')}</p>
+                        <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">
+                          ADDRESS:{' '}
+                          {customerDetails.primary_address && typeof customerDetails.primary_address === 'string'
+                            ? customerDetails.primary_address
+                              .replace(/<br\s*\/?>/gi, ', ')
+                              .replace(/<[^>]+>/g, '')
+                              .trim()
+                            : 'Address not available'}
+                        </p>
+                      </div>
                     </div>
-                    <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">VAT: {String(customerDetails.tax_id || 'Not Applicable')}</p>
-                    <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">Type: {String(customerDetails.customer_type || '—')}</p>
-                    <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">Mobile: {String(customerDetails.mobile_no || '—')}</p>
-                    <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">
-                      ADDRESS:{' '}
-                      {customerDetails.primary_address && typeof customerDetails.primary_address === 'string'
-                        ? customerDetails.primary_address
-                            .replace(/<br\s*\/?>/gi, ', ')
-                            .replace(/<[^>]+>/g, '')
-                            .trim()
-                        : 'Address not available'}
-                    </p>
-                  </div>
-                  </div>
-                  <div>
-                    <button
-                      className="px-3 py-1.5 text-sm border rounded hover:bg-gray-50"
-                      onClick={async () => {
-                        // Fetch fresh customer details to ensure we have latest data
-                        const customerId = customerDetails.name || selectedCustomer?.name || selectedCustomer?.customer_id
-                        if (!customerId) {
-                          toast.error('Customer ID not found')
-                          return
-                        }
-
-                        try {
-                          setEditOpen(true) // Open dialog first to show loading state
-                          setEditFormLoading(true)
-                          
-                          // Fetch fresh customer details from API
-                          console.log('📞 API Call: get_customer_details (Edit)', {
-                            url: '/api/method/centro_pos_apis.api.customer.get_customer_details',
-                            params: { customer_id: customerId }
-                          })
-                          const detailsRes = await (window as any).electronAPI?.proxy?.request({
-                            url: '/api/method/centro_pos_apis.api.customer.get_customer_details',
-                            params: { customer_id: customerId }
-                          })
-
-                          console.log('📥 API Response: get_customer_details (Edit)', {
-                            fullResponse: detailsRes,
-                            data: detailsRes?.data,
-                            customerData: detailsRes?.data?.data || detailsRes?.data
-                          })
-
-                          const customerData = detailsRes?.data?.data || detailsRes?.data
-                          if (!customerData) {
-                            toast.error('Failed to load customer details')
-                            setEditOpen(false)
+                    <div>
+                      <button
+                        className="px-3 py-1.5 text-sm border rounded hover:bg-gray-50"
+                        onClick={async () => {
+                          // Fetch fresh customer details to ensure we have latest data
+                          const customerId = customerDetails.name || selectedCustomer?.name || selectedCustomer?.customer_id
+                          if (!customerId) {
+                            toast.error('Customer ID not found')
                             return
                           }
 
-                          // Helper function to parse address from primary_address HTML
-                          // Format: "987 Vadakkan House<br>\nAziziya<br>Riyadh<br>\n12345<br>Saudi Arabia<br>\n<br>\n"
-                          const parseAddressFromHTML = (htmlAddress: string) => {
-                            if (!htmlAddress || typeof htmlAddress !== 'string') {
-                              return { line1: '', line2: '', city: '', pincode: '', country: '', building: '' }
+                          try {
+                            setEditOpen(true) // Open dialog first to show loading state
+                            setEditFormLoading(true)
+
+                            // Fetch fresh customer details from API
+                            console.log('📞 API Call: get_customer_details (Edit)', {
+                              url: '/api/method/centro_pos_apis.api.customer.get_customer_details',
+                              params: { customer_id: customerId }
+                            })
+                            const detailsRes = await (window as any).electronAPI?.proxy?.request({
+                              url: '/api/method/centro_pos_apis.api.customer.get_customer_details',
+                              params: { customer_id: customerId }
+                            })
+
+                            console.log('📥 API Response: get_customer_details (Edit)', {
+                              fullResponse: detailsRes,
+                              data: detailsRes?.data,
+                              customerData: detailsRes?.data?.data || detailsRes?.data
+                            })
+
+                            const customerData = detailsRes?.data?.data || detailsRes?.data
+                            if (!customerData) {
+                              toast.error('Failed to load customer details')
+                              setEditOpen(false)
+                              return
                             }
-                            
-                            // Remove HTML tags and split by <br> tags (including newlines)
-                            const cleanAddress = htmlAddress
-                              .replace(/<br\s*\/?>/gi, '|')
-                              .replace(/<[^>]+>/g, '')
-                              .replace(/\n/g, '')
-                              .trim()
-                            
-                            const parts = cleanAddress
-                              .split('|')
-                              .map(p => p.trim())
-                              .filter(p => p && p.length > 0)
-                            
-                            // Typical structure: [address_line1, address_line2, city, pincode, country]
-                            // Building number might be in line2 or separate
-                            let building = ''
-                            const line2 = parts[1] || ''
-                            
-                            // Try to extract building number from line2 if it contains "building" or numbers
-                            if (line2.toLowerCase().includes('building')) {
-                              building = line2
-                            } else if (line2.match(/^\d+/)) {
-                              // If line2 starts with numbers, it might be building number
-                              building = line2
+
+                            // Helper function to parse address from primary_address HTML
+                            // Format: "987 Vadakkan House<br>\nAziziya<br>Riyadh<br>\n12345<br>Saudi Arabia<br>\n<br>\n"
+                            const parseAddressFromHTML = (htmlAddress: string) => {
+                              if (!htmlAddress || typeof htmlAddress !== 'string') {
+                                return { line1: '', line2: '', city: '', pincode: '', country: '', building: '' }
+                              }
+
+                              // Remove HTML tags and split by <br> tags (including newlines)
+                              const cleanAddress = htmlAddress
+                                .replace(/<br\s*\/?>/gi, '|')
+                                .replace(/<[^>]+>/g, '')
+                                .replace(/\n/g, '')
+                                .trim()
+
+                              const parts = cleanAddress
+                                .split('|')
+                                .map(p => p.trim())
+                                .filter(p => p && p.length > 0)
+
+                              // Typical structure: [address_line1, address_line2, city, pincode, country]
+                              // Building number might be in line2 or separate
+                              let building = ''
+                              const line2 = parts[1] || ''
+
+                              // Try to extract building number from line2 if it contains "building" or numbers
+                              if (line2.toLowerCase().includes('building')) {
+                                building = line2
+                              } else if (line2.match(/^\d+/)) {
+                                // If line2 starts with numbers, it might be building number
+                                building = line2
+                              }
+
+                              return {
+                                line1: parts[0] || '',
+                                line2: building ? '' : (parts[1] || ''), // Don't duplicate if building was extracted
+                                city: parts[2] || '',
+                                pincode: parts[3] || '',
+                                country: parts[4] || '',
+                                building: building
+                              }
                             }
-                            
-                            return {
-                              line1: parts[0] || '',
-                              line2: building ? '' : (parts[1] || ''), // Don't duplicate if building was extracted
-                              city: parts[2] || '',
-                              pincode: parts[3] || '',
-                              country: parts[4] || '',
-                              building: building
-                            }
+
+                            // Get address details from primary_address_details object
+                            const primaryAddress = customerData.primary_address_details || {}
+
+                            // Parse address from HTML as fallback if primary_address_details is not available
+                            const parsedAddress = customerData.primary_address
+                              ? parseAddressFromHTML(customerData.primary_address)
+                              : { line1: '', line2: '', city: '', pincode: '', country: '', building: '' }
+
+                            // Populate form with mapped API response fields
+                            setEditForm({
+                              customer_id: customerData.name || customerId,
+                              customer_name: customerData.customer_name || '',
+                              customer_name_arabic: customerData.zatca_customer_name_in_arabic || customerData.customer_name_arabic || '',
+                              email: customerData.email_id || '',
+                              mobile: customerData.mobile_no || '',
+                              customer_type: customerData.customer_type || 'Individual',
+                              tax_id: customerData.tax_id || '',
+                              // Use custom_selected_buyer_id_type and custom_selected_buyer_id_value from API
+                              customer_id_type_for_zatca: customerData.custom_selected_buyer_id_type || customerData.custom_buyer_id_type || customerData.customer_id_type_for_zatca || '',
+                              customer_id_number_for_zatca: customerData.custom_selected_buyer_id_value || customerData.custom_buyer_id || customerData.customer_id_number_for_zatca || '',
+                              // Use primary_address_details object for address fields, with fallback to parsed HTML or top-level fields
+                              address_line1: primaryAddress.address_line1 || customerData.address_line1 || parsedAddress.line1 || '',
+                              address_line2: primaryAddress.address_line2 || customerData.address_line2 || parsedAddress.line2 || '',
+                              building_number: primaryAddress.custom_building_number || customerData.building_number || parsedAddress.building || '',
+                              city: primaryAddress.city || customerData.city || parsedAddress.city || '',
+                              pincode: primaryAddress.pincode || customerData.pincode || parsedAddress.pincode || '',
+                              country: primaryAddress.country || customerData.country || parsedAddress.country || 'Saudi Arabia'
+                            })
+                            setEditFormLoading(false)
+                          } catch (error) {
+                            console.error('❌ Error loading customer details for edit:', error)
+                            toast.error('Failed to load customer details')
+                            setEditFormLoading(false)
+                            setEditOpen(false)
                           }
-
-                          // Get address details from primary_address_details object
-                          const primaryAddress = customerData.primary_address_details || {}
-                          
-                          // Parse address from HTML as fallback if primary_address_details is not available
-                          const parsedAddress = customerData.primary_address 
-                            ? parseAddressFromHTML(customerData.primary_address)
-                            : { line1: '', line2: '', city: '', pincode: '', country: '', building: '' }
-
-                          // Populate form with mapped API response fields
-                          setEditForm({
-                            customer_id: customerData.name || customerId,
-                            customer_name: customerData.customer_name || '',
-                            customer_name_arabic: customerData.zatca_customer_name_in_arabic || customerData.customer_name_arabic || '',
-                            email: customerData.email_id || '',
-                            mobile: customerData.mobile_no || '',
-                            customer_type: customerData.customer_type || 'Individual',
-                            tax_id: customerData.tax_id || '',
-                            // Use custom_selected_buyer_id_type and custom_selected_buyer_id_value from API
-                            customer_id_type_for_zatca: customerData.custom_selected_buyer_id_type || customerData.custom_buyer_id_type || customerData.customer_id_type_for_zatca || '',
-                            customer_id_number_for_zatca: customerData.custom_selected_buyer_id_value || customerData.custom_buyer_id || customerData.customer_id_number_for_zatca || '',
-                            // Use primary_address_details object for address fields, with fallback to parsed HTML or top-level fields
-                            address_line1: primaryAddress.address_line1 || customerData.address_line1 || parsedAddress.line1 || '',
-                            address_line2: primaryAddress.address_line2 || customerData.address_line2 || parsedAddress.line2 || '',
-                            building_number: primaryAddress.custom_building_number || customerData.building_number || parsedAddress.building || '',
-                            city: primaryAddress.city || customerData.city || parsedAddress.city || '',
-                            pincode: primaryAddress.pincode || customerData.pincode || parsedAddress.pincode || '',
-                            country: primaryAddress.country || customerData.country || parsedAddress.country || 'Saudi Arabia'
-                          })
-                          setEditFormLoading(false)
-                        } catch (error) {
-                          console.error('❌ Error loading customer details for edit:', error)
-                          toast.error('Failed to load customer details')
-                          setEditFormLoading(false)
-                          setEditOpen(false)
-                        }
-                      }}
-                    >
-                      Edit
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl">
-                    <div className="text-xs text-gray-600">Total Invoiced</div>
-                    <div className="font-bold text-blue-600">
-                      {(() => {
-                        const inv = Number(customerInsights?.total_invoice_amount ?? 0)
-                        const ret = Number(customerInsights?.total_return_amount ?? 0)
-                        const net = inv - ret
-                        if (isNaN(net)) return '0.00'
-                        const formattedValue = Math.abs(net).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                        return net < 0 ? `-${formattedValue}` : formattedValue
-                      })()}{' '}{currencySymbol}
+                        }}
+                      >
+                        Edit
+                      </button>
                     </div>
                   </div>
-                  <div className="p-3 bg-gradient-to-r from-red-50 to-pink-50 rounded-xl">
-                    <div className="text-xs text-gray-600">Amount Due</div>
-                    <div className="font-bold text-red-600">
-                      {(() => {
-                        const value = Number(customerInsights?.amount_due ?? 0)
-                        if (isNaN(value)) return '0.00'
-                        const formattedValue = Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                        return value < 0 ? `-${formattedValue}` : formattedValue
-                      })()}{' '}{currencySymbol}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl">
+                      <div className="text-xs text-gray-600">Total Invoiced</div>
+                      <div className="font-bold text-blue-600">
+                        {(() => {
+                          const inv = Number(customerInsights?.total_invoice_amount ?? 0)
+                          const ret = Number(customerInsights?.total_return_amount ?? 0)
+                          const net = inv - ret
+                          if (isNaN(net)) return '0.00'
+                          const formattedValue = Math.abs(net).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                          return net < 0 ? `-${formattedValue}` : formattedValue
+                        })()}{' '}{currencySymbol}
+                      </div>
                     </div>
-                  </div>
-                  <div className="p-3 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl">
-                    <div className="text-xs text-gray-600">
-                      Last Payment{' '}
-                      {customerInsights?.last_payment_datetime
-                        ? `| ${new Date(customerInsights.last_payment_datetime).toLocaleDateString(
+                    <div className="p-3 bg-gradient-to-r from-red-50 to-pink-50 rounded-xl">
+                      <div className="text-xs text-gray-600">Amount Due</div>
+                      <div className="font-bold text-red-600">
+                        {(() => {
+                          const value = Number(customerInsights?.amount_due ?? 0)
+                          if (isNaN(value)) return '0.00'
+                          const formattedValue = Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                          return value < 0 ? `-${formattedValue}` : formattedValue
+                        })()}{' '}{currencySymbol}
+                      </div>
+                    </div>
+                    <div className="p-3 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl">
+                      <div className="text-xs text-gray-600">
+                        Last Payment{' '}
+                        {customerInsights?.last_payment_datetime
+                          ? `| ${new Date(customerInsights.last_payment_datetime).toLocaleDateString(
                             'en-US',
                             {
                               day: '2-digit',
@@ -4016,71 +3876,71 @@ const RightPanel: React.FC<RightPanelProps> = ({
                               year: 'numeric'
                             }
                           )}`
-                        : ''}
+                          : ''}
+                      </div>
+                      <div className="font-bold text-green-600">
+                        {(customerInsights?.last_payment_amount?.toLocaleString() || '0.00')}{' '}{currencySymbol}
+                      </div>
                     </div>
-                    <div className="font-bold text-green-600">
-                      {(customerInsights?.last_payment_amount?.toLocaleString() || '0.00')}{' '}{currencySymbol}
-                    </div>
-                  </div>
-                  <div className="p-3 bg-gradient-to-r from-blue-50 to-yellow-50 rounded-xl">
-                    <div className="text-xs text-gray-600">Credit Limit</div>
-                    <div className="font-bold text-orange-600">
-                      {(() => {
-                        const value = Number(customerInsights?.total_credit_limit ?? 0)
-                        if (isNaN(value)) return '0.00'
-                        const formattedValue = Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                        return value < 0 ? `-${formattedValue}` : formattedValue
-                      })()}{' '}{currencySymbol}
-                    </div>
-                  </div>
-                  <div className="p-3 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl">
-                    <div className="text-xs text-gray-600">Available Credit Limit</div>
-                    <div className="font-bold text-orange-600">
-                      {(() => {
-                        const value = Number(customerInsights?.available_credit_limit ?? 0)
-                        if (isNaN(value)) return '0.00'
-                        const formattedValue = Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                        return value < 0 ? `-${formattedValue}` : formattedValue
-                      })()}{' '}{currencySymbol}
-                    </div>
-                  </div>
-                  <div className="p-3 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl">
-                    <div className="text-xs text-gray-600">Deposit Insights</div>
-                    <div className="font-bold text-emerald-600">
-                      {(() => {
-                        const value = Number(customerInsights?.advance_balance ?? 0)
-                        if (isNaN(value)) return '0.00'
-                        const formattedValue = Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                        return value < 0 ? `-${formattedValue}` : formattedValue
-                      })()}{' '}{currencySymbol}
-                    </div>
-                  </div>
-                  <div className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl">
-                    <div className="text-[10px] text-gray-600">Returns vs Invoices</div>
-                    <div className="flex flex-col gap-1 mt-1">
-                      <span className="text-[11px] font-semibold text-purple-700">
-                        Returns:{' '}
+                    <div className="p-3 bg-gradient-to-r from-blue-50 to-yellow-50 rounded-xl">
+                      <div className="text-xs text-gray-600">Credit Limit</div>
+                      <div className="font-bold text-orange-600">
                         {(() => {
-                          const value = Number(customerInsights?.total_return_amount ?? 0)
-                          if (isNaN(value)) return '0'
-                          const formattedValue = Math.abs(value).toLocaleString('en-US')
+                          const value = Number(customerInsights?.total_credit_limit ?? 0)
+                          if (isNaN(value)) return '0.00'
+                          const formattedValue = Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                           return value < 0 ? `-${formattedValue}` : formattedValue
                         })()}{' '}{currencySymbol}
-                      </span>
-                      <span className="text-[11px] font-semibold text-blue-600">
-                        Invoices:{' '}
+                      </div>
+                    </div>
+                    <div className="p-3 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl">
+                      <div className="text-xs text-gray-600">Available Credit Limit</div>
+                      <div className="font-bold text-orange-600">
                         {(() => {
-                          const value = Number(customerInsights?.total_invoice_amount ?? 0)
-                          if (isNaN(value)) return '0'
-                          const formattedValue = Math.abs(value).toLocaleString('en-US')
+                          const value = Number(customerInsights?.available_credit_limit ?? 0)
+                          if (isNaN(value)) return '0.00'
+                          const formattedValue = Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                           return value < 0 ? `-${formattedValue}` : formattedValue
                         })()}{' '}{currencySymbol}
-                      </span>
+                      </div>
+                    </div>
+                    <div className="p-3 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl">
+                      <div className="text-xs text-gray-600">Deposit Insights</div>
+                      <div className="font-bold text-emerald-600">
+                        {(() => {
+                          const value = Number(customerInsights?.advance_balance ?? 0)
+                          if (isNaN(value)) return '0.00'
+                          const formattedValue = Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                          return value < 0 ? `-${formattedValue}` : formattedValue
+                        })()}{' '}{currencySymbol}
+                      </div>
+                    </div>
+                    <div className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl">
+                      <div className="text-[10px] text-gray-600">Returns vs Invoices</div>
+                      <div className="flex flex-col gap-1 mt-1">
+                        <span className="text-[11px] font-semibold text-purple-700">
+                          Returns:{' '}
+                          {(() => {
+                            const value = Number(customerInsights?.total_return_amount ?? 0)
+                            if (isNaN(value)) return '0'
+                            const formattedValue = Math.abs(value).toLocaleString('en-US')
+                            return value < 0 ? `-${formattedValue}` : formattedValue
+                          })()}{' '}{currencySymbol}
+                        </span>
+                        <span className="text-[11px] font-semibold text-blue-600">
+                          Invoices:{' '}
+                          {(() => {
+                            const value = Number(customerInsights?.total_invoice_amount ?? 0)
+                            if (isNaN(value)) return '0'
+                            const formattedValue = Math.abs(value).toLocaleString('en-US')
+                            return value < 0 ? `-${formattedValue}` : formattedValue
+                          })()}{' '}{currencySymbol}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </>
-            )}
+                </>
+              )}
             {!customerDetailsLoading && !customerDetailsError && !customerDetails && !selectedCustomer && (
               <div className="text-center py-4">
                 <div className="text-sm text-gray-500">Select a customer to view details</div>
@@ -4105,556 +3965,558 @@ const RightPanel: React.FC<RightPanelProps> = ({
                   <span className="ml-3 text-sm text-gray-600">Loading customer details...</span>
                 </div>
               ) : (
-              <>
-              <div className="space-y-3 p-2">
-                {/* Customer ID - Keep as is */}
-                <div className="space-y-1">
-                  <label className="text-sm font-medium">Customer ID</label>
-                  <Input disabled value={editForm.customer_id} />
-                </div>
+                <>
+                  <div className="space-y-3 p-2">
+                    {/* Customer ID - Keep as is */}
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium">Customer ID</label>
+                      <Input disabled value={editForm.customer_id} />
+                    </div>
 
-                {/* Row 1: Customer Name and Name in Arabic */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium">Customer Name *</label>
-                    <Input
-                      value={editForm.customer_name}
-                      onChange={(e) => setEditForm({ ...editForm, customer_name: e.target.value })}
-                      onKeyDown={(e) => {
-                        const target = e.target as HTMLElement
-                        // Allow arrow keys for text editing in input/textarea fields
-                        const isInputField = target.tagName === 'INPUT' || 
-                                            target.tagName === 'TEXTAREA' ||
-                                            target.closest('input') ||
-                                            target.closest('textarea')
-                        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
-                          e.stopPropagation()
-                          // Don't prevent default - let browser handle cursor movement
-                          return
-                        }
-                        if (e.key === ' ') {
-                          e.stopPropagation()
-                        }
-                      }}
-                      placeholder="Enter customer name"
-                    />
-                </div>
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium">Name in Arabic</label>
-                    <Input
-                      value={editForm.customer_name_arabic}
-                      onChange={(e) => setEditForm({ ...editForm, customer_name_arabic: e.target.value })}
-                      onKeyDown={(e) => {
-                        const target = e.target as HTMLElement
-                        // Allow arrow keys for text editing in input/textarea fields
-                        const isInputField = target.tagName === 'INPUT' || 
-                                            target.tagName === 'TEXTAREA' ||
-                                            target.closest('input') ||
-                                            target.closest('textarea')
-                        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
-                          e.stopPropagation()
-                          // Don't prevent default - let browser handle cursor movement
-                          return
-                        }
-                      }}
-                      placeholder="اكتب الاسم بالعربية"
-                    />
-                </div>
-                </div>
-
-                {/* Row 1b: Customer Type */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium">Customer Type *</label>
-                    <Select
-                      value={editForm.customer_type}
-                      onValueChange={(value) => setEditForm({ ...editForm, customer_type: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select customer type" />
-                      </SelectTrigger>
-                      <SelectContent className="z-[9999] bg-white border border-gray-200 shadow-xl">
-                        <SelectItem value="Individual">Individual</SelectItem>
-                        <SelectItem value="Company">Company</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {/* Row 2: Email and Mobile */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium">Email</label>
-                    <Input
-                      type="email"
-                      value={editForm.email}
-                      onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                      onKeyDown={(e) => {
-                        const target = e.target as HTMLElement
-                        // Allow arrow keys for text editing in input/textarea fields
-                        const isInputField = target.tagName === 'INPUT' || 
-                                            target.tagName === 'TEXTAREA' ||
-                                            target.closest('input') ||
-                                            target.closest('textarea')
-                        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
-                          e.stopPropagation()
-                          // Don't prevent default - let browser handle cursor movement
-                          return
-                        }
-                      }}
-                      placeholder="email@example.com"
-                    />
-                </div>
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium">Mobile{editForm.customer_type === 'Company' ? ' *' : ''}</label>
-                    <Input
-                      value={editForm.mobile}
-                      onChange={(e) => setEditForm({ ...editForm, mobile: e.target.value })}
-                      onKeyDown={(e) => {
-                        const target = e.target as HTMLElement
-                        // Allow arrow keys for text editing in input/textarea fields
-                        const isInputField = target.tagName === 'INPUT' || 
-                                            target.tagName === 'TEXTAREA' ||
-                                            target.closest('input') ||
-                                            target.closest('textarea')
-                        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
-                          e.stopPropagation()
-                          // Don't prevent default - let browser handle cursor movement
-                          return
-                        }
-                      }}
-                      placeholder="+966509876543"
-                    />
-                </div>
-                </div>
-
-                {/* Separator */}
-                <div className="border-t border-gray-300 my-2"></div>
-
-                {/* Row 3: Tax ID and ZATCA fields */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium">Tax ID{editForm.customer_type === 'Company' ? ' *' : ''}</label>
-                    <Input
-                      value={editForm.tax_id}
-                      onChange={(e) => setEditForm({ ...editForm, tax_id: e.target.value })}
-                      onKeyDown={(e) => {
-                        const target = e.target as HTMLElement
-                        // Allow arrow keys for text editing in input/textarea fields
-                        const isInputField = target.tagName === 'INPUT' || 
-                                            target.tagName === 'TEXTAREA' ||
-                                            target.closest('input') ||
-                                            target.closest('textarea')
-                        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
-                          e.stopPropagation()
-                          // Don't prevent default - let browser handle cursor movement
-                          return
-                        }
-                      }}
-                      placeholder="310123456700003"
-                    />
-                </div>
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium">Customer ID Type for ZATCA{editForm.customer_type === 'Company' ? ' *' : ''}</label>
-                    <Select
-                      value={editForm.customer_id_type_for_zatca}
-                      onValueChange={(value) => setEditForm({ ...editForm, customer_id_type_for_zatca: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select ID type" />
-                      </SelectTrigger>
-                      <SelectContent className="z-[9999] bg-white border border-gray-200 shadow-xl max-h-[200px]">
-                        <SelectItem value="TIN">TIN</SelectItem>
-                        <SelectItem value="CRN">CRN</SelectItem>
-                        <SelectItem value="MOM">MOM</SelectItem>
-                        <SelectItem value="MLS">MLS</SelectItem>
-                        <SelectItem value="700">700</SelectItem>
-                        <SelectItem value="SAG">SAG</SelectItem>
-                        <SelectItem value="NAT">NAT</SelectItem>
-                        <SelectItem value="GCC">GCC</SelectItem>
-                        <SelectItem value="IQA">IQA</SelectItem>
-                        <SelectItem value="PAS">PAS</SelectItem>
-                        <SelectItem value="OTH">OTH</SelectItem>
-                      </SelectContent>
-                    </Select>
-                </div>
-                </div>
-
-                {/* Row 4: ZATCA ID Number and Country */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium">Customer ID Number for ZATCA{editForm.customer_type === 'Company' ? ' *' : ''}</label>
-                    <Input
-                      value={editForm.customer_id_number_for_zatca}
-                      onChange={(e) => setEditForm({ ...editForm, customer_id_number_for_zatca: e.target.value })}
-                      onKeyDown={(e) => {
-                        const target = e.target as HTMLElement
-                        // Allow arrow keys for text editing in input/textarea fields
-                        const isInputField = target.tagName === 'INPUT' || 
-                                            target.tagName === 'TEXTAREA' ||
-                                            target.closest('input') ||
-                                            target.closest('textarea')
-                        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
-                          e.stopPropagation()
-                          // Don't prevent default - let browser handle cursor movement
-                          return
-                        }
-                        if (e.key === ' ') {
-                          e.stopPropagation()
-                        }
-                      }}
-                      placeholder="1010123456"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium">Country</label>
-                    <Input
-                      value={editForm.country}
-                      onChange={(e) => setEditForm({ ...editForm, country: e.target.value })}
-                      onKeyDown={(e) => {
-                        const target = e.target as HTMLElement
-                        // Allow arrow keys for text editing in input/textarea fields
-                        const isInputField = target.tagName === 'INPUT' || 
-                                            target.tagName === 'TEXTAREA' ||
-                                            target.closest('input') ||
-                                            target.closest('textarea')
-                        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
-                          e.stopPropagation()
-                          // Don't prevent default - let browser handle cursor movement
-                          return
-                        }
-                      }}
-                      placeholder="Saudi Arabia"
-                    />
-                  </div>
-                </div>
-
-                {/* Row 5: Address Line 1 and 2 */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium">Address Line 1{editForm.customer_type === 'Company' ? ' *' : ''}</label>
-                    <Input
-                      value={editForm.address_line1}
-                      onChange={(e) => setEditForm({ ...editForm, address_line1: e.target.value })}
-                      onKeyDown={(e) => {
-                        const target = e.target as HTMLElement
-                        // Allow arrow keys for text editing in input/textarea fields
-                        const isInputField = target.tagName === 'INPUT' || 
-                                            target.tagName === 'TEXTAREA' ||
-                                            target.closest('input') ||
-                                            target.closest('textarea')
-                        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
-                          e.stopPropagation()
-                          // Don't prevent default - let browser handle cursor movement
-                          return
-                        }
-                        if (e.key === ' ') {
-                          e.stopPropagation()
-                        }
-                      }}
-                      placeholder="789 King Abdullah Road"
-                    />
-                </div>
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium">Address Line 2</label>
-                    <Input
-                      value={editForm.address_line2}
-                      onChange={(e) => setEditForm({ ...editForm, address_line2: e.target.value })}
-                      onKeyDown={(e) => {
-                        const target = e.target as HTMLElement
-                        // Allow arrow keys for text editing in input/textarea fields
-                        const isInputField = target.tagName === 'INPUT' || 
-                                            target.tagName === 'TEXTAREA' ||
-                                            target.closest('input') ||
-                                            target.closest('textarea')
-                        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
-                          e.stopPropagation()
-                          // Don't prevent default - let browser handle cursor movement
-                          return
-                        }
-                        if (e.key === ' ') {
-                          e.stopPropagation()
-                        }
-                      }}
-                      placeholder="Building 8221"
-                    />
-                </div>
-                </div>
-
-                {/* Row 6: City/Town, Building No., Pincode */}
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium">City/Town{editForm.customer_type === 'Company' ? ' *' : ''}</label>
-                    <Input
-                      value={editForm.city}
-                      onChange={(e) => setEditForm({ ...editForm, city: e.target.value })}
-                      onKeyDown={(e) => {
-                        const target = e.target as HTMLElement
-                        // Allow arrow keys for text editing in input/textarea fields
-                        const isInputField = target.tagName === 'INPUT' || 
-                                            target.tagName === 'TEXTAREA' ||
-                                            target.closest('input') ||
-                                            target.closest('textarea')
-                        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
-                          e.stopPropagation()
-                          // Don't prevent default - let browser handle cursor movement
-                          return
-                        }
-                        if (e.key === ' ') {
-                          e.stopPropagation()
-                        }
-                      }}
-                      placeholder="Riyadh"
-                    />
-              </div>
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium">Building No.{editForm.customer_type === 'Company' ? ' *' : ''}</label>
-                    <Input
-                      value={editForm.building_number}
-                      onChange={(e) => setEditForm({ ...editForm, building_number: e.target.value })}
-                      onKeyDown={(e) => {
-                        const target = e.target as HTMLElement
-                        // Allow arrow keys for text editing in input/textarea fields
-                        const isInputField = target.tagName === 'INPUT' || 
-                                            target.tagName === 'TEXTAREA' ||
-                                            target.closest('input') ||
-                                            target.closest('textarea')
-                        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
-                          e.stopPropagation()
-                          // Don't prevent default - let browser handle cursor movement
-                          return
-                        }
-                        if (e.key === ' ') {
-                          e.stopPropagation()
-                        }
-                      }}
-                      placeholder="Building number"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium">Pincode{editForm.customer_type === 'Company' ? ' *' : ''}</label>
-                    <Input
-                      value={editForm.pincode}
-                      onChange={(e) => setEditForm({ ...editForm, pincode: e.target.value })}
-                      onKeyDown={(e) => {
-                        const target = e.target as HTMLElement
-                        // Allow arrow keys for text editing in input/textarea fields
-                        const isInputField = target.tagName === 'INPUT' || 
-                                            target.tagName === 'TEXTAREA' ||
-                                            target.closest('input') ||
-                                            target.closest('textarea')
-                        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
-                          e.stopPropagation()
-                          // Don't prevent default - let browser handle cursor movement
-                          return
-                        }
-                      }}
-                      placeholder="11564"
-                    />
-                  </div>
-                </div>
-              </div>
-              <DialogFooter className="gap-2 mt-4">
-                <Button variant="outline" onClick={()=>setEditOpen(false)}>Cancel</Button>
-                <Button disabled={editSubmitting} onClick={async()=>{
-                  try{
-                    setEditSubmitting(true)
-                    console.log('📝 Editing customer - request body:', editForm)
-                    // validation
-                    if(!editForm.customer_name){ toast.error('Customer name is required'); setEditSubmitting(false); return }
-                    if(editForm.customer_type==='Company'){
-                      if(!editForm.mobile){ toast.error('Mobile is required for Company'); setEditSubmitting(false); return }
-                      if(!editForm.tax_id){ toast.error('Tax ID is required for Company'); setEditSubmitting(false); return }
-                      if(!editForm.customer_id_type_for_zatca || !editForm.customer_id_number_for_zatca){
-                        toast.error('ZATCA ID Type and Number are required for Company'); setEditSubmitting(false); return
-                      }
-                      if(!editForm.address_line1){ toast.error('Address Line 1 is required for Company'); setEditSubmitting(false); return }
-                      if(!editForm.city){ toast.error('City/Town is required for Company'); setEditSubmitting(false); return }
-                      if(!editForm.building_number){ toast.error('Building No. is required for Company'); setEditSubmitting(false); return }
-                      if(!editForm.pincode){ toast.error('Pincode is required for Company'); setEditSubmitting(false); return }
-                    }
-                    
-                    // Prepare API payload with all required fields, ensuring empty values are sent as empty strings
-                    const apiPayload = {
-                      customer_id: editForm.customer_id || '',
-                      customer_name: editForm.customer_name || '',
-                      customer_name_arabic: editForm.customer_name_arabic || '',
-                      email: editForm.email || '',
-                      mobile: editForm.mobile || '',
-                      customer_type: editForm.customer_type || 'Individual',
-                      tax_id: editForm.tax_id || '',
-                      customer_id_type_for_zatca: editForm.customer_id_type_for_zatca || '',
-                      customer_id_number_for_zatca: editForm.customer_id_number_for_zatca || '',
-                      address_line1: editForm.address_line1 || '',
-                      address_line2: editForm.address_line2 || '',
-                      building_number: editForm.building_number || '',
-                      city: editForm.city || '',
-                      pincode: editForm.pincode || '',
-                      country: editForm.country || ''
-                    }
-                    
-                    console.log('📝 Editing customer - API call:', {
-                      method: 'POST',
-                      url: '/api/method/centro_pos_apis.api.customer.edit_customer',
-                      body: apiPayload
-                    })
-                    
-                    const res = await (window as any).electronAPI?.proxy?.request({
-                      method:'POST',
-                      url:'/api/method/centro_pos_apis.api.customer.edit_customer',
-                      data: apiPayload
-                    })
-                    
-                    console.log('✅ Edit customer response:', {
-                      status: res?.status,
-                      success: res?.success,
-                      data: res?.data,
-                      fullResponse: res
-                    })
-                    
-                    // Extract message safely - ensure it's always a string
-                    let serverMsg: string = 'Customer updated successfully'
-                    if (res?.data?.data) {
-                      if (typeof res.data.data === 'object' && res.data.data !== null) {
-                        // If data.data is an object, extract message from it
-                        if (typeof res.data.data.message === 'string') {
-                          serverMsg = res.data.data.message
-                        }
-                      } else if (typeof res.data.data === 'string') {
-                        serverMsg = res.data.data
-                      }
-                    } else if (res?.data?.message) {
-                      if (typeof res.data.message === 'string') {
-                        serverMsg = res.data.message
-                      }
-                    }
-                    
-                    const serverError = res?.data?._server_messages
-                    if (res?.success === false || res?.status >= 400 || serverError) {
-                      let prettyErr = 'Update failed'
-                      console.log('❌ Edit customer server error raw:', serverError)
-                      try {
-                        if (typeof serverError === 'string') {
-                          // Try direct JSON parse
-                          try {
-                            const arr = JSON.parse(serverError)
-                            if (Array.isArray(arr) && arr.length) {
-                              const obj = arr[0]
-                              if (typeof obj === 'object') {
-                                if (obj.message) prettyErr = obj.message
-                                else prettyErr = JSON.stringify(obj, null, 2)
-                              } else if (typeof obj === 'string') {
-                                prettyErr = obj
-                              }
+                    {/* Row 1: Customer Name and Name in Arabic */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">Customer Name *</label>
+                        <Input
+                          value={editForm.customer_name}
+                          onChange={(e) => setEditForm({ ...editForm, customer_name: e.target.value })}
+                          onKeyDown={(e) => {
+                            const target = e.target as HTMLElement
+                            // Allow arrow keys for text editing in input/textarea fields
+                            const isInputField = target.tagName === 'INPUT' ||
+                              target.tagName === 'TEXTAREA' ||
+                              target.closest('input') ||
+                              target.closest('textarea')
+                            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                              e.stopPropagation()
+                              // Don't prevent default - let browser handle cursor movement
+                              return
                             }
-                          } catch (e1) {
-                            // Try with unescaped quotes cleanup
-                            const cleaned = serverError
-                              .replace(/\\n/g, '\n')
-                              .replace(/\\r/g, '\r')
-                              .replace(/\\t/g, '\t')
-                              .replace(/\\\\/g, '\\')
-                              .replace(/\\\"/g, '"')
-                            try {
-                              const arr2 = JSON.parse(cleaned)
-                              if (Array.isArray(arr2) && arr2.length) {
-                                const obj2 = arr2[0]
-                                if (typeof obj2 === 'object') {
-                                  if (obj2.message) prettyErr = obj2.message
-                                  else prettyErr = JSON.stringify(obj2, null, 2)
-                                } else if (typeof obj2 === 'string') {
-                                  prettyErr = obj2
+                            if (e.key === ' ') {
+                              e.stopPropagation()
+                            }
+                          }}
+                          placeholder="Enter customer name"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">Name in Arabic</label>
+                        <Input
+                          value={editForm.customer_name_arabic}
+                          onChange={(e) => setEditForm({ ...editForm, customer_name_arabic: e.target.value })}
+                          onKeyDown={(e) => {
+                            const target = e.target as HTMLElement
+                            // Allow arrow keys for text editing in input/textarea fields
+                            const isInputField = target.tagName === 'INPUT' ||
+                              target.tagName === 'TEXTAREA' ||
+                              target.closest('input') ||
+                              target.closest('textarea')
+                            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                              e.stopPropagation()
+                              // Don't prevent default - let browser handle cursor movement
+                              return
+                            }
+                          }}
+                          placeholder="اكتب الاسم بالعربية"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Row 1b: Customer Type */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">Customer Type *</label>
+                        <Select
+                          value={editForm.customer_type}
+                          onValueChange={(value) => setEditForm({ ...editForm, customer_type: value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select customer type" />
+                          </SelectTrigger>
+                          <SelectContent className="z-[9999] bg-white border border-gray-200 shadow-xl">
+                            <SelectItem value="Individual">Individual</SelectItem>
+                            <SelectItem value="Company">Company</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    {/* Row 2: Email and Mobile */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">Email</label>
+                        <Input
+                          type="email"
+                          value={editForm.email}
+                          onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                          onKeyDown={(e) => {
+                            const target = e.target as HTMLElement
+                            // Allow arrow keys for text editing in input/textarea fields
+                            const isInputField = target.tagName === 'INPUT' ||
+                              target.tagName === 'TEXTAREA' ||
+                              target.closest('input') ||
+                              target.closest('textarea')
+                            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                              e.stopPropagation()
+                              // Don't prevent default - let browser handle cursor movement
+                              return
+                            }
+                          }}
+                          placeholder="email@example.com"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">Mobile{editForm.customer_type === 'Company' ? ' *' : ''}</label>
+                        <Input
+                          value={editForm.mobile}
+                          onChange={(e) => setEditForm({ ...editForm, mobile: e.target.value })}
+                          onKeyDown={(e) => {
+                            const target = e.target as HTMLElement
+                            // Allow arrow keys for text editing in input/textarea fields
+                            const isInputField = target.tagName === 'INPUT' ||
+                              target.tagName === 'TEXTAREA' ||
+                              target.closest('input') ||
+                              target.closest('textarea')
+                            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                              e.stopPropagation()
+                              // Don't prevent default - let browser handle cursor movement
+                              return
+                            }
+                          }}
+                          placeholder="+966509876543"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Separator */}
+                    <div className="border-t border-gray-300 my-2"></div>
+
+                    {/* Row 3: Tax ID and ZATCA fields */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">Tax ID{editForm.customer_type === 'Company' ? ' *' : ''}</label>
+                        <Input
+                          value={editForm.tax_id}
+                          onChange={(e) => setEditForm({ ...editForm, tax_id: e.target.value })}
+                          onKeyDown={(e) => {
+                            const target = e.target as HTMLElement
+                            // Allow arrow keys for text editing in input/textarea fields
+                            const isInputField = target.tagName === 'INPUT' ||
+                              target.tagName === 'TEXTAREA' ||
+                              target.closest('input') ||
+                              target.closest('textarea')
+                            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                              e.stopPropagation()
+                              // Don't prevent default - let browser handle cursor movement
+                              return
+                            }
+                          }}
+                          placeholder="310123456700003"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">Customer ID Type for ZATCA{editForm.customer_type === 'Company' ? ' *' : ''}</label>
+                        <Select
+                          value={editForm.customer_id_type_for_zatca}
+                          onValueChange={(value) => setEditForm({ ...editForm, customer_id_type_for_zatca: value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select ID type" />
+                          </SelectTrigger>
+                          <SelectContent className="z-[9999] bg-white border border-gray-200 shadow-xl max-h-[200px]">
+                            <SelectItem value="TIN">TIN</SelectItem>
+                            <SelectItem value="CRN">CRN</SelectItem>
+                            <SelectItem value="MOM">MOM</SelectItem>
+                            <SelectItem value="MLS">MLS</SelectItem>
+                            <SelectItem value="700">700</SelectItem>
+                            <SelectItem value="SAG">SAG</SelectItem>
+                            <SelectItem value="NAT">NAT</SelectItem>
+                            <SelectItem value="GCC">GCC</SelectItem>
+                            <SelectItem value="IQA">IQA</SelectItem>
+                            <SelectItem value="PAS">PAS</SelectItem>
+                            <SelectItem value="OTH">OTH</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    {/* Row 4: ZATCA ID Number and Country */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">Customer ID Number for ZATCA{editForm.customer_type === 'Company' ? ' *' : ''}</label>
+                        <Input
+                          value={editForm.customer_id_number_for_zatca}
+                          onChange={(e) => setEditForm({ ...editForm, customer_id_number_for_zatca: e.target.value })}
+                          onKeyDown={(e) => {
+                            const target = e.target as HTMLElement
+                            // Allow arrow keys for text editing in input/textarea fields
+                            const isInputField = target.tagName === 'INPUT' ||
+                              target.tagName === 'TEXTAREA' ||
+                              target.closest('input') ||
+                              target.closest('textarea')
+                            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                              e.stopPropagation()
+                              // Don't prevent default - let browser handle cursor movement
+                              return
+                            }
+                            if (e.key === ' ') {
+                              e.stopPropagation()
+                            }
+                          }}
+                          placeholder="1010123456"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">Country</label>
+                        <Input
+                          value={editForm.country}
+                          onChange={(e) => setEditForm({ ...editForm, country: e.target.value })}
+                          onKeyDown={(e) => {
+                            const target = e.target as HTMLElement
+                            // Allow arrow keys for text editing in input/textarea fields
+                            const isInputField = target.tagName === 'INPUT' ||
+                              target.tagName === 'TEXTAREA' ||
+                              target.closest('input') ||
+                              target.closest('textarea')
+                            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                              e.stopPropagation()
+                              // Don't prevent default - let browser handle cursor movement
+                              return
+                            }
+                          }}
+                          placeholder="Saudi Arabia"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Row 5: Address Line 1 and 2 */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">Address Line 1{editForm.customer_type === 'Company' ? ' *' : ''}</label>
+                        <Input
+                          value={editForm.address_line1}
+                          onChange={(e) => setEditForm({ ...editForm, address_line1: e.target.value })}
+                          onKeyDown={(e) => {
+                            const target = e.target as HTMLElement
+                            // Allow arrow keys for text editing in input/textarea fields
+                            const isInputField = target.tagName === 'INPUT' ||
+                              target.tagName === 'TEXTAREA' ||
+                              target.closest('input') ||
+                              target.closest('textarea')
+                            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                              e.stopPropagation()
+                              // Don't prevent default - let browser handle cursor movement
+                              return
+                            }
+                            if (e.key === ' ') {
+                              e.stopPropagation()
+                            }
+                          }}
+                          placeholder="789 King Abdullah Road"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">Address Line 2</label>
+                        <Input
+                          value={editForm.address_line2}
+                          onChange={(e) => setEditForm({ ...editForm, address_line2: e.target.value })}
+                          onKeyDown={(e) => {
+                            const target = e.target as HTMLElement
+                            // Allow arrow keys for text editing in input/textarea fields
+                            const isInputField = target.tagName === 'INPUT' ||
+                              target.tagName === 'TEXTAREA' ||
+                              target.closest('input') ||
+                              target.closest('textarea')
+                            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                              e.stopPropagation()
+                              // Don't prevent default - let browser handle cursor movement
+                              return
+                            }
+                            if (e.key === ' ') {
+                              e.stopPropagation()
+                            }
+                          }}
+                          placeholder="Building 8221"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Row 6: City/Town, Building No., Pincode */}
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">City/Town{editForm.customer_type === 'Company' ? ' *' : ''}</label>
+                        <Input
+                          value={editForm.city}
+                          onChange={(e) => setEditForm({ ...editForm, city: e.target.value })}
+                          onKeyDown={(e) => {
+                            const target = e.target as HTMLElement
+                            // Allow arrow keys for text editing in input/textarea fields
+                            const isInputField = target.tagName === 'INPUT' ||
+                              target.tagName === 'TEXTAREA' ||
+                              target.closest('input') ||
+                              target.closest('textarea')
+                            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                              e.stopPropagation()
+                              // Don't prevent default - let browser handle cursor movement
+                              return
+                            }
+                            if (e.key === ' ') {
+                              e.stopPropagation()
+                            }
+                          }}
+                          placeholder="Riyadh"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">Building No.{editForm.customer_type === 'Company' ? ' *' : ''}</label>
+                        <Input
+                          value={editForm.building_number}
+                          onChange={(e) => setEditForm({ ...editForm, building_number: e.target.value })}
+                          onKeyDown={(e) => {
+                            const target = e.target as HTMLElement
+                            // Allow arrow keys for text editing in input/textarea fields
+                            const isInputField = target.tagName === 'INPUT' ||
+                              target.tagName === 'TEXTAREA' ||
+                              target.closest('input') ||
+                              target.closest('textarea')
+                            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                              e.stopPropagation()
+                              // Don't prevent default - let browser handle cursor movement
+                              return
+                            }
+                            if (e.key === ' ') {
+                              e.stopPropagation()
+                            }
+                          }}
+                          placeholder="Building number"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">Pincode{editForm.customer_type === 'Company' ? ' *' : ''}</label>
+                        <Input
+                          value={editForm.pincode}
+                          onChange={(e) => setEditForm({ ...editForm, pincode: e.target.value })}
+                          onKeyDown={(e) => {
+                            const target = e.target as HTMLElement
+                            // Allow arrow keys for text editing in input/textarea fields
+                            const isInputField = target.tagName === 'INPUT' ||
+                              target.tagName === 'TEXTAREA' ||
+                              target.closest('input') ||
+                              target.closest('textarea')
+                            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
+                              e.stopPropagation()
+                              // Don't prevent default - let browser handle cursor movement
+                              return
+                            }
+                          }}
+                          placeholder="11564"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <DialogFooter className="gap-2 mt-4">
+                    <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+                    <Button disabled={editSubmitting} onClick={async () => {
+                      try {
+                        setEditSubmitting(true)
+                        console.log('📝 Editing customer - request body:', editForm)
+                        // validation
+                        if (!editForm.customer_name) { toast.error('Customer name is required'); setEditSubmitting(false); return }
+                        if (editForm.customer_type === 'Company') {
+                          if (!editForm.mobile) { toast.error('Mobile is required for Company'); setEditSubmitting(false); return }
+                          if (!editForm.tax_id) { toast.error('Tax ID is required for Company'); setEditSubmitting(false); return }
+                          if (!editForm.customer_id_type_for_zatca || !editForm.customer_id_number_for_zatca) {
+                            toast.error('ZATCA ID Type and Number are required for Company'); setEditSubmitting(false); return
+                          }
+                          if (!editForm.address_line1) { toast.error('Address Line 1 is required for Company'); setEditSubmitting(false); return }
+                          if (!editForm.city) { toast.error('City/Town is required for Company'); setEditSubmitting(false); return }
+                          if (!editForm.building_number) { toast.error('Building No. is required for Company'); setEditSubmitting(false); return }
+                          if (!editForm.pincode) { toast.error('Pincode is required for Company'); setEditSubmitting(false); return }
+                        }
+
+                        // Prepare API payload with all required fields, ensuring empty values are sent as empty strings
+                        const apiPayload = {
+                          customer_id: editForm.customer_id || '',
+                          customer_name: editForm.customer_name || '',
+                          customer_name_arabic: editForm.customer_name_arabic || '',
+                          email: editForm.email || '',
+                          mobile: editForm.mobile || '',
+                          customer_type: editForm.customer_type || 'Individual',
+                          tax_id: editForm.tax_id || '',
+                          customer_id_type_for_zatca: editForm.customer_id_type_for_zatca || '',
+                          customer_id_number_for_zatca: editForm.customer_id_number_for_zatca || '',
+                          address_line1: editForm.address_line1 || '',
+                          address_line2: editForm.address_line2 || '',
+                          building_number: editForm.building_number || '',
+                          city: editForm.city || '',
+                          pincode: editForm.pincode || '',
+                          country: editForm.country || ''
+                        }
+
+                        console.log('📝 Editing customer - API call:', {
+                          method: 'POST',
+                          url: '/api/method/centro_pos_apis.api.customer.edit_customer',
+                          body: apiPayload
+                        })
+
+                        const res = await (window as any).electronAPI?.proxy?.request({
+                          method: 'POST',
+                          url: '/api/method/centro_pos_apis.api.customer.edit_customer',
+                          data: apiPayload
+                        })
+
+                        console.log('✅ Edit customer response:', {
+                          status: res?.status,
+                          success: res?.success,
+                          data: res?.data,
+                          fullResponse: res
+                        })
+
+                        // Extract message safely - ensure it's always a string
+                        let serverMsg: string = 'Customer updated successfully'
+                        if (res?.data?.data) {
+                          if (typeof res.data.data === 'object' && res.data.data !== null) {
+                            // If data.data is an object, extract message from it
+                            if (typeof res.data.data.message === 'string') {
+                              serverMsg = res.data.data.message
+                            }
+                          } else if (typeof res.data.data === 'string') {
+                            serverMsg = res.data.data
+                          }
+                        } else if (res?.data?.message) {
+                          if (typeof res.data.message === 'string') {
+                            serverMsg = res.data.message
+                          }
+                        }
+
+                        const serverError = res?.data?._server_messages
+                        if (res?.success === false || res?.status >= 400 || serverError) {
+                          let prettyErr = 'Update failed'
+                          console.log('❌ Edit customer server error raw:', serverError)
+                          try {
+                            if (typeof serverError === 'string') {
+                              // Try direct JSON parse
+                              try {
+                                const arr = JSON.parse(serverError)
+                                if (Array.isArray(arr) && arr.length) {
+                                  const obj = arr[0]
+                                  if (typeof obj === 'object') {
+                                    if (obj.message) prettyErr = obj.message
+                                    else prettyErr = JSON.stringify(obj, null, 2)
+                                  } else if (typeof obj === 'string') {
+                                    prettyErr = obj
+                                  }
+                                }
+                              } catch (e1) {
+                                // Try with unescaped quotes cleanup
+                                const cleaned = serverError
+                                  .replace(/\\n/g, '\n')
+                                  .replace(/\\r/g, '\r')
+                                  .replace(/\\t/g, '\t')
+                                  .replace(/\\\\/g, '\\')
+                                  .replace(/\\\"/g, '"')
+                                try {
+                                  const arr2 = JSON.parse(cleaned)
+                                  if (Array.isArray(arr2) && arr2.length) {
+                                    const obj2 = arr2[0]
+                                    if (typeof obj2 === 'object') {
+                                      if (obj2.message) prettyErr = obj2.message
+                                      else prettyErr = JSON.stringify(obj2, null, 2)
+                                    } else if (typeof obj2 === 'string') {
+                                      prettyErr = obj2
+                                    }
+                                  }
+                                } catch (e2) {
+                                  // Last resort: extract between \"message\": \" ... \"
+                                  const m = serverError.match(/message\\\"\s*:\s*\\\"([^\"]+)/i)
+                                  if (m && m[1]) prettyErr = m[1]
                                 }
                               }
-                            } catch (e2) {
-                              // Last resort: extract between \"message\": \" ... \"
-                              const m = serverError.match(/message\\\"\s*:\s*\\\"([^\"]+)/i)
-                              if (m && m[1]) prettyErr = m[1]
                             }
-                          }
-                        }
-                      } catch (_) {}
-                      // Prefer showing only the human-friendly message
-                      let uiMsg = prettyErr
-                      try {
-                        if (prettyErr.startsWith('[')) {
-                          const arr = JSON.parse(prettyErr)
-                          const obj = typeof arr[0] === 'string' ? JSON.parse(arr[0]) : arr[0]
-                          if (obj?.message) uiMsg = obj.message
-                        } else if (prettyErr.startsWith('{')) {
-                          const obj = JSON.parse(prettyErr)
-                          if (obj?.message) uiMsg = obj.message
-                        }
-                      } catch (_) {}
-                      toast.error(typeof uiMsg === 'string' ? uiMsg : 'Failed to update customer')
-                      setEditSubmitting(false)
-                      return
-                    }
-                    
-                    // Ensure msg is always a string
-                    const msg = typeof serverMsg === 'string' ? serverMsg : 'Customer updated successfully'
-                    
-                    // refresh details
-                    if (selectedCustomer?.name || selectedCustomer?.customer_id || customerDetails?.name){
-                      // trigger reload using existing loadCustomerDetails flow
-                      try{ await (async()=>{ 
-                        // let cancelled=false; // Unused 
-                        setCustomerDetailsLoading(true); setCustomerDetailsError(null); 
-                        const listRes = await (window as any).electronAPI?.proxy?.request({url: '/api/method/centro_pos_apis.api.customer.customer_list', params:{search_term:'', limit_start:1, limit_page_length:50}})
-                        const list = listRes?.data?.data || []
-                        const match = list.find((c:any)=> c.customer_name === (selectedCustomer?.name || customerDetails?.customer_name))
-                        const customerId = match?.name || customerDetails?.name
-                        if (customerId){
-                          console.log('📞 API Call: get_customer_details (Refresh)', {
-                            url: '/api/method/centro_pos_apis.api.customer.get_customer_details',
-                            params: { customer_id: customerId }
-                          })
-                          const detailsRes = await (window as any).electronAPI?.proxy?.request({url:'/api/method/centro_pos_apis.api.customer.get_customer_details', params:{customer_id: customerId}})
-                          console.log('📥 API Response: get_customer_details (Refresh)', {
-                            fullResponse: detailsRes,
-                            data: detailsRes?.data,
-                            customerData: detailsRes?.data?.data
-                          })
-                          
-                          // Safely extract customer data - ensure it's a proper customer object, not a response wrapper
-                          let customerData: any = null
-                          if (detailsRes?.data?.data) {
-                            // Check if data.data is a valid customer object (has customer_name or name property)
-                            if (detailsRes.data.data && typeof detailsRes.data.data === 'object' && 
-                                (detailsRes.data.data.customer_name || detailsRes.data.data.name)) {
-                              customerData = detailsRes.data.data
+                          } catch (_) { }
+                          // Prefer showing only the human-friendly message
+                          let uiMsg = prettyErr
+                          try {
+                            if (prettyErr.startsWith('[')) {
+                              const arr = JSON.parse(prettyErr)
+                              const obj = typeof arr[0] === 'string' ? JSON.parse(arr[0]) : arr[0]
+                              if (obj?.message) uiMsg = obj.message
+                            } else if (prettyErr.startsWith('{')) {
+                              const obj = JSON.parse(prettyErr)
+                              if (obj?.message) uiMsg = obj.message
                             }
-                          } else if (detailsRes?.data && typeof detailsRes.data === 'object' && 
-                                     (detailsRes.data.customer_name || detailsRes.data.name)) {
-                            // Fallback: check if data itself is the customer object
-                            customerData = detailsRes.data
-                          }
-                          
-                          // Only set if we have valid customer data (not a response wrapper object)
-                          if (customerData && !customerData.status && !customerData.message) {
-                            setCustomerDetails(customerData)
-                          } else {
-                            console.warn('⚠️ Invalid customer data structure received:', customerData)
+                          } catch (_) { }
+                          toast.error(typeof uiMsg === 'string' ? uiMsg : 'Failed to update customer')
+                          setEditSubmitting(false)
+                          return
+                        }
+
+                        // Ensure msg is always a string
+                        const msg = typeof serverMsg === 'string' ? serverMsg : 'Customer updated successfully'
+
+                        // refresh details
+                        if (selectedCustomer?.name || selectedCustomer?.customer_id || customerDetails?.name) {
+                          // trigger reload using existing loadCustomerDetails flow
+                          try {
+                            await (async () => {
+                              // let cancelled=false; // Unused 
+                              setCustomerDetailsLoading(true); setCustomerDetailsError(null);
+                              const listRes = await (window as any).electronAPI?.proxy?.request({ url: '/api/method/centro_pos_apis.api.customer.customer_list', params: { search_term: '', limit_start: 1, limit_page_length: 50 } })
+                              const list = listRes?.data?.data || []
+                              const match = list.find((c: any) => c.customer_name === (selectedCustomer?.name || customerDetails?.customer_name))
+                              const customerId = match?.name || customerDetails?.name
+                              if (customerId) {
+                                console.log('📞 API Call: get_customer_details (Refresh)', {
+                                  url: '/api/method/centro_pos_apis.api.customer.get_customer_details',
+                                  params: { customer_id: customerId }
+                                })
+                                const detailsRes = await (window as any).electronAPI?.proxy?.request({ url: '/api/method/centro_pos_apis.api.customer.get_customer_details', params: { customer_id: customerId } })
+                                console.log('📥 API Response: get_customer_details (Refresh)', {
+                                  fullResponse: detailsRes,
+                                  data: detailsRes?.data,
+                                  customerData: detailsRes?.data?.data
+                                })
+
+                                // Safely extract customer data - ensure it's a proper customer object, not a response wrapper
+                                let customerData: any = null
+                                if (detailsRes?.data?.data) {
+                                  // Check if data.data is a valid customer object (has customer_name or name property)
+                                  if (detailsRes.data.data && typeof detailsRes.data.data === 'object' &&
+                                    (detailsRes.data.data.customer_name || detailsRes.data.data.name)) {
+                                    customerData = detailsRes.data.data
+                                  }
+                                } else if (detailsRes?.data && typeof detailsRes.data === 'object' &&
+                                  (detailsRes.data.customer_name || detailsRes.data.name)) {
+                                  // Fallback: check if data itself is the customer object
+                                  customerData = detailsRes.data
+                                }
+
+                                // Only set if we have valid customer data (not a response wrapper object)
+                                if (customerData && !customerData.status && !customerData.message) {
+                                  setCustomerDetails(customerData)
+                                } else {
+                                  console.warn('⚠️ Invalid customer data structure received:', customerData)
+                                }
+                              }
+                              setCustomerDetailsLoading(false)
+                            })()
+                          } catch (e) {
+                            console.error('❌ Error refreshing customer details after edit:', e)
+                            setCustomerDetailsLoading(false)
                           }
                         }
-                        setCustomerDetailsLoading(false)
-                      })() }catch(e){
-                        console.error('❌ Error refreshing customer details after edit:', e)
-                        setCustomerDetailsLoading(false)
+                        toast.success(msg)
+                        setEditOpen(false)
+                      } catch (err) {
+                        console.error('❌ Edit customer error:', err)
+                        const errorMsg = err instanceof Error ? err.message : 'Failed to update customer'
+                        toast.error(typeof errorMsg === 'string' ? errorMsg : 'Failed to update customer')
+                      } finally {
+                        setEditSubmitting(false)
                       }
-                    }
-                    toast.success(msg)
-                    setEditOpen(false)
-                  }catch(err){
-                    console.error('❌ Edit customer error:', err)
-                    const errorMsg = err instanceof Error ? err.message : 'Failed to update customer'
-                    toast.error(typeof errorMsg === 'string' ? errorMsg : 'Failed to update customer')
-                  }finally{
-                    setEditSubmitting(false)
-                  }
-                }}>Save</Button>
-              </DialogFooter>
-              </>
+                    }}>Save</Button>
+                  </DialogFooter>
+                </>
               )}
             </DialogContent>
           </Dialog>
@@ -4663,21 +4525,19 @@ const RightPanel: React.FC<RightPanelProps> = ({
           <div className="bg-white/90 mt-2">
             <div className="flex border-b border-gray-200/60">
               <button
-                className={`flex-1 px-4 py-3 font-bold text-sm border-b-2 ${
-                  customerSubTab === 'recent'
-                    ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                    : 'text-gray-500 hover:text-black hover:bg-white/40'
-                }`}
+                className={`flex-1 px-4 py-3 font-bold text-sm border-b-2 ${customerSubTab === 'recent'
+                  ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                  : 'text-gray-500 hover:text-black hover:bg-white/40'
+                  }`}
                 onClick={() => setCustomerSubTab('recent')}
               >
                 Recent Orders
               </button>
               <button
-                className={`flex-1 px-4 py-3 font-bold text-sm border-b-2 ${
-                  customerSubTab === 'most'
-                    ? 'border-purple-500 bg-purple-50 text-purple-700'
-                    : 'text-gray-500 hover:text-black hover:bg-white/40'
-                }`}
+                className={`flex-1 px-4 py-3 font-bold text-sm border-b-2 ${customerSubTab === 'most'
+                  ? 'border-purple-500 bg-purple-50 text-purple-700'
+                  : 'text-gray-500 hover:text-black hover:bg-white/40'
+                  }`}
                 onClick={() => setCustomerSubTab('most')}
               >
                 Most Ordered
@@ -4733,64 +4593,63 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     filteredRecentOrders.map((order, index) => {
                       // Extract order ID
                       const orderId = order.sales_order_id || order.sales_order_no || order.invoice_no || order.name
-                      
+
                       return (
-                      <div
-                        key={index}
-                        className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200 cursor-pointer hover:shadow-sm transition"
-                        onClick={() => {
-                          if (orderId) {
-                            handleOpenOrder(String(orderId), false)
-                          }
-                        }}
-                      >
-                        <div className="flex justify-between items-center mb-2">
-                          <div className="flex flex-col">
-                          <div className="font-semibold text-primary text-sm">
-                              {order.sales_order_no || order.sales_order_id || '—'}
-                            </div>
-                            {(order.invoice_no || order.sales_invoice_id) && (
-                              <div className="text-gray-700 text-[10px] mt-0.5">
-                                {order.invoice_no || order.sales_invoice_id}
+                        <div
+                          key={index}
+                          className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200 cursor-pointer hover:shadow-sm transition"
+                          onClick={() => {
+                            if (orderId) {
+                              handleOpenOrder(String(orderId), false)
+                            }
+                          }}
+                        >
+                          <div className="flex justify-between items-center mb-2">
+                            <div className="flex flex-col">
+                              <div className="font-semibold text-primary text-sm">
+                                {order.sales_order_no || order.sales_order_id || '—'}
                               </div>
-                            )}
+                              {(order.invoice_no || order.sales_invoice_id) && (
+                                <div className="text-gray-700 text-[10px] mt-0.5">
+                                  {order.invoice_no || order.sales_invoice_id}
+                                </div>
+                              )}
+                            </div>
+                            <div className="text-gray-600 text-xs">
+                              {new Date(order.creation_datetime).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric'
+                              })}
+                            </div>
                           </div>
-                          <div className="text-gray-600 text-xs">
-                            {new Date(order.creation_datetime).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric'
-                            })}
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-gray-600 font-medium">Qty: {order.total_qty}</span>
+                            <span className="font-bold text-green-600 text-sm">
+                              {currencySymbol} {order.total_amount?.toLocaleString()}
+                            </span>
                           </div>
-                        </div>
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-gray-600 font-medium">Qty: {order.total_qty}</span>
-                          <span className="font-bold text-green-600 text-sm">
-                            {currencySymbol} {order.total_amount?.toLocaleString()}
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span
-                            className={`text-xs px-2 py-1 rounded-full font-medium ${
-                              order.status === 'Overdue'
+                          <div className="flex justify-between items-center">
+                            <span
+                              className={`text-xs px-2 py-1 rounded-full font-medium ${order.status === 'Overdue'
                                 ? 'bg-red-100 text-red-700'
                                 : order.status === 'Paid'
                                   ? 'bg-green-100 text-green-700'
                                   : order.status === 'Draft'
                                     ? 'bg-yellow-100 text-yellow-700'
                                     : 'bg-gray-100 text-gray-700'
-                            }`}
-                          >
-                            {order.status}
-                          </span>
-                          <span className="text-gray-500 text-xs">
-                            {new Date(order.creation_datetime).toLocaleTimeString('en-US', {
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </span>
+                                }`}
+                            >
+                              {order.status}
+                            </span>
+                            <span className="text-gray-500 text-xs">
+                              {new Date(order.creation_datetime).toLocaleTimeString('en-US', {
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </span>
+                          </div>
                         </div>
-                      </div>
                       )
                     })}
                   {!ordersLoading &&
@@ -5003,21 +4862,19 @@ const RightPanel: React.FC<RightPanelProps> = ({
           <div className="bg-white/90 mt-2">
             <div className="flex border-b border-gray-200/60">
               <button
-                className={`flex-1 px-4 py-3 font-bold text-sm border-b-2 ${
-                  subTab === 'orders'
-                    ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                    : 'text-gray-500 hover:text-black hover:bg-white/40'
-                }`}
+                className={`flex-1 px-4 py-3 font-bold text-sm border-b-2 ${subTab === 'orders'
+                  ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                  : 'text-gray-500 hover:text-black hover:bg-white/40'
+                  }`}
                 onClick={() => setSubTab('orders')}
               >
                 Orders
               </button>
               <button
-                className={`flex-1 px-4 py-3 font-bold text-sm border-b-2 ${
-                  subTab === 'returns'
-                    ? 'border-purple-500 bg-purple-50 text-purple-700'
-                    : 'text-gray-500 hover:text-black hover:bg-white/40'
-                }`}
+                className={`flex-1 px-4 py-3 font-bold text-sm border-b-2 ${subTab === 'returns'
+                  ? 'border-purple-500 bg-purple-50 text-purple-700'
+                  : 'text-gray-500 hover:text-black hover:bg-white/40'
+                  }`}
                 onClick={() => setSubTab('returns')}
               >
                 Returns
@@ -5108,8 +4965,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
                           {/* Order No and Date Row */}
                           <div className="flex justify-between items-center mb-2">
                             <div className="flex flex-col">
-                            <div className="font-semibold text-black text-sm">
-                              {order.sales_order_id || '—'}
+                              <div className="font-semibold text-black text-sm">
+                                {order.sales_order_id || '—'}
                               </div>
                               {order.sales_invoice_id && (
                                 <div className="text-gray-700 text-[10px] mt-0.5">
@@ -5128,7 +4985,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                               {order.customer_name || '—'}
                             </span>
                             <span className="font-bold text-green-600 text-sm">
-                              {typeof order.grand_total === 'number' 
+                              {typeof order.grand_total === 'number'
                                 ? `${order.grand_total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currencySymbol}`
                                 : '—'}
                             </span>
@@ -5145,15 +5002,14 @@ const RightPanel: React.FC<RightPanelProps> = ({
                           <div className="flex items-center gap-2">
                             {order.invoice_status && (
                               <span
-                                className={`text-xs px-2 py-1 rounded-full font-medium ${
-                                  order.invoice_status === 'Overdue'
-                                    ? 'bg-red-100 text-red-700'
-                                    : order.invoice_status === 'Paid'
-                                      ? 'bg-green-100 text-green-700'
-                                      : order.invoice_status === 'Draft'
-                                        ? 'bg-yellow-100 text-yellow-700'
-                                        : 'bg-gray-100 text-gray-700'
-                                }`}
+                                className={`text-xs px-2 py-1 rounded-full font-medium ${order.invoice_status === 'Overdue'
+                                  ? 'bg-red-100 text-red-700'
+                                  : order.invoice_status === 'Paid'
+                                    ? 'bg-green-100 text-green-700'
+                                    : order.invoice_status === 'Draft'
+                                      ? 'bg-yellow-100 text-yellow-700'
+                                      : 'bg-gray-100 text-gray-700'
+                                  }`}
                               >
                                 {order.invoice_status}
                               </span>
@@ -5189,7 +5045,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     >
                       Next
                     </button>
-                </div>
+                  </div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs text-gray-500">{ordersTotal} results found</span>
                     <select
@@ -5201,196 +5057,195 @@ const RightPanel: React.FC<RightPanelProps> = ({
                         <option key={opt} value={opt}>{opt} / page</option>
                       ))}
                     </select>
-              </div>
+                  </div>
                 </div>
               </div>
             )
-             : (
-              <div className="p-4">
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <div className="text-xs text-gray-500">Returns ({filteredReturns.length})</div>
-                  <button
-                    type="button"
-                    onClick={() => triggerTabRefresh('orders')}
-                    className="inline-flex items-center justify-center rounded-full p-2 text-gray-500 hover:text-black hover:bg-gray-100 transition-colors"
-                    title="Refresh returns data"
-                  >
-                    <RefreshCcw className="h-4 w-4" />
-                  </button>
-                </div>
-
-                {/* Search Bar */}
-                <div className="relative mb-4">
-                  <input
-                    type="text"
-                    placeholder="Search returns..."
-                    value={returnsSearch}
-                    onChange={(e) => setReturnsSearch(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                    <svg
-                      className="w-4 h-4 text-gray-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
+              : (
+                <div className="p-4">
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <div className="text-xs text-gray-500">Returns ({filteredReturns.length})</div>
+                    <button
+                      type="button"
+                      onClick={() => triggerTabRefresh('orders')}
+                      className="inline-flex items-center justify-center rounded-full p-2 text-gray-500 hover:text-black hover:bg-gray-100 transition-colors"
+                      title="Refresh returns data"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                      />
-                    </svg>
+                      <RefreshCcw className="h-4 w-4" />
+                    </button>
                   </div>
-                </div>
 
-                <div className="space-y-2">
-                  {ordersTabLoading && (
-                    <div className="text-xs text-gray-500 text-center py-4">Loading returns...</div>
-                  )}
-                  {ordersTabError && (
-                    <div className="text-xs text-red-600 text-center py-4">{ordersTabError}</div>
-                  )}
-                  {!ordersTabLoading &&
-                    !ordersTabError &&
-                    filteredReturns.length > 0 &&
-                    filteredReturns.map((order, index) => {
-                      // Parse creation datetime
-                      const creationRaw = order.creation
-                      const creationDate = creationRaw ? new Date(String(creationRaw).replace(' ', 'T')) : null
-                      const formatDate = (date: Date | null) => {
-                        if (!date) return '—'
-                        const day = String(date.getDate()).padStart(2, '0')
-                        const month = String(date.getMonth() + 1).padStart(2, '0')
-                        const year = date.getFullYear()
-                        return `${day}/${month}/${year}`
-                      }
-                      // const formatTime = (date: Date | null) => { // Unused
-                      //   if (!date) return '—'
-                      //   const hours = String(date.getHours()).padStart(2, '0')
-                      //   const minutes = String(date.getMinutes()).padStart(2, '0')
-                      //   return `${hours}:${minutes}`
-                      // }
+                  {/* Search Bar */}
+                  <div className="relative mb-4">
+                    <input
+                      type="text"
+                      placeholder="Search returns..."
+                      value={returnsSearch}
+                      onChange={(e) => setReturnsSearch(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                      <svg
+                        className="w-4 h-4 text-gray-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                        />
+                      </svg>
+                    </div>
+                  </div>
 
-                      return (
-                        <div
-                          key={index}
-                          className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200 cursor-pointer hover:shadow-sm transition"
-                          onClick={() => {
-                            const orderId = order.sales_order_id || order.sales_invoice_id || order.name
-                            if (orderId) {
-                              handleOpenOrder(String(orderId), true) // Skip confirm for returns tab
-                            }
-                          }}
-                        >
-                          {/* Order No and Date Row */}
-                          <div className="flex justify-between items-center mb-2">
-                            <div className="flex flex-col">
-                            <div className="font-semibold text-black text-sm">
-                              {order.sales_order_id || '—'}
-                              </div>
-                              {order.sales_invoice_id && (
-                                <div className="text-gray-700 text-[10px] mt-0.5">
-                                  {order.sales_invoice_id}
+                  <div className="space-y-2">
+                    {ordersTabLoading && (
+                      <div className="text-xs text-gray-500 text-center py-4">Loading returns...</div>
+                    )}
+                    {ordersTabError && (
+                      <div className="text-xs text-red-600 text-center py-4">{ordersTabError}</div>
+                    )}
+                    {!ordersTabLoading &&
+                      !ordersTabError &&
+                      filteredReturns.length > 0 &&
+                      filteredReturns.map((order, index) => {
+                        // Parse creation datetime
+                        const creationRaw = order.creation
+                        const creationDate = creationRaw ? new Date(String(creationRaw).replace(' ', 'T')) : null
+                        const formatDate = (date: Date | null) => {
+                          if (!date) return '—'
+                          const day = String(date.getDate()).padStart(2, '0')
+                          const month = String(date.getMonth() + 1).padStart(2, '0')
+                          const year = date.getFullYear()
+                          return `${day}/${month}/${year}`
+                        }
+                        // const formatTime = (date: Date | null) => { // Unused
+                        //   if (!date) return '—'
+                        //   const hours = String(date.getHours()).padStart(2, '0')
+                        //   const minutes = String(date.getMinutes()).padStart(2, '0')
+                        //   return `${hours}:${minutes}`
+                        // }
+
+                        return (
+                          <div
+                            key={index}
+                            className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200 cursor-pointer hover:shadow-sm transition"
+                            onClick={() => {
+                              const orderId = order.sales_order_id || order.sales_invoice_id || order.name
+                              if (orderId) {
+                                handleOpenOrder(String(orderId), true) // Skip confirm for returns tab
+                              }
+                            }}
+                          >
+                            {/* Order No and Date Row */}
+                            <div className="flex justify-between items-center mb-2">
+                              <div className="flex flex-col">
+                                <div className="font-semibold text-black text-sm">
+                                  {order.sales_order_id || '—'}
                                 </div>
-                              )}
+                                {order.sales_invoice_id && (
+                                  <div className="text-gray-700 text-[10px] mt-0.5">
+                                    {order.sales_invoice_id}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="text-gray-600 text-xs">
+                                {formatDate(creationDate)}
+                              </div>
                             </div>
-                            <div className="text-gray-600 text-xs">
-                              {formatDate(creationDate)}
+
+                            {/* Customer Name and Amount Row */}
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="text-gray-700 font-medium text-xs">
+                                {order.customer_name || '—'}
+                              </span>
+                              <span className="font-bold text-green-600 text-sm">
+                                {typeof order.grand_total === 'number'
+                                  ? `${order.grand_total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currencySymbol}`
+                                  : '—'}
+                              </span>
                             </div>
-                          </div>
 
-                          {/* Customer Name and Amount Row */}
-                          <div className="flex justify-between items-center mb-2">
-                            <span className="text-gray-700 font-medium text-xs">
-                              {order.customer_name || '—'}
-                            </span>
-                            <span className="font-bold text-green-600 text-sm">
-                              {typeof order.grand_total === 'number' 
-                                ? `${order.grand_total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currencySymbol}`
-                                : '—'}
-                            </span>
-                          </div>
+                            {/* Total Qty Row */}
+                            <div className="mb-2">
+                              <span className="text-gray-600 font-medium text-xs">
+                                Qty: {order.total_qty ?? '—'}
+                              </span>
+                            </div>
 
-                          {/* Total Qty Row */}
-                          <div className="mb-2">
-                            <span className="text-gray-600 font-medium text-xs">
-                              Qty: {order.total_qty ?? '—'}
-                            </span>
-                          </div>
-
-                          {/* Invoice Status and Reverse Status Row */}
-                          <div className="flex items-center gap-2">
-                            {order.invoice_status && (
-                              <span
-                                className={`text-xs px-2 py-1 rounded-full font-medium ${
-                                  order.invoice_status === 'Overdue'
+                            {/* Invoice Status and Reverse Status Row */}
+                            <div className="flex items-center gap-2">
+                              {order.invoice_status && (
+                                <span
+                                  className={`text-xs px-2 py-1 rounded-full font-medium ${order.invoice_status === 'Overdue'
                                     ? 'bg-red-100 text-red-700'
                                     : order.invoice_status === 'Paid'
                                       ? 'bg-green-100 text-green-700'
                                       : order.invoice_status === 'Draft'
                                         ? 'bg-yellow-100 text-yellow-700'
                                         : 'bg-gray-100 text-gray-700'
-                                }`}
-                              >
-                                {order.invoice_status}
-                              </span>
-                            )}
-                            {order.custom_reverse_status && order.custom_reverse_status !== 'No' && (
-                              <span className="text-xs px-2 py-1 rounded-full font-medium bg-purple-100 text-purple-700">
-                                {order.custom_reverse_status}
-                              </span>
-                            )}
-                            {!order.invoice_status && (!order.custom_reverse_status || order.custom_reverse_status === 'No') && (
-                              <span className="text-gray-400 text-xs">—</span>
-                            )}
+                                    }`}
+                                >
+                                  {order.invoice_status}
+                                </span>
+                              )}
+                              {order.custom_reverse_status && order.custom_reverse_status !== 'No' && (
+                                <span className="text-xs px-2 py-1 rounded-full font-medium bg-purple-100 text-purple-700">
+                                  {order.custom_reverse_status}
+                                </span>
+                              )}
+                              {!order.invoice_status && (!order.custom_reverse_status || order.custom_reverse_status === 'No') && (
+                                <span className="text-gray-400 text-xs">—</span>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      )
-                    })}
-                  {!ordersTabLoading && !ordersTabError && filteredReturns.length === 0 && (
-                    <div className="text-xs text-gray-500 text-center py-4">No returns found</div>
-                  )}
-                  <div className="flex items-center justify-between pt-3">
-                    <button
-                      className="px-3 py-1 text-xs border rounded disabled:opacity-40"
-                      onClick={() => setReturnsPage((p) => Math.max(1, p - 1))}
-                      disabled={returnsPage <= 1}
-                    >
-                      Prev
-                    </button>
-                    <div className="text-xs text-gray-600">Page {returnsPage}</div>
-                    <button
-                      className="px-3 py-1 text-xs border rounded disabled:opacity-40"
-                      onClick={() => setReturnsPage((p) => p + 1)}
-                      disabled={filteredReturns.length < pageLength}
-                    >
-                      Next
-                    </button>
-                  </div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-gray-500">{returnsTotal} results found</span>
-                    <select
-                      value={pageLength}
-                      onChange={e => setPageLength(Number(e.target.value))}
-                      className="text-xs border rounded px-2 py-1"
-                    >
-                      {pageSizeOptions.map(opt => (
-                        <option key={opt} value={opt}>{opt} / page</option>
-                      ))}
-                    </select>
+                        )
+                      })}
+                    {!ordersTabLoading && !ordersTabError && filteredReturns.length === 0 && (
+                      <div className="text-xs text-gray-500 text-center py-4">No returns found</div>
+                    )}
+                    <div className="flex items-center justify-between pt-3">
+                      <button
+                        className="px-3 py-1 text-xs border rounded disabled:opacity-40"
+                        onClick={() => setReturnsPage((p) => Math.max(1, p - 1))}
+                        disabled={returnsPage <= 1}
+                      >
+                        Prev
+                      </button>
+                      <div className="text-xs text-gray-600">Page {returnsPage}</div>
+                      <button
+                        className="px-3 py-1 text-xs border rounded disabled:opacity-40"
+                        onClick={() => setReturnsPage((p) => p + 1)}
+                        disabled={filteredReturns.length < pageLength}
+                      >
+                        Next
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs text-gray-500">{returnsTotal} results found</span>
+                      <select
+                        value={pageLength}
+                        onChange={e => setPageLength(Number(e.target.value))}
+                        className="text-xs border rounded px-2 py-1"
+                      >
+                        {pageSizeOptions.map(opt => (
+                          <option key={opt} value={opt}>{opt} / page</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
           </div>
         </div>
       )}
 
       {/* Placeholder only for tabs not yet implemented */}
       {activeTab === 'payments' && <PaymentTab />}
-      
+
       {/* Loading overlay when opening order */}
       {isOpeningOrder && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
@@ -5401,7 +5256,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
           </div>
         </div>
       )}
-      
+
       {/* Order open confirmation dialog */}
       <Dialog open={showOpenOrderConfirm} onOpenChange={(v) => {
         if (!v) {
@@ -5409,8 +5264,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
           setPendingOrderData(null)
         }
       }}>
-        <DialogContent 
-          className="max-w-sm" 
+        <DialogContent
+          className="max-w-sm"
           onKeyDown={(e) => {
             if (e.key === 'ArrowLeft') {
               e.preventDefault()
@@ -5442,9 +5297,9 @@ const RightPanel: React.FC<RightPanelProps> = ({
             >
               Confirm
             </Button>
-            <Button 
-              ref={openOrderCancelBtnRef} 
-              variant="outline" 
+            <Button
+              ref={openOrderCancelBtnRef}
+              variant="outline"
               onClick={() => {
                 setShowOpenOrderConfirm(false)
                 setPendingOrderData(null)

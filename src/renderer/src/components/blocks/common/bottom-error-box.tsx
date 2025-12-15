@@ -87,7 +87,7 @@ const BottomErrorBox: React.FC<BottomErrorBoxProps> = ({
     <div
       ref={errorBoxRef}
       tabIndex={0}
-      className="bg-red-50 border border-red-200 rounded-lg p-4 mx-2 mt-6 mb-0 shadow-sm relative focus:outline-none focus:ring-2 focus:ring-red-300"
+      className="absolute bottom-full left-0 right-0 z-50 bg-red-50 border border-red-300 rounded-lg p-4 mx-4 mb-2 shadow-lg focus:outline-none focus:ring-2 focus:ring-red-400"
       onFocus={() => onFocusChange?.(true)}
       onBlur={() => onFocusChange?.(false)}
     >

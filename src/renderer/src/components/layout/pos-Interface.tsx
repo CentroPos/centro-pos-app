@@ -1,6 +1,6 @@
 import React, { Fragment, useState } from 'react'
 import ActionButtons from '../blocks/common/action-buttons'
-import OrderDetails from '../blocks/order/order-details'
+// import OrderDetails from '../blocks/order/order-details' // Removing unused import
 import ItemsTable from '../blocks/common/items-table'
 import RightPanel from '../blocks/right-panel/right-panel'
 import Header from '../blocks/common/header'
@@ -18,7 +18,7 @@ const POSInterface: React.FC = () => {
   const [selectedItemId, setSelectedItemId] = useState<string | undefined>()
   const [shouldStartEditing, setShouldStartEditing] = useState(false)
   const [rightPanelTab, setRightPanelTab] = useState<'product' | 'customer' | 'prints' | 'payments' | 'orders'>('product')
-  const [selectedPriceList, setSelectedPriceList] = useState<string>('Standard Selling')
+  // const [selectedPriceList, setSelectedPriceList] = useState<string>('Standard Selling') // State removed, store used instead
   const [saveCompleted, setSaveCompleted] = useState(0)
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false)
   const [isItemTableEditing, setIsItemTableEditing] = useState(false)
@@ -167,7 +167,8 @@ const POSInterface: React.FC = () => {
   const selectedCustomer = getCurrentTabCustomer()
 
   const items = getCurrentTabItems();
-  // const currentTab = getCurrentTab(); // Unused
+  const currentTab = getCurrentTab();
+  const selectedPriceList = currentTab?.orderData?.price_list || 'Standard Selling'
 
   // Clear selected item when no active tab
   React.useEffect(() => {
@@ -467,31 +468,35 @@ const POSInterface: React.FC = () => {
     <Fragment>
       <div className="h-full bg-gray-50 flex w-full overflow-hidden scrollbar-hide">
         <div className="flex-1 flex flex-col">
-          <Header onNewOrder={() => {
-            // Open customer selection immediately when a new order is created
-            setIsCustomerModalOpen(true)
-          }} />
-          {/* <button onClick={() => setOpen(true)} className="m-4 p-2 bg-blue-500 text-white rounded">
-            Open
-          </button> */}
-          <ActionButtons
-            onNavigateToPrints={() => setRightPanelTab('prints')}
-            selectedPriceList={selectedPriceList}
-            onSaveCompleted={() => setSaveCompleted(prev => prev + 1)}
-            isItemTableEditing={isItemTableEditing}
-            onInsufficientStockErrors={setInsufficientStockErrors}
-            onFocusItem={handleFocusItem}
-            onZatcaResponses={setZatcaResponses}
-          />
-          {/* Fixed top: Order details */}
-          <OrderDetails
+          {/* Top Section: Header + ActionButtons */}
+          <div className="flex w-full items-center bg-slate-50 border-b border-gray-200">
+            <div className="w-[55%]">
+              <Header onNewOrder={() => {
+                // Open customer selection immediately when a new order is created
+                setIsCustomerModalOpen(true)
+              }} />
+            </div>
+            <div className="w-[45%] flex justify-end">
+              <ActionButtons
+                onNavigateToPrints={() => setRightPanelTab('prints')}
+                // selectedPriceList={selectedPriceList} // Removed
+                onSaveCompleted={() => setSaveCompleted(prev => prev + 1)}
+                isItemTableEditing={isItemTableEditing}
+                onInsufficientStockErrors={setInsufficientStockErrors}
+                onFocusItem={handleFocusItem}
+                onZatcaResponses={setZatcaResponses}
+              />
+            </div>
+          </div>
+          {/* Fixed top: Order details (Commented out as requested - Moved to ItemsTable/DiscountSection) */}
+          {/* <OrderDetails
             onPriceListChange={setSelectedPriceList}
             onCustomerModalChange={setIsCustomerModalOpen}
             onCustomerSelect={(customer) => {
               handleCustomerSelect(customer)
             }}
             forceOpenCustomerModal={isCustomerModalOpen}
-          />
+          /> */}
 
           {/* Items area takes remaining space; inner table handles its own scroll */}
           <div className="flex-1 flex flex-col">
@@ -519,6 +524,9 @@ const POSInterface: React.FC = () => {
               zatcaResponses={zatcaResponses}
               onCloseZatcaResponses={handleCloseZatcaResponses}
               onZatcaBoxFocusChange={setIsZatcaBoxFocused}
+              forceOpenCustomerModal={isCustomerModalOpen}
+              onCustomerModalChange={setIsCustomerModalOpen}
+              onCustomerSelect={handleCustomerSelect}
             />
           </div>
         </div>

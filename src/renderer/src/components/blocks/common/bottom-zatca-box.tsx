@@ -76,7 +76,7 @@ const BottomZatcaBox: React.FC<BottomZatcaBoxProps> = ({
   // Format ZATCA response data for display - show only message and type from response object
   const formatZatcaResponse = (response: ZatcaResponse): string => {
     const parts: string[] = []
-    
+
     if (response.response) {
       const resp = response.response
       // Show type first, then message
@@ -87,12 +87,12 @@ const BottomZatcaBox: React.FC<BottomZatcaBoxProps> = ({
         parts.push(`Message: ${resp.message}`)
       }
     }
-    
+
     // If no response object, show a fallback message
     if (parts.length === 0) {
       parts.push('ZATCA Response received')
     }
-    
+
     return parts.join('\n')
   }
 
@@ -100,7 +100,7 @@ const BottomZatcaBox: React.FC<BottomZatcaBoxProps> = ({
     <div
       ref={zatcaBoxRef}
       tabIndex={0}
-      className="bg-yellow-50 border border-yellow-300 rounded-lg p-4 mx-2 mt-6 mb-0 shadow-sm relative focus:outline-none focus:ring-2 focus:ring-yellow-400"
+      className="absolute bottom-full left-0 right-0 z-50 bg-yellow-50 border border-yellow-300 rounded-lg p-4 mx-4 mb-2 shadow-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
       onFocus={() => onFocusChange?.(true)}
       onBlur={() => onFocusChange?.(false)}
     >
