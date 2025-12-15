@@ -6,6 +6,7 @@ import RightPanel from '../blocks/right-panel/right-panel'
 import Header from '../blocks/common/header'
 import DiscountSection from '../blocks/products/discount-section'
 import ProductSearchModal from '../blocks/products/product-modal'
+import DynamicPickupInterface from './dynamic-pickup-Interface'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { usePosProfile } from '@renderer/hooks/useProfile'
@@ -14,6 +15,7 @@ import { useAuthStore } from '@renderer/store/useAuthStore'
 import { toast } from 'sonner'
 
 const POSInterface: React.FC = () => {
+  const [activeMode, setActiveMode] = useState<'sales' | 'dynamic-pickup'>('sales')
   const [open, setOpen] = useState(false)
   const [selectedItemId, setSelectedItemId] = useState<string | undefined>()
   const [shouldStartEditing, setShouldStartEditing] = useState(false)
@@ -467,69 +469,84 @@ const POSInterface: React.FC = () => {
     <Fragment>
       <div className="h-screen bg-gray-50 flex w-screen overflow-hidden scrollbar-hide">
         <div className="flex-1 flex flex-col">
-          <Header onNewOrder={() => {
-            // Open customer selection immediately when a new order is created
-            setIsCustomerModalOpen(true)
-          }} />
-          {/* <button onClick={() => setOpen(true)} className="m-4 p-2 bg-blue-500 text-white rounded">
-            Open
-          </button> */}
-        <ActionButtons
-          onNavigateToPrints={() => setRightPanelTab('prints')}
-          selectedPriceList={selectedPriceList}
-          onSaveCompleted={() => setSaveCompleted(prev => prev + 1)}
-          isItemTableEditing={isItemTableEditing}
-          onInsufficientStockErrors={setInsufficientStockErrors}
-          onFocusItem={handleFocusItem}
-          onZatcaResponses={setZatcaResponses}
-        />
-          {/* Fixed top: Order details */}
-          <OrderDetails 
-            onPriceListChange={setSelectedPriceList} 
-            onCustomerModalChange={setIsCustomerModalOpen}
-            onCustomerSelect={(customer) => {
-              handleCustomerSelect(customer)
-            }}
-            forceOpenCustomerModal={isCustomerModalOpen}
+          <Header 
+            activeMode={activeMode}
+            onModeChange={setActiveMode}
+            onNewOrder={() => {
+              // Open customer selection immediately when a new order is created
+              setIsCustomerModalOpen(true)
+            }} 
           />
+          
+          {activeMode === 'sales' ? (
+            <>
+              {/* <button onClick={() => setOpen(true)} className="m-4 p-2 bg-blue-500 text-white rounded">
+                Open
+              </button> */}
+              <ActionButtons
+                onNavigateToPrints={() => setRightPanelTab('prints')}
+                selectedPriceList={selectedPriceList}
+                onSaveCompleted={() => setSaveCompleted(prev => prev + 1)}
+                isItemTableEditing={isItemTableEditing}
+                onInsufficientStockErrors={setInsufficientStockErrors}
+                onFocusItem={handleFocusItem}
+                onZatcaResponses={setZatcaResponses}
+              />
+              {/* Fixed top: Order details */}
+              <OrderDetails 
+                onPriceListChange={setSelectedPriceList} 
+                onCustomerModalChange={setIsCustomerModalOpen}
+                onCustomerSelect={(customer) => {
+                  handleCustomerSelect(customer)
+                }}
+                forceOpenCustomerModal={isCustomerModalOpen}
+              />
 
-          {/* Items area takes remaining space; inner table handles its own scroll */}
-          <div className="flex-1 flex flex-col">
-            <ItemsTable
-              onRemoveItem={removeItem}
-              selectedItemId={selectedItemId}
-              selectItem={handleItemSelect}
-              shouldStartEditing={shouldStartEditing}
-              onEditingStarted={() => setShouldStartEditing(false)}
-              onAddItemClick={() => setOpen(true)}
-              onSaveCompleted={saveCompleted}
-              isProductModalOpen={open}
-              isCustomerModalOpen={isCustomerModalOpen}
-              isErrorBoxFocused={isErrorBoxFocused}
-              onEditingStateChange={setIsItemTableEditing}
-              errorItems={insufficientStockErrors.map(error => error.itemCode).filter(Boolean)}
-            />
-            
-            {/* Fixed bottom: Discount/Summary section */}
-            <DiscountSection 
-              errors={insufficientStockErrors}
-              onCloseErrors={handleCloseInsufficientStockErrors}
-              onErrorBoxFocusChange={setIsErrorBoxFocused}
-              onFocusItem={handleFocusItem}
-              zatcaResponses={zatcaResponses}
-              onCloseZatcaResponses={handleCloseZatcaResponses}
-              onZatcaBoxFocusChange={setIsZatcaBoxFocused}
-            />
-          </div>
+              {/* Items area takes remaining space; inner table handles its own scroll */}
+              <div className="flex-1 flex flex-col">
+                <ItemsTable
+                  onRemoveItem={removeItem}
+                  selectedItemId={selectedItemId}
+                  selectItem={handleItemSelect}
+                  shouldStartEditing={shouldStartEditing}
+                  onEditingStarted={() => setShouldStartEditing(false)}
+                  onAddItemClick={() => setOpen(true)}
+                  onSaveCompleted={saveCompleted}
+                  isProductModalOpen={open}
+                  isCustomerModalOpen={isCustomerModalOpen}
+                  isErrorBoxFocused={isErrorBoxFocused}
+                  onEditingStateChange={setIsItemTableEditing}
+                  errorItems={insufficientStockErrors.map(error => error.itemCode).filter(Boolean)}
+                />
+                
+                {/* Fixed bottom: Discount/Summary section */}
+                <DiscountSection 
+                  errors={insufficientStockErrors}
+                  onCloseErrors={handleCloseInsufficientStockErrors}
+                  onErrorBoxFocusChange={setIsErrorBoxFocused}
+                  onFocusItem={handleFocusItem}
+                  zatcaResponses={zatcaResponses}
+                  onCloseZatcaResponses={handleCloseZatcaResponses}
+                  onZatcaBoxFocusChange={setIsZatcaBoxFocused}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 overflow-hidden">
+              <DynamicPickupInterface />
+            </div>
+          )}
         </div>
-        <RightPanel 
-          key={`${selectedCustomer?.name || 'no-customer'}-${selectedItemId || 'no-item'}`}
-          selectedItemId={selectedItemId} 
-          items={items} 
-          selectedCustomer={selectedCustomer}
-          activeTab={rightPanelTab}
-          onTabChange={(tab) => setRightPanelTab(tab as typeof rightPanelTab)}
-        />
+        {activeMode === 'sales' && (
+          <RightPanel 
+            key={`${selectedCustomer?.name || 'no-customer'}-${selectedItemId || 'no-item'}`}
+            selectedItemId={selectedItemId} 
+            items={items} 
+            selectedCustomer={selectedCustomer}
+            activeTab={rightPanelTab}
+            onTabChange={(tab) => setRightPanelTab(tab as typeof rightPanelTab)}
+          />
+        )}
       </div>
       <ProductSearchModal
         open={open}
