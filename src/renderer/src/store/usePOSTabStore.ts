@@ -296,13 +296,49 @@ export const usePOSTabStore = create<POSTabStore>()(
       },
 
       createNewTab: () => {
+        
         const state = get()
-        // Enforce limits: max 6 total, max 4 new tabs
-        if (state.tabs.length >= 6) {
-          toast.error('You can keep only up to 6 orders open at a time')
-          return false
+        // Helper to find and close a safe-to-close tab when limit is reached
+        const autoCloseSafeOrderTab = (): boolean => {
+           const currentState = get()
+           // Check FIFO (first found match starting from index 0)
+           const tabToClose = currentState.tabs.find(t => {
+             // 1. Status is NOT 'draft' (e.g. confirmed/paid) => Safe to close
+             if (t.status !== 'draft') return true
+             
+             // 2. OR isEdited is false => Safe to close
+             if (t.isEdited === false) return true
+             
+             return false
+           })
+
+           if (tabToClose) {
+             console.log('📋 [autoClose] Closing safe tab:', tabToClose.id, tabToClose.orderId)
+             // Use the stores closeTab action
+             get().closeTab(tabToClose.id)
+             return true
+           }
+           return false
         }
-        const existingNewCount = state.tabs.filter(t => t.type === 'new' && !t.orderId).length
+
+        // Enforce limits: max 6 total
+        if (state.tabs.length >= 6) {
+          // Attempt to auto-close a safe tab
+          const closed = autoCloseSafeOrderTab()
+          
+          if (!closed) {
+             // If we couldn't close any tab, then we strictly enforce the limit
+             toast.error('You can keep only up to 6 orders open at a time')
+             return false
+          }
+          // If closed is true, one tab was removed, so length is now 5. Proceed.
+        }
+        
+        // Re-fetch state after potential close operation to ensure accurate counts
+        const updatedState = get()
+        const existingNewCount = updatedState.tabs.filter(t => t.type === 'new' && !t.orderId).length
+
+        console.log('📋 [SHD] ==> existingNewCount:', existingNewCount)
         if (existingNewCount >= 4) {
           toast.error('You can open only up to 4 New orders')
           return false
