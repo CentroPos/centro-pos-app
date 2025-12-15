@@ -22,7 +22,7 @@ const POSInterface: React.FC = () => {
   const [saveCompleted, setSaveCompleted] = useState(0)
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false)
   const [isItemTableEditing, setIsItemTableEditing] = useState(false)
-  const [insufficientStockErrors, setInsufficientStockErrors] = useState<Array<{message: string, title: string, indicator: string, itemCode: string}>>([])
+  const [insufficientStockErrors, setInsufficientStockErrors] = useState<Array<{ message: string, title: string, indicator: string, itemCode: string }>>([])
   const [isErrorBoxFocused, setIsErrorBoxFocused] = useState(false)
   const [zatcaResponses, setZatcaResponses] = useState<Array<{
     invoice_no?: string
@@ -66,7 +66,7 @@ const POSInterface: React.FC = () => {
   const handleFocusItem = (itemCode: string, idx?: number) => {
     console.log('🎯 Focusing on item:', itemCode, 'idx:', idx)
     const items = getCurrentTabItems()
-    
+
     // Use idx (Sno) if available, otherwise fallback to item_code search
     // Note: idx from backend is 1-based (S.No), convert to 0-based array index
     let item
@@ -84,12 +84,12 @@ const POSInterface: React.FC = () => {
       }
       console.log('🔍 Found item by code:', item, 'arrayIndex:', arrayIndex)
     }
-    
+
     if (item) {
       setSelectedItemId(item.item_code) // Use item_code for consistency
       setRightPanelTab('product')
       console.log('✅ Selected item and switched to product tab')
-      
+
       // Find and scroll to the correct row using data-item-index
       setTimeout(() => {
         // First, find the table row using data-item-index (actual items array index)
@@ -98,17 +98,17 @@ const POSInterface: React.FC = () => {
           : `tr[data-item-code="${item.item_code}"]`
         const tableRow = document.querySelector(rowSelector) as HTMLElement
         console.log('🔍 Found table row:', tableRow, 'selector:', rowSelector)
-        
+
         if (tableRow) {
           // Scroll the row into view
           tableRow.scrollIntoView({ behavior: 'smooth', block: 'center' })
           console.log('📜 Scrolled to row')
-          
+
           // Click the row to select it (this will trigger setSelectedRowIndex internally)
           tableRow.click()
           console.log('🖱️ Clicked table row to select')
         }
-        
+
         // Then find and click the quantity cell
         setTimeout(() => {
           const quantityCellSelector = arrayIndex !== undefined && arrayIndex >= 0
@@ -119,7 +119,7 @@ const POSInterface: React.FC = () => {
           if (quantityCell) {
             quantityCell.click()
             console.log('🖱️ Clicked quantity cell')
-            
+
             // Wait a bit more for the input to appear, then focus it
             setTimeout(() => {
               // Look for the specific input with data attributes - use arrayIndex if available
@@ -168,7 +168,7 @@ const POSInterface: React.FC = () => {
 
   const items = getCurrentTabItems();
   // const currentTab = getCurrentTab(); // Unused
-  
+
   // Clear selected item when no active tab
   React.useEffect(() => {
     if (!activeTabId && selectedItemId) {
@@ -212,16 +212,16 @@ const POSInterface: React.FC = () => {
           params: {}
         })
         console.log('🧪 Direct API response:', response)
-        
+
         // If direct API call succeeds, use that data
         if (response?.data?.data) {
           console.log('✅ Using direct API data:', response.data.data)
           console.log('✅ Applicable users:', response.data.data.applicable_for_users)
           setProfile(response.data.data)
-          
+
           // Try to get user email from auth store or use the first user from API
           let userEmail = user?.email
-          
+
           // If no user email from auth store, or if we can't find a match, use the first user from API
           if (!userEmail || !response.data.data.applicable_for_users?.find(u => u.user === userEmail)) {
             if (response.data.data.applicable_for_users?.length > 0) {
@@ -231,7 +231,7 @@ const POSInterface: React.FC = () => {
           } else {
             console.log('✅ Found matching user email in auth store:', userEmail)
           }
-          
+
           if (userEmail) {
             console.log('✅ Setting privileges for user:', userEmail)
             console.log('✅ User object:', user)
@@ -245,7 +245,7 @@ const POSInterface: React.FC = () => {
         console.error('🧪 Direct API error:', error)
       }
     }
-    
+
     loadPOSProfile()
   }, [user?.email, setProfile, setCurrentUserPrivileges])
 
@@ -257,7 +257,7 @@ const POSInterface: React.FC = () => {
       userEmail: user?.email,
       hasData: !!posProfile?.data
     })
-    
+
     // usePosProfile now returns data directly (not nested in data.data.data)
     if (posProfile?.data) {
       console.log('✅ Setting POS profile data:', posProfile.data)
@@ -378,7 +378,7 @@ const POSInterface: React.FC = () => {
   //     newItemCode: items[newIndex]?.item_code,
   //     items: items.map(item => item.item_code)
   //   });
-    
+
   //   // Ensure we have a valid item at the new index
   //   if (items[newIndex]) {
   //     setSelectedItemId(items[newIndex].item_code);
@@ -392,7 +392,7 @@ const POSInterface: React.FC = () => {
       removeItem(selectedItemId);
     }
   }, { enableOnFormTags: false })
-  
+
   // Ctrl+S for save/update order
   useHotkeys('ctrl+s', (event) => {
     event.preventDefault()
@@ -404,7 +404,7 @@ const POSInterface: React.FC = () => {
       }
     }
   }, { enableOnFormTags: false })
-  
+
   // Ctrl+N for new order
   useHotkeys('ctrl+n', (event) => {
     event.preventDefault()
@@ -414,7 +414,7 @@ const POSInterface: React.FC = () => {
       setIsCustomerModalOpen(true)
     }
   }, { enableOnFormTags: false })
-  
+
   // Ctrl+R for return
   useHotkeys('ctrl+r', (event) => {
     event.preventDefault()
@@ -424,7 +424,7 @@ const POSInterface: React.FC = () => {
       returnButton.click()
     }
   }, { enableOnFormTags: false })
-  
+
   // Arrow keys are handled by the items table component, so we don't need global handlers here
   // Enter key is handled by the items table component, so we don't need a global handler here
   // Spacebar is handled by items-table component for UOM cycling
@@ -465,7 +465,7 @@ const POSInterface: React.FC = () => {
 
   return (
     <Fragment>
-      <div className="h-screen bg-gray-50 flex w-screen overflow-hidden scrollbar-hide">
+      <div className="h-full bg-gray-50 flex w-full overflow-hidden scrollbar-hide">
         <div className="flex-1 flex flex-col">
           <Header onNewOrder={() => {
             // Open customer selection immediately when a new order is created
@@ -474,18 +474,18 @@ const POSInterface: React.FC = () => {
           {/* <button onClick={() => setOpen(true)} className="m-4 p-2 bg-blue-500 text-white rounded">
             Open
           </button> */}
-        <ActionButtons
-          onNavigateToPrints={() => setRightPanelTab('prints')}
-          selectedPriceList={selectedPriceList}
-          onSaveCompleted={() => setSaveCompleted(prev => prev + 1)}
-          isItemTableEditing={isItemTableEditing}
-          onInsufficientStockErrors={setInsufficientStockErrors}
-          onFocusItem={handleFocusItem}
-          onZatcaResponses={setZatcaResponses}
-        />
+          <ActionButtons
+            onNavigateToPrints={() => setRightPanelTab('prints')}
+            selectedPriceList={selectedPriceList}
+            onSaveCompleted={() => setSaveCompleted(prev => prev + 1)}
+            isItemTableEditing={isItemTableEditing}
+            onInsufficientStockErrors={setInsufficientStockErrors}
+            onFocusItem={handleFocusItem}
+            onZatcaResponses={setZatcaResponses}
+          />
           {/* Fixed top: Order details */}
-          <OrderDetails 
-            onPriceListChange={setSelectedPriceList} 
+          <OrderDetails
+            onPriceListChange={setSelectedPriceList}
             onCustomerModalChange={setIsCustomerModalOpen}
             onCustomerSelect={(customer) => {
               handleCustomerSelect(customer)
@@ -509,9 +509,9 @@ const POSInterface: React.FC = () => {
               onEditingStateChange={setIsItemTableEditing}
               errorItems={insufficientStockErrors.map(error => error.itemCode).filter(Boolean)}
             />
-            
+
             {/* Fixed bottom: Discount/Summary section */}
-            <DiscountSection 
+            <DiscountSection
               errors={insufficientStockErrors}
               onCloseErrors={handleCloseInsufficientStockErrors}
               onErrorBoxFocusChange={setIsErrorBoxFocused}
@@ -522,10 +522,10 @@ const POSInterface: React.FC = () => {
             />
           </div>
         </div>
-        <RightPanel 
+        <RightPanel
           key={`${selectedCustomer?.name || 'no-customer'}-${selectedItemId || 'no-item'}`}
-          selectedItemId={selectedItemId} 
-          items={items} 
+          selectedItemId={selectedItemId}
+          items={items}
           selectedCustomer={selectedCustomer}
           activeTab={rightPanelTab}
           onTabChange={(tab) => setRightPanelTab(tab as typeof rightPanelTab)}
