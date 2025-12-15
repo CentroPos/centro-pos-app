@@ -129,7 +129,7 @@ const ProductSearch: React.FC<{
       })
 
       if (requestId !== latestRequestId.current) return
-      const rows = Array.isArray(res?.data?.message?.data) ? res.data.message.data : []
+      const rows = Array.isArray(res?.data?.data) ? res.data.data : []
       console.log('[ProductModal] Received', rows.length, 'rows (cumulative)')
       setHasMore(false)
       setPage(pageToLoad)
@@ -366,16 +366,16 @@ const ProductSearch: React.FC<{
                       <h4 className="font-medium text-sm leading-tight">{itemName}</h4>
                       <p
                         className={`text-xs mt-1 ${selectedIndex === index
-                            ? 'text-primary-foreground/80'
-                            : 'text-muted-foreground'
+                          ? 'text-primary-foreground/80'
+                          : 'text-muted-foreground'
                           }`}
                       >
                         {code}
                       </p>
                       <p
                         className={`text-[11px] mt-1 ${selectedIndex === index
-                            ? 'text-primary-foreground/80'
-                            : 'text-muted-foreground'
+                          ? 'text-primary-foreground/80'
+                          : 'text-muted-foreground'
                           }`}
                       >
                         On Hand: {Number(onHandQty || 0)} {defaultUom || primaryUOM.uom}
