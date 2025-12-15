@@ -16,7 +16,6 @@ export function ItemsTable({
   onToggleAll,
 }: ItemsTableProps) {
   const allSelected = items.length > 0 && items.every((item) => selectedItems.has(item.id));
-  const someSelected = items.some((item) => selectedItems.has(item.id));
 
   return (
     <div className="h-full overflow-auto">

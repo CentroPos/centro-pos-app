@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@renderer/components/ui/button';
 import { InvoiceItem, Picker, Warehouse } from '@renderer/types/picking';
 import { cn } from '@renderer/lib/utils';
-import { X, Printer, Play, Check, Clock } from 'lucide-react';
+import { Printer, Play, Check, Clock } from 'lucide-react';
 import {
   Table,
   TableBody,

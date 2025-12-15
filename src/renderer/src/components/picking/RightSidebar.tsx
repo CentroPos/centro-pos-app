@@ -15,7 +15,6 @@ interface RightSidebarProps {
   orderQueue: OrderQueueItem[];
   onSelectQueueOrder: (item: OrderQueueItem) => void;
   onRemoveQueueOrder: (id: string) => void;
-  onUpdateQueueOrder: (id: string, updates: Partial<OrderQueueItem>) => void;
   invoices?: Invoice[];
   onSelectInvoice?: (invoice: Invoice) => void;
 }
@@ -30,7 +29,6 @@ export function RightSidebar({
   orderQueue,
   onSelectQueueOrder,
   onRemoveQueueOrder,
-  onUpdateQueueOrder,
   invoices = [],
   onSelectInvoice,
 }: RightSidebarProps) {
@@ -254,7 +252,6 @@ export function RightSidebar({
             orderQueue={orderQueue}
             onSelectOrder={onSelectQueueOrder}
             onRemoveOrder={onRemoveQueueOrder}
-            onUpdateOrder={onUpdateQueueOrder}
           />
         )}
       </div>

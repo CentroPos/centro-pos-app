@@ -1,22 +1,19 @@
 import { useState } from 'react';
 import { cn } from '@renderer/lib/utils';
-import { OrderQueueItem, Invoice } from '@renderer/types/picking';
+import { OrderQueueItem } from '@renderer/types/picking';
 import { Search, Zap, Calendar, Clock, FileText, Trash2 } from 'lucide-react';
 import { Input } from '@renderer/components/ui/input';
-import { Button } from '@renderer/components/ui/button';
 
 interface OrderQueueTabProps {
   orderQueue: OrderQueueItem[];
   onSelectOrder: (item: OrderQueueItem) => void;
   onRemoveOrder: (id: string) => void;
-  onUpdateOrder: (id: string, updates: Partial<OrderQueueItem>) => void;
 }
 
 export function OrderQueueTab({
   orderQueue,
   onSelectOrder,
   onRemoveOrder,
-  onUpdateOrder,
 }: OrderQueueTabProps) {
   const [activeSubTab, setActiveSubTab] = useState<'instant' | 'scheduled'>('instant');
   const [searchQuery, setSearchQuery] = useState('');

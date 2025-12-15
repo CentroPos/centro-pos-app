@@ -34,7 +34,7 @@ const DynamicPickupInterface: React.FC = () => {
   const [rightSidebarTab, setRightSidebarTab] = useState<'details' | 'sales' | 'queue'>('details');
   const [orderQueue, setOrderQueue] = useState<OrderQueueItem[]>([]);
   const [pickSlips, setPickSlips] = useState<PickSlip[]>([]);
-  const [warehouseOperations, setWarehouseOperations] = useState<WarehouseOperation[]>([]);
+  const [warehouseOperations] = useState<WarehouseOperation[]>([]);
 
   const activeTab = activeTabIndex !== null ? invoiceTabs[activeTabIndex] : null;
 
@@ -137,7 +137,7 @@ const DynamicPickupInterface: React.FC = () => {
   };
 
   const handleToggleItem = (itemId: string) => {
-    if (activeTabIndex === null) return;
+    if (activeTabIndex === null || !activeTab) return;
     const newSelectedItems = new Set(activeTab.selectedItems);
     if (newSelectedItems.has(itemId)) {
       newSelectedItems.delete(itemId);
@@ -148,7 +148,7 @@ const DynamicPickupInterface: React.FC = () => {
   };
 
   const handleToggleAll = () => {
-    if (activeTabIndex === null) return;
+    if (activeTabIndex === null || !activeTab) return;
     const filteredItems = getFilteredItems();
     const allSelected = filteredItems.every((item) => activeTab.selectedItems.has(item.id));
     const newSelectedItems = new Set<string>();
@@ -356,7 +356,6 @@ const DynamicPickupInterface: React.FC = () => {
           orderQueue={orderQueue}
           onSelectQueueOrder={(item) => handleSelectInvoice(item.invoice)}
           onRemoveQueueOrder={(id) => setOrderQueue(orderQueue.filter((q) => q.id !== id))}
-          onUpdateQueueOrder={() => {}}
           invoices={invoices}
           onSelectInvoice={handleSelectInvoiceFromModal}
         />
