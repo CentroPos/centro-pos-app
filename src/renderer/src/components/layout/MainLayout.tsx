@@ -1,6 +1,6 @@
 import React from 'react'
 import { Link, useLocation } from '@tanstack/react-router'
-import { ShoppingCart, Package, ShoppingBag } from 'lucide-react'
+import { ShoppingCart, Package, Barcode } from 'lucide-react'
 import { cn } from '@renderer/lib/utils'
 import ProfileDropdown from '@renderer/components/common/ProfileDropdown'
 import Clock from '@renderer/components/common/Clock'
@@ -29,8 +29,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         },
         {
             id: 'purchase',
-            label: 'Purchase',
-            icon: ShoppingBag,
+            label: 'Picker Feedback',
+            icon: Barcode,
             path: '/purchase',
             activeMatcher: (path: string) => path.startsWith('/purchase')
         }
@@ -44,7 +44,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                     <div className="h-8 w-8 bg-primary rounded-md flex items-center justify-center text-primary-foreground font-bold text-lg">
                         C
                     </div>
-                    <span className="font-bold text-lg">CentroPOS</span>
+                    <span className="font-bold text-lg">CentroERP</span>
                 </div>
 
                 <nav className="flex items-center gap-2">

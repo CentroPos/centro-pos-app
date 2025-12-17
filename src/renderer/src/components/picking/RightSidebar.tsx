@@ -1,9 +1,7 @@
 import { WarehouseOperation, PickSlip, OrderQueueItem, Invoice } from '@renderer/types/picking';
 import { cn } from '@renderer/lib/utils';
 import { OrderQueueTab } from './OrderQueueTab';
-import { FileText, Search } from 'lucide-react';
-import { useState } from 'react';
-import { Input } from '@renderer/components/ui/input';
+import { SalesTab } from './SalesTab';
 
 interface RightSidebarProps {
     activeTab: 'details' | 'sales' | 'queue';
@@ -32,21 +30,6 @@ export function RightSidebar({
     invoices = [],
     onSelectInvoice,
 }: RightSidebarProps) {
-    const [salesSearchQuery, setSalesSearchQuery] = useState('');
-
-    const getStatusClass = (status: PickSlip['status']) => {
-        switch (status) {
-            case 'not-started':
-                return 'bg-red-100 text-red-700';
-            case 'in-progress':
-                return 'bg-yellow-100 text-yellow-700';
-            case 'picked':
-                return 'bg-green-100 text-green-700';
-            default:
-                return 'bg-gray-100 text-gray-700';
-        }
-    };
-
     const getStatusLabel = (status: PickSlip['status']) => {
         switch (status) {
             case 'not-started':
@@ -61,14 +44,9 @@ export function RightSidebar({
     };
 
     const hasPickSlips = pickSlips.length > 0;
-    const filteredInvoices = invoices.filter(
-        (inv) =>
-            inv.invoiceNo.toLowerCase().includes(salesSearchQuery.toLowerCase()) ||
-            inv.customerName.toLowerCase().includes(salesSearchQuery.toLowerCase())
-    );
 
     return (
-        <div className="w-96 border-l border-border bg-card flex flex-col flex-shrink-0 h-full">
+        <div className="w-[450px] border-l border-border bg-card flex flex-col flex-shrink-0 h-full">
             <div className="flex border-b border-border flex-shrink-0">
                 <button
                     onClick={() => onTabChange('details')}
@@ -165,29 +143,127 @@ export function RightSidebar({
                         <div>
                             <h3 className="font-semibold text-foreground mb-3">Picking Slips</h3>
                             <div className="space-y-2">
-                                {pickSlips.map((slip) => (
-                                    <div
-                                        key={slip.id}
-                                        onClick={() => onPickSlipClick?.(slip)}
-                                        className="p-3 border border-border rounded-lg bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors"
-                                    >
-                                        <div className="flex items-start justify-between gap-2">
-                                            <div>
-                                                <p className="font-medium text-foreground">{slip.slipNo}</p>
-                                                <p className="text-xs text-muted-foreground">
-                                                    {slip.items.length} Items
-                                                </p>
+                                {pickSlips.map((originalSlip, index) => {
+                                    // --- DUMMY CODE FOR UI TESTING ---
+                                    const slip = { ...originalSlip };
+                                    if (index === 0) {
+                                        slip.status = 'not-started';
+                                        slip.assignedBy = 'System Admin';
+                                        slip.assignedOn = new Date();
+                                    } else if (index === 1) {
+                                        slip.status = 'in-progress';
+                                        slip.startTime = new Date(new Date().getTime() - 15 * 60000); // Started 15 mins ago
+                                    } else if (index === 2) {
+                                        slip.status = 'picked';
+                                        slip.endTime = new Date();
+                                        slip.durationMinutes = 12;
+                                    }
+                                    // ----------------------------------
+
+                                    /* Helper to format date: DD/MM/YYYY hh:mm AM/PM */
+                                    const formatDateTime = (date?: Date) => {
+                                        if (!date) return { date: '-', time: '-' };
+                                        const d = new Date(date);
+                                        const dateStr = d.toLocaleDateString('en-GB'); // DD/MM/YYYY
+                                        const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true });
+                                        return { date: dateStr, time: timeStr };
+                                    };
+
+                                    const isDraft = slip.status === 'not-started';
+                                    const isStarted = slip.status === 'in-progress';
+                                    const isPicked = slip.status === 'picked' || slip.status === 'Completed';
+
+                                    // Determine background color based on status
+                                    let statusBg = 'bg-gray-100 border-gray-200';
+                                    if (isDraft) statusBg = 'bg-red-50 border-red-100 hover:bg-red-100/50';
+                                    if (isStarted) statusBg = 'bg-orange-50 border-orange-100 hover:bg-orange-100/50';
+                                    if (isPicked) statusBg = 'bg-green-50 border-green-100 hover:bg-green-100/50';
+
+                                    /* Status Badge Colors */
+                                    const badgeClass = cn(
+                                        "px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide mb-1 inline-block text-center w-full",
+                                        isDraft && "bg-red-100 text-red-700",
+                                        isStarted && "bg-orange-100 text-orange-700",
+                                        isPicked && "bg-green-100 text-green-700"
+                                    );
+
+                                    return (
+                                        <div
+                                            key={slip.id}
+                                            onClick={() => onPickSlipClick?.(slip)}
+                                            className={cn(
+                                                "p-3 border rounded-lg cursor-pointer transition-all group",
+                                                statusBg
+                                            )}
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                {/* Left Side: Info */}
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-baseline justify-between mb-1">
+                                                        <p className="font-bold text-foreground text-sm">{slip.slipNo}</p>
+                                                    </div>
+
+                                                    <div className="text-xs text-muted-foreground space-y-1.5 mt-0.5">
+                                                        <p className="font-medium text-foreground truncate">{slip.warehouseName}</p>
+                                                        <div className="flex flex-wrap gap-1.5">
+                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 font-semibold border-b-2">
+                                                                {slip.pickerName}
+                                                            </span>
+                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 font-semibold border-b-2">
+                                                                {slip.items.length} Items
+                                                            </span>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Draft Info */}
+                                                    {isDraft && slip.assignedBy && (
+                                                        <div className="mt-2 pt-2 border-t border-red-100/50 text-[10px] text-red-600/80 truncate">
+                                                            Assigned by {slip.assignedBy} on {slip.assignedOn ? (() => {
+                                                                const { date, time } = formatDateTime(slip.assignedOn);
+                                                                return `${date} ${time}`;
+                                                            })() : ''}
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Right Side: Status & Time */}
+                                                <div className="flex flex-col items-end shrink-0 w-24">
+                                                    <span className={badgeClass}>
+                                                        {getStatusLabel(slip.status)}
+                                                    </span>
+
+                                                    <div className="text-right space-y-0.5 pr-1">
+
+                                                        {isStarted && slip.startTime && (() => {
+                                                            const { date, time } = formatDateTime(slip.startTime);
+                                                            return (
+                                                                <>
+                                                                    <p className="text-[11px] font-medium text-foreground">{date}</p>
+                                                                    <p className="text-[11px] text-muted-foreground">{time}</p>
+                                                                </>
+                                                            );
+                                                        })()}
+
+                                                        {isPicked && slip.endTime && (() => {
+                                                            const { date, time } = formatDateTime(slip.endTime);
+                                                            return (
+                                                                <>
+                                                                    <p className="text-[11px] font-medium text-foreground">{date}</p>
+                                                                    <p className="text-[11px] text-muted-foreground">{time}</p>
+                                                                    {slip.durationMinutes !== undefined && (
+                                                                        <p className="text-xs font-bold text-green-700 mt-1">
+                                                                            {slip.durationMinutes} Min
+                                                                        </p>
+                                                                    )}
+                                                                </>
+                                                            );
+                                                        })()}
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <span className={cn('px-2 py-1 rounded-full text-xs', getStatusClass(slip.status))}>
-                                                {getStatusLabel(slip.status)}
-                                                {slip.durationMinutes && ` · ${slip.durationMinutes} Min`}
-                                            </span>
                                         </div>
-                                        <div className="mt-2 text-xs text-muted-foreground">
-                                            {slip.warehouseName} · {slip.pickerName}
-                                        </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                                 {pickSlips.length === 0 && (
                                     <div className="p-4 text-center text-muted-foreground text-sm border border-dashed border-border rounded-lg">
                                         No pick slips created yet
@@ -199,52 +275,7 @@ export function RightSidebar({
                 )}
 
                 {activeTab === 'sales' && (
-                    <div className="p-4 space-y-4">
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                            <Input
-                                placeholder="Search invoice..."
-                                value={salesSearchQuery}
-                                onChange={(e) => setSalesSearchQuery(e.target.value)}
-                                className="pl-10 border-gray-200 focus:border-blue-500"
-                            />
-                        </div>
-
-                        <div className="space-y-2">
-                            {filteredInvoices.map((invoice) => (
-                                <button
-                                    key={invoice.id}
-                                    onClick={() => onSelectInvoice?.(invoice)}
-                                    className="w-full p-3 text-left bg-white border border-gray-200 rounded-lg hover:shadow-sm transition-all group"
-                                >
-                                    <div className="flex items-start gap-3">
-                                        <div className="w-10 h-10 rounded-lg bg-green-50 border border-green-200 flex items-center justify-center shrink-0">
-                                            <FileText className="w-5 h-5 text-green-600" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center justify-between gap-2">
-                                                <p className="font-bold text-gray-900 text-sm">{invoice.invoiceNo}</p>
-                                                <span className="text-sm font-semibold text-blue-400">
-                                                    {invoice.totalAmount.toLocaleString()} {invoice.currency}
-                                                </span>
-                                            </div>
-                                            <p className="text-xs text-gray-600 mt-1">
-                                                {invoice.customerName}
-                                            </p>
-                                            <p className="text-xs text-gray-500 mt-0.5">
-                                                {invoice.items.length} items
-                                            </p>
-                                        </div>
-                                    </div>
-                                </button>
-                            ))}
-                            {filteredInvoices.length === 0 && (
-                                <div className="py-8 text-center text-gray-500 text-sm">
-                                    No invoices found
-                                </div>
-                            )}
-                        </div>
-                    </div>
+                    <SalesTab onSelectInvoice={onSelectInvoice} />
                 )}
 
                 {activeTab === 'queue' && (

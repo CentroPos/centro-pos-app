@@ -1,6 +1,7 @@
+import { useState, useMemo } from 'react';
 import { InvoiceItem } from '@renderer/types/picking';
 import { Checkbox } from '@renderer/components/ui/checkbox';
-import { Package } from 'lucide-react';
+import { Package, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 
 interface ItemsTableProps {
     items: InvoiceItem[];
@@ -9,13 +10,38 @@ interface ItemsTableProps {
     onToggleAll: () => void;
 }
 
+type SortDirection = 'asc' | 'desc' | 'none';
+
 export function ItemsTable({
     items,
     selectedItems,
     onToggleItem,
     onToggleAll,
 }: ItemsTableProps) {
-    const allSelected = items.length > 0 && items.every((item) => selectedItems.has(item.id));
+    const [sortDirection, setSortDirection] = useState<SortDirection>('none');
+
+    const unassignedItems = items.filter(item => !item.isAssigned);
+    const allSelected = unassignedItems.length > 0 && unassignedItems.every((item) => selectedItems.has(item.id));
+
+    const handleSort = () => {
+        setSortDirection(prev => {
+            if (prev === 'none') return 'desc';
+            if (prev === 'desc') return 'asc';
+            return 'none';
+        });
+    };
+
+    const sortedItems = useMemo(() => {
+        if (sortDirection === 'none') return items;
+
+        return [...items].sort((a, b) => {
+            if (sortDirection === 'asc') {
+                return a.quantity - b.quantity;
+            } else {
+                return b.quantity - a.quantity;
+            }
+        });
+    }, [items, sortDirection]);
 
     return (
         <div className="h-full overflow-auto">
@@ -27,36 +53,45 @@ export function ItemsTable({
                                 checked={allSelected}
                                 onCheckedChange={onToggleAll}
                                 className="h-4 w-4"
+                                disabled={unassignedItems.length === 0}
                             />
                         </th>
-                        <th className="p-3 pl-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider w-16">
+                        <th className="p-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider w-16">
                             Sl No
                         </th>
-                        <th className="p-3 pl-10 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        <th className="p-3 pl-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                             Item
                         </th>
-                        <th className="p-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        <th className="p-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                             Category
                         </th>
-                        <th className="p-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        <th className="p-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                             UOM
                         </th>
-                        <th className="p-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                            Quantity
+                        <th
+                            className="p-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider cursor-pointer hover:bg-muted-foreground/5 transition-colors select-none"
+                            onClick={handleSort}
+                        >
+                            <div className="flex items-center justify-center gap-1 text-center text-xs font-semibold text-muted-foreground uppercase">
+                                Quantity
+                                {sortDirection === 'none' && <ArrowUpDown className="w-3 h-3 text-muted-foreground/50" />}
+                                {sortDirection === 'asc' && <ArrowUp className="w-3 h-3 text-muted-foreground/90 font-bold" />}
+                                {sortDirection === 'desc' && <ArrowDown className="w-3 h-3 text-muted-foreground/90 font-bold" />}
+                            </div>
                         </th>
-                        <th className="p-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        <th className="p-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                             Packing No
                         </th>
                     </tr>
                 </thead>
                 <tbody>
-                    {items.map((item) => (
+                    {sortedItems.map((item) => (
                         <tr
                             key={item.id}
                             className={`border-b border-border transition-colors ${selectedItems.has(item.id)
                                 ? 'bg-primary/10'
                                 : item.isAssigned
-                                    ? 'bg-green-50'
+                                    ? 'bg-green-100'
                                     : 'hover:bg-muted/50'
                                 }`}
                         >
@@ -68,7 +103,7 @@ export function ItemsTable({
                                     className="h-4 w-4"
                                 />
                             </td>
-                            <td className="p-3 font-medium text-muted-foreground text-sm">{item.slNo}</td>
+                            <td className="p-3 font-medium text-muted-foreground text-sm text-center">{item.slNo}</td>
                             <td className="p-3">
                                 <div className="flex items-center gap-2">
                                     <div className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center">
@@ -80,17 +115,17 @@ export function ItemsTable({
                                     </div>
                                 </div>
                             </td>
-                            <td className="p-3">
-                                <span className="px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground text-xs">
+                            <td className="p-3 text-center">
+                                <span className="inline-block px-3 py-1 rounded-md border bg-white border-gray-200 text-xs font-bold text-gray-700 shadow-sm whitespace-nowrap">
                                     {item.category}
                                 </span>
                             </td>
-                            <td className="p-3 text-muted-foreground text-sm">{item.uom}</td>
-                            <td className="p-3 font-semibold tabular-nums text-sm">{item.quantity.toFixed(2)}</td>
-                            <td className="p-3 text-muted-foreground text-sm">{item.packingNo}</td>
+                            <td className="p-3 text-muted-foreground text-sm text-center">{item.uom}</td>
+                            <td className="p-3 font-semibold tabular-nums text-sm text-center">{item.quantity.toFixed(2)}</td>
+                            <td className="p-3 text-muted-foreground text-sm text-center">{item.packingNo}</td>
                         </tr>
                     ))}
-                    {items.length === 0 && (
+                    {sortedItems.length === 0 && (
                         <tr>
                             <td colSpan={7} className="p-8 text-center text-muted-foreground text-sm">
                                 No items to display
