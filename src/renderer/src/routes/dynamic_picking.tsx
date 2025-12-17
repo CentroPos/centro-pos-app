@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Invoice, InvoiceItem, PickSlip, WarehouseOperation, OrderQueueItem } from '@renderer/types/picking';
+import { Invoice, InvoiceItem, PickSlip, ScheduleDetails, WarehouseDetails } from '@renderer/types/picking';
 import { InvoiceHeader } from '@renderer/components/picking/InvoiceHeader';
-// import { InvoiceHeader } from '../picking/InvoiceHeader';
 import { CategoryTabs } from '@renderer/components/picking/CategoryTabs';
 import { ItemsTable } from '@renderer/components/picking/ItemsTable';
 import { RightSidebar } from '@renderer/components/picking/RightSidebar';
@@ -9,60 +8,218 @@ import { OpenInvoiceModal } from '@renderer/components/picking/OpenInvoiceModal'
 import { AssignPickSlipModal } from '@renderer/components/picking/AssignPickSlipModal';
 import { OrderScheduleModal } from '@renderer/components/picking/OrderScheduleModal';
 import { Button } from '@renderer/components/ui/button';
-import { FileText, Plus } from 'lucide-react';
-import { mockInvoices, mockPickers, mockWarehouses } from '@renderer/data/mockPickingData';
+import { Plus, FileText } from 'lucide-react';
+import { toast } from 'sonner';
+import { usePickingStore } from '@renderer/store/usePickingStore';
 
-interface InvoiceTab {
-    invoice: Invoice;
-    items: InvoiceItem[];
+interface LocalTabState {
     selectedItems: Set<string>;
-    pickSlips: PickSlip[];
-    operations: WarehouseOperation[];
     activeFilter: 'all' | 'unassigned' | 'assigned';
     activeCategory: string;
+    searchQuery: string;
 }
 
-const MAX_TABS = 5;
-
 const DynamicPickupInterface: React.FC = () => {
-    const [invoices] = useState<Invoice[]>(mockInvoices);
-    const [invoiceTabs, setInvoiceTabs] = useState<InvoiceTab[]>([]);
-    const [activeTabIndex, setActiveTabIndex] = useState<number | null>(null);
+    // Global State
+    const {
+        tabs,
+        activeTabId,
+        invoices,
+        warehouses,
+
+        openInvoiceTab,
+        closeInvoiceTab,
+        setActiveTab,
+        fetchInvoices,
+        fetchGeneralInfo
+    } = usePickingStore();
+
+    console.log('SHD ==>', usePickingStore());
+
+    // Local UI State
     const [isOpenInvoiceModalOpen, setIsOpenInvoiceModalOpen] = useState(false);
     const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
     const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
     const [pendingInvoice, setPendingInvoice] = useState<Invoice | null>(null);
     const [rightSidebarTab, setRightSidebarTab] = useState<'details' | 'sales' | 'queue'>('details');
-    const [orderQueue, setOrderQueue] = useState<OrderQueueItem[]>([]);
-    const [pickSlips, setPickSlips] = useState<PickSlip[]>([]);
-    const [warehouseOperations] = useState<WarehouseOperation[]>([]);
 
-    const activeTab = activeTabIndex !== null ? invoiceTabs[activeTabIndex] : null;
+    // Manage per-tab UI state (selection, filters) locally
+    const [tabStates, setTabStates] = useState<Record<string, LocalTabState>>({});
 
-    // Switch to Queue tab when queue has items
+
+    // Helper to get current tab state or default
+    const getTabState = (invoiceId: string): LocalTabState => {
+        return tabStates[invoiceId] || {
+            selectedItems: new Set(),
+            activeFilter: 'all',
+            activeCategory: 'All Items',
+            searchQuery: ''
+        };
+    };
+
+    const updateLocalTabState = (invoiceId: string, updates: Partial<LocalTabState>) => {
+        setTabStates(prev => ({
+            ...prev,
+            [invoiceId]: { ...getTabState(invoiceId), ...updates }
+        }));
+    };
+
+    // Derived State
+    const activeTabIndex = useMemo(() => tabs.findIndex(t => t.invoice.id === activeTabId), [tabs, activeTabId]);
+    const activeTab = activeTabIndex !== -1 ? tabs[activeTabIndex] : null;
+
+    // Initial fetch
     useEffect(() => {
-        if (orderQueue.length > 0) {
-            setRightSidebarTab('queue');
-        }
-    }, [orderQueue.length]);
+        fetchInvoices();
+        fetchGeneralInfo();
+    }, []);
 
-    const handleSelectInvoiceFromModal = (invoice: Invoice) => {
+    // Switch to Queue tab when queue has items (only if it wasn't empty before - optimization to avoid annoying jumps could be added, but keeping logic same as before)
+    // Removed queue effect as queue is being removed from store
+    // useEffect(() => { ... }, [orderQueue.length]);
+
+    const fetchInvoiceDetails = async (invoice: Invoice) => {
+        try {
+            const res = await window.electronAPI?.proxy?.request({
+                url: '/api/method/centro_pos_apis.api.picking.get_dynamic_pick_details',
+                params: {
+                    invoice_no: invoice.invoiceNo
+                }
+            });
+
+            const data = res?.data?.data;
+            if (!data) return;
+
+            const invoiceData = data.invoices || {};
+            const rawItems = invoiceData.items || [];
+
+            // Map Items
+            const mappedItems: InvoiceItem[] = rawItems.map((item: any, index: number) => ({
+                id: item.item_code || `item-${index}`,
+                slNo: item.serial_no || index + 1,
+                itemName: item.item_name,
+                itemCode: item.item_code,
+                itemPartNo: item.item_part_no,
+                category: item.item_category || 'General',
+                uom: item.uom,
+                quantity: item.quantity,
+                packingNo: item.picking_no || '-',
+                isAssigned: !!item.picking_no, // Basic check, might be updated by pick slips logic
+                status: item.picking_no ? 'assigned' : 'pending',
+                pickSlipId: item.picking_no,
+                onHand: 0,
+                inProcessQty: 0,
+                assignedTo: '' // Will be filled from pick slips
+            })).filter(item => {
+                // Filter out specific unwanted test data as requested
+                if (item.itemName.includes('Samsung') && item.itemCode === 'item-00002') return false;
+                // Filter out items without valid quantity if needed, but sticking to specific request for now
+                return true;
+            });
+
+            // Map Pick Slips
+            const pickSlips: PickSlip[] = (data.pickings || []).map((p: any) => ({
+                id: p.picking_no,
+                slipNo: p.picking_no,
+                invoiceId: invoice.id,
+                warehouseId: '', // Not provided directly in pick object, usually inferred or from data.warehouse?
+                warehouseName: p.warehouse,
+                pickerId: '', // p.assigned_to is name? or ID? Assuming name for now or we match with pickers list
+                pickerName: p.assigned_to,
+                items: (p.items || []).map((pi: any) => ({
+                    ...mappedItems.find(mi => mi.itemCode === pi.item_code) || {},
+                    quantity: pi.quantity
+                } as InvoiceItem)),
+                status: p.status, // "Draft", etc.
+                startTime: p.start_date_time ? new Date(p.start_date_time) : undefined,
+                endTime: p.end_date_time ? new Date(p.end_date_time) : undefined,
+                print_url: p.picking_slip_url,
+                assignedBy: p.assigned_by,
+                assignedOn: p.assigned_on ? new Date(p.assigned_on) : undefined
+            }));
+
+            // Map Schedule
+            const schedule: ScheduleDetails | undefined = data.schedule ? {
+                type: data.schedule.type,
+                dateTime: data.schedule.date_time ? new Date(data.schedule.date_time) : undefined,
+                note: data.schedule.note,
+                scheduledBy: data.schedule.scheduled_by,
+                scheduledOn: data.schedule.scheduled_on ? new Date(data.schedule.scheduled_on) : undefined,
+                modifiedBy: data.schedule.modified_by,
+                modifiedOn: data.schedule.modified_on ? new Date(data.schedule.modified_on) : undefined
+            } : undefined;
+
+            // Map Warehouse Details
+            const warehouseDetails: WarehouseDetails | undefined = data.warehouse ? {
+                deliveryWarehouse: data.warehouse.delivery_warehouse,
+                assignedBy: data.warehouse.assigned_by,
+                assignedOn: data.warehouse.assigned_on ? new Date(data.warehouse.assigned_on) : new Date(),
+                modifiedBy: data.warehouse.modified_by,
+                modifiedOn: data.warehouse.modified_on ? new Date(data.warehouse.modified_on) : new Date(),
+                operations: (data.warehouse.operations || []).map((op: any) => ({
+                    warehouseId: '', // Not in response? Using name as ID
+                    warehouseName: op.warehouse,
+                    type: op.customer_pickup ? 'pickup' : 'transfer', // inferred
+                    status: op.status,
+                    pickSlips: op.pick_slips || [],
+                    isCustomerPickup: op.customer_pickup
+                }))
+            } : undefined;
+
+            // Updated items assignment status from pick slips
+            // (If an item is in a pick slip, it's assigned)
+            pickSlips.forEach(slip => {
+                slip.items.forEach(pi => {
+                    const item = mappedItems.find(i => i.itemCode === pi.itemCode);
+                    if (item) {
+                        item.isAssigned = true;
+                        item.status = 'assigned';
+                        item.assignedTo = slip.pickerName;
+                        item.pickSlipId = slip.id;
+                    }
+                });
+            });
+
+            const operations = warehouseDetails?.operations || [];
+
+            openInvoiceTab({
+                ...invoice,
+                customerName: invoiceData.customer_name || invoice.customerName,
+                totalAmount: invoiceData.total_amount || invoice.totalAmount
+            }, {
+                items: mappedItems,
+                pickSlips,
+                operations,
+                schedule,
+                warehouseDetails
+            });
+
+        } catch (e) {
+            console.error("Failed to fetch invoice details", e);
+            toast.error("Failed to load invoice details");
+        }
+    };
+
+    const handleSelectInvoiceFromModal = async (invoice: Invoice) => {
         // Check if invoice is already open
-        const existingTab = invoiceTabs.find((tab) => tab.invoice.id === invoice.id);
+        const existingTab = tabs.find((tab) => tab.invoice.id === invoice.id);
         if (existingTab) {
-            const index = invoiceTabs.findIndex((tab) => tab.invoice.id === invoice.id);
-            setActiveTabIndex(index);
+            setActiveTab(invoice.id);
             setIsOpenInvoiceModalOpen(false);
             return;
         }
 
-        // Show schedule modal first
-        setPendingInvoice(invoice);
-        setIsOpenInvoiceModalOpen(false);
-        setIsScheduleModalOpen(true);
+        if (!invoice.scheduleId) {
+            setPendingInvoice(invoice);
+            setIsScheduleModalOpen(true);
+            setIsOpenInvoiceModalOpen(false);
+        } else {
+            await fetchInvoiceDetails(invoice);
+            setIsOpenInvoiceModalOpen(false);
+        }
     };
 
-    const handleScheduleConfirm = (
+    const handleScheduleConfirm = async (
         scheduleType: 'instant' | 'scheduled',
         scheduledDate?: Date,
         scheduledTime?: string,
@@ -70,144 +227,203 @@ const DynamicPickupInterface: React.FC = () => {
     ) => {
         if (!pendingInvoice) return;
 
-        // Create queue item
-        const queueItem: OrderQueueItem = {
-            id: `queue-${Date.now()}`,
-            invoice: pendingInvoice,
-            scheduleType,
-            scheduledDate,
-            scheduledTime,
-            note,
-            createdAt: new Date(),
-            priority: scheduleType === 'instant'
-                ? orderQueue.filter((q) => q.scheduleType === 'instant').length + 1
-                : orderQueue.filter((q) => q.scheduleType === 'scheduled').length + 1000,
-        };
+        let dateTimeStr = "";
+        if (scheduleType === 'scheduled' && scheduledDate && scheduledTime) {
+            // Convert 12h time to 24h
+            const [time, modifier] = scheduledTime.split(' ');
+            let [hours, minutes] = time.split(':');
 
-        setOrderQueue([...orderQueue, queueItem]);
+            if (hours === '12') {
+                hours = '00';
+            }
+            if (modifier === 'PM') {
+                hours = (parseInt(hours, 10) + 12).toString();
+            }
 
-        // Open the invoice for picking
-        handleSelectInvoice(pendingInvoice);
-        setPendingInvoice(null);
-        setIsScheduleModalOpen(false);
-    };
+            const year = scheduledDate.getFullYear();
+            const month = String(scheduledDate.getMonth() + 1).padStart(2, '0');
+            const day = String(scheduledDate.getDate()).padStart(2, '0');
 
-    const handleSelectInvoice = (invoice: Invoice) => {
-        // Check if invoice is already open
-        const existingTab = invoiceTabs.find((tab) => tab.invoice.id === invoice.id);
-        if (existingTab) {
-            const index = invoiceTabs.findIndex((tab) => tab.invoice.id === invoice.id);
-            setActiveTabIndex(index);
-            return;
+            dateTimeStr = `${year}-${month}-${day} ${hours.padStart(2, '0')}:${minutes}:00`;
         }
 
-        if (invoiceTabs.length >= MAX_TABS) {
-            alert(`Maximum ${MAX_TABS} tabs allowed`);
-            return;
-        }
+        try {
+            await window.electronAPI?.proxy?.request({
+                url: '/api/method/centro_pos_apis.api.picking.assign_schedule',
+                method: 'POST',
+                data: {
+                    invoice_no: pendingInvoice.invoiceNo,
+                    type: scheduleType,
+                    date_time: dateTimeStr,
+                    note: note
+                }
+            });
 
-        const newTab: InvoiceTab = {
-            invoice,
-            items: [...invoice.items],
-            selectedItems: new Set<string>(),
-            pickSlips: [],
-            operations: [],
-            activeFilter: 'unassigned',
-            activeCategory: 'All',
-        };
+            toast.success(scheduleType === 'instant' ? 'Order Processed Successfully' : 'Order Scheduled Successfully');
 
-        setInvoiceTabs([...invoiceTabs, newTab]);
-        setActiveTabIndex(invoiceTabs.length);
-    };
+            setPendingInvoice(null);
+            setIsScheduleModalOpen(false);
 
-    const handleCloseTab = (index: number) => {
-        const newTabs = invoiceTabs.filter((_, i) => i !== index);
-        setInvoiceTabs(newTabs);
-        if (activeTabIndex === index) {
-            setActiveTabIndex(newTabs.length > 0 ? Math.min(index, newTabs.length - 1) : null);
-        } else if (activeTabIndex !== null && activeTabIndex > index) {
-            setActiveTabIndex(activeTabIndex - 1);
+            // Add to queue via store (removed as per request)
+            // addToQueue(...) -> API already handled it? 
+            // The user said "addToQueue => there is a specific api for list queues... so through add to queue using api no need to queue here"
+            // We already called the API above (assign_schedule). So we just refresh via fetchInvoiceDetails?
+            // Actually, fetchInvoiceDetails loads the invoice. If it's in queue, maybe we should refresh the queue list?
+            // But we don't have a queue list API call exposed here yet (it was in store). 
+            // For now, we assume the side effect is handled.
+
+            // Fetch details and open tab
+            await fetchInvoiceDetails(pendingInvoice);
+
+        } catch (e) {
+            console.error("Failed to schedule order", e);
+            toast.error("Failed to schedule order");
         }
     };
 
-    const updateActiveTab = (updates: Partial<InvoiceTab>) => {
-        if (activeTabIndex === null) return;
-        const newTabs = [...invoiceTabs];
-        newTabs[activeTabIndex] = { ...newTabs[activeTabIndex], ...updates };
-        setInvoiceTabs(newTabs);
+
+
+    const handleCloseTab = (invoiceId: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        closeInvoiceTab(invoiceId);
     };
 
     const handleToggleItem = (itemId: string) => {
-        if (activeTabIndex === null || !activeTab) return;
-        const newSelectedItems = new Set(activeTab.selectedItems);
+        if (!activeTab) return;
+        const currentState = getTabState(activeTab.invoice.id);
+        const newSelectedItems = new Set(currentState.selectedItems);
+
         if (newSelectedItems.has(itemId)) {
             newSelectedItems.delete(itemId);
         } else {
             newSelectedItems.add(itemId);
         }
-        updateActiveTab({ selectedItems: newSelectedItems });
+        updateLocalTabState(activeTab.invoice.id, { selectedItems: newSelectedItems });
     };
 
     const handleToggleAll = () => {
-        if (activeTabIndex === null || !activeTab) return;
+        if (!activeTab) return;
+        const currentState = getTabState(activeTab.invoice.id);
         const filteredItems = getFilteredItems();
-        const allSelected = filteredItems.every((item) => activeTab.selectedItems.has(item.id));
-        const newSelectedItems = new Set<string>();
-        if (!allSelected) {
-            filteredItems.forEach((item) => {
-                if (!item.isAssigned) {
-                    newSelectedItems.add(item.id);
-                }
-            });
+
+        // Only consider unassigned items for selection
+        const unassignedFilteredItems = filteredItems.filter(item => item.status !== 'assigned');
+
+        const allSelected = unassignedFilteredItems.length > 0 && unassignedFilteredItems.every((item) => currentState.selectedItems.has(item.id));
+        const newSelectedItems = new Set<string>(currentState.selectedItems);
+
+        if (allSelected) {
+            // Unselect visible unassigned items
+            unassignedFilteredItems.forEach(item => newSelectedItems.delete(item.id));
+        } else {
+            // Select all visible unassigned items
+            unassignedFilteredItems.forEach((item) => newSelectedItems.add(item.id));
         }
-        updateActiveTab({ selectedItems: newSelectedItems });
+        updateLocalTabState(activeTab.invoice.id, { selectedItems: newSelectedItems });
     };
 
     const handleOpenAssignModal = () => {
-        if (activeTab && activeTab.selectedItems.size > 0) {
-            setIsAssignModalOpen(true);
+        if (activeTab) {
+            const state = getTabState(activeTab.invoice.id);
+            if (state.selectedItems.size > 0) {
+                setIsAssignModalOpen(true);
+            }
         }
     };
 
-    const handleCreatePickSlip = (warehouseId: string, pickerId: string) => {
-        if (activeTabIndex === null || !activeTab) return;
+    const [isRefreshing, setIsRefreshing] = useState(false);
 
-        const selectedItems = activeTab.items.filter((item) => activeTab.selectedItems.has(item.id));
-        const warehouse = mockWarehouses.find((w) => w.id === warehouseId);
-        const picker = mockPickers.find((p) => p.id === pickerId);
+    const handleRefresh = async () => {
+        if (!activeTab || isRefreshing) return;
+        setIsRefreshing(true);
+        try {
+            await fetchInvoiceDetails(activeTab.invoice);
+            toast.success("Details refreshed successfully");
+        } catch (error) {
+            toast.error("Failed to refresh items");
+        } finally {
+            setIsRefreshing(false);
+        }
+    };
 
-        if (!warehouse || !picker) return;
+    const handleCreatePickSlip = async (warehouseId: string, pickerId: string | null, startTime: Date | null, endTime: Date | null) => {
+        if (!activeTab) return Promise.resolve(null);
+        const state = getTabState(activeTab.invoice.id);
+        if (state.selectedItems.size === 0) return Promise.resolve(null);
 
-        const newPickSlip: PickSlip = {
-            id: `slip-${Date.now()}`,
-            slipNo: `PS-${pickSlips.length + 1}`,
-            warehouseId,
-            warehouseName: warehouse.name,
-            pickerId,
-            pickerName: picker.name,
-            items: selectedItems,
-            status: 'not-started',
+        const warehouse = warehouses.find((w) => w.id === warehouseId);
+        if (!warehouse) return Promise.resolve(null);
+
+        // Find picker in warehouse's pickers list
+        const picker = pickerId
+            ? warehouse.pickers.find((p) => p.id === pickerId)
+            : null;
+
+        const selectedItemIds = Array.from(state.selectedItems);
+        const selectedItems = activeTab.items.filter(item => selectedItemIds.includes(item.id));
+
+        const payloadItems = selectedItems.map(item => ({
+            item_code: item.itemCode,
+            quantity: item.quantity,
+            uom: item.uom
+        }));
+
+        const formatTime = (date: Date) => {
+            const offset = date.getTimezoneOffset() * 60000;
+            const localDate = new Date(date.getTime() - offset);
+            return localDate.toISOString().slice(0, 23).replace('T', ' ');
         };
 
-        const updatedItems = activeTab.items.map((item) =>
-            activeTab.selectedItems.has(item.id)
-                ? { ...item, isAssigned: true, pickSlipId: newPickSlip.id }
-                : item
-        );
+        const startDateTimeStr = startTime ? formatTime(startTime) : "";
+        const endDateTimeStr = endTime ? formatTime(endTime) : "";
 
-        const newPickSlips = [...pickSlips, newPickSlip];
-        setPickSlips(newPickSlips);
+        try {
+            const res = await window.electronAPI?.proxy?.request({
+                url: '/api/method/centro_pos_apis.api.picking.assign_pick_slip',
+                method: 'POST',
+                data: {
+                    invoice_no: activeTab.invoice.invoiceNo,
+                    warehouse: warehouse.name,
+                    assigned_to: picker?.id || "",
+                    start_date_time: startDateTimeStr,
+                    end_date_time: endDateTimeStr,
+                    items: payloadItems
+                }
+            });
 
-        updateActiveTab({
-            items: updatedItems,
-            selectedItems: new Set<string>(),
-            pickSlips: [...activeTab.pickSlips, newPickSlip],
-        });
+            const data = res?.data?.data;
+            if (data) {
+                // Refresh invoice details to reflect changes
+                await fetchInvoiceDetails(activeTab.invoice);
+                // Clear selection
+                updateLocalTabState(activeTab.invoice.id, { selectedItems: new Set() });
+
+                return {
+                    id: data.picking_no,
+                    slipNo: data.picking_no,
+                    invoiceId: activeTab.invoice.id,
+                    warehouseId: warehouse.id,
+                    warehouseName: data.warehouse,
+                    pickerId: picker?.id || '',
+                    pickerName: data.assigned_to || picker?.name || 'Unassigned',
+                    items: [],
+                    status: 'not-started' as const,
+                    createdAt: new Date(),
+                    startTime: data.start_date_time ? new Date(data.start_date_time) : undefined,
+                    print_url: data.print_url
+                };
+            }
+            return null;
+        } catch (e: any) {
+            console.error("Failed to create pick slip", e);
+            toast.error(e?.message || "Failed to create pick slip");
+            return null;
+        }
     };
 
     const handleFinish = () => {
-        if (activeTabIndex === null || !activeTab) return;
-        const allAssigned = activeTab.items.every((item) => item.isAssigned);
+        if (!activeTab) return;
+        const allAssigned = activeTab.items.every((item) => item.status === 'assigned'); // Updated check
         if (allAssigned) {
             alert('All items assigned! Order can be finished.');
         } else {
@@ -215,78 +431,128 @@ const DynamicPickupInterface: React.FC = () => {
         }
     };
 
+
+
     const getFilteredItems = (): InvoiceItem[] => {
         if (!activeTab) return [];
         let items = activeTab.items;
+        const currentState = getTabState(activeTab.invoice.id);
+
+        // Filter by Search Query
+        if (currentState.searchQuery) {
+            const query = currentState.searchQuery.toLowerCase();
+            items = items.filter(item =>
+                item.itemName.toLowerCase().includes(query) ||
+                item.itemCode.toLowerCase().includes(query)
+            );
+        }
 
         // Filter by assignment status
-        if (activeTab.activeFilter === 'unassigned') {
-            items = items.filter((item) => !item.isAssigned);
-        } else if (activeTab.activeFilter === 'assigned') {
-            items = items.filter((item) => item.isAssigned);
+        if (currentState.activeFilter === 'unassigned') {
+            items = items.filter((item) => item.status !== 'assigned');
+        } else if (currentState.activeFilter === 'assigned') {
+            items = items.filter((item) => item.status === 'assigned');
         }
 
         // Filter by category
-        if (activeTab.activeCategory !== 'All') {
-            items = items.filter((item) => item.category === activeTab.activeCategory);
+        if (currentState.activeCategory !== 'All Items' && currentState.activeCategory !== 'All') {
+            items = items.filter((item) => item.category === currentState.activeCategory);
         }
 
         return items;
     };
 
-    const filteredItems = useMemo(() => getFilteredItems(), [activeTab?.activeFilter, activeTab?.activeCategory, activeTab?.items]);
+    // Memoize filtered items to prevent unnecessary re-renders
+    const filteredItems = useMemo(() => getFilteredItems(), [
+        activeTab,
+        tabStates[activeTabId ?? '']?.activeFilter,
+        tabStates[activeTabId ?? '']?.activeCategory,
+        tabStates[activeTabId ?? '']?.searchQuery, // Added searchQuery to dependencies
+        activeTab?.items
+    ]);
 
     const categories = useMemo(() => {
         if (!activeTab) return [];
-        return [...new Set(activeTab.items.map((item) => item.category))];
-    }, [activeTab?.items]);
 
+        const allItems = activeTab.items;
+        const currentState = getTabState(activeTab.invoice.id);
+
+        // Base items for count - should we count filtered items or all items?
+        // Typically category counts show total available in that category regardless of other filters (like assignment status),
+        // BUT search query usually restricts everything.
+        // Let's filter by search query first to give relevant counts.
+        let baseItems = allItems;
+        if (currentState.searchQuery) {
+            const query = currentState.searchQuery.toLowerCase();
+            baseItems = baseItems.filter(item =>
+                item.itemName.toLowerCase().includes(query) ||
+                item.itemCode.toLowerCase().includes(query)
+            );
+        }
+
+        // Calculate counts
+        const counts: Record<string, number> = {};
+        baseItems.forEach(item => {
+            const cat = item.category || 'General';
+            counts[cat] = (counts[cat] || 0) + 1;
+        });
+
+        const distinctCategories = ['All Items', ...new Set(allItems.map((item) => item.category || 'General'))];
+
+        return distinctCategories.map(cat => ({
+            label: cat,
+            count: cat === 'All Items' ? baseItems.length : (counts[cat] || 0)
+        }));
+    }, [activeTab?.items, tabStates[activeTabId ?? '']?.searchQuery]);
+
+    const currentState = activeTab ? getTabState(activeTab.invoice.id) : null;
     const allCount = activeTab?.items.length || 0;
-    const unassignedCount = activeTab?.items.filter((item) => !item.isAssigned).length || 0;
-    const assignedCount = activeTab?.items.filter((item) => item.isAssigned).length || 0;
-    const hasSelection = (activeTab?.selectedItems.size || 0) > 0;
+    const unassignedCount = activeTab?.items.filter((item) => item.status !== 'assigned').length || 0;
+    const assignedCount = activeTab?.items.filter((item) => item.status === 'assigned').length || 0;
+    const hasSelection = (currentState?.selectedItems.size || 0) > 0;
     const canFinish = assignedCount === allCount && allCount > 0;
 
-    const selectedItemsForModal = activeTab
-        ? activeTab.items.filter((item) => activeTab.selectedItems.has(item.id))
-        : [];
+
 
     return (
         <div className="h-full w-full flex bg-gray-50 overflow-hidden relative">
             {/* Left Content Area */}
-            <div className="flex-1 flex flex-col overflow-hidden min-w-0 mr-96">
+            <div className="flex-1 flex flex-col overflow-hidden min-w-0 mr-[450px]">
                 {/* Top Header Line: Open INV button and Invoice tabs */}
-                <div className="border-b border-border bg-card px-3 py-1 flex-shrink-0">
+                <div className="border-b border-border bg-card px-3 py-3 flex-shrink-0">
                     <div className="flex items-center gap-2">
                         <Button
                             onClick={() => setIsOpenInvoiceModalOpen(true)}
-                            className="bg-green-600 hover:bg-green-700 text-white h-7 px-3 text-xs"
+                            className="px-2 py-1.5 bg-gradient-to-r from-primary to-slate-700 text-white font-medium rounded-lg hover:shadow-lg transition-all duration-300 flex items-center gap-1.5 text-[10px]"
                         >
-                            <Plus className="w-3 h-3 mr-1" />
+                            <Plus className="w-3 h-3" />
                             Open INV
                         </Button>
-                        {invoiceTabs.length > 0 && (
-                            <div className="flex gap-1.5">
-                                {invoiceTabs.map((tab, index) => (
-                                    <button
+                        {tabs.length > 0 && (
+                            <div className="flex gap-2">
+                                {tabs.map((tab) => (
+                                    <div
                                         key={tab.invoice.id}
-                                        onClick={() => setActiveTabIndex(index)}
-                                        className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors flex items-center gap-1 ${activeTabIndex === index
-                                            ? 'bg-gray-200 text-gray-900'
-                                            : 'bg-gray-100 text-gray-700 hover:bg-gray-150'
+                                        onClick={() => setActiveTab(tab.invoice.id)}
+                                        className={`flex items-center px-3 py-2 rounded-lg cursor-pointer transition-all duration-200 text-xs border ${activeTabId === tab.invoice.id
+                                            ? 'bg-white text-gray-900 font-bold shadow-sm shadow-gray-300 border-primary'
+                                            : 'bg-white/60 text-gray-800 hover:bg-white/80 border-transparent'
                                             }`}
                                     >
-                                        {tab.invoice.invoiceNo}
+                                        <span className="flex items-center gap-2">
+                                            {activeTabId === tab.invoice.id && (
+                                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-gray-300" />
+                                            )}
+                                            {tab.invoice.invoiceNo}
+                                        </span>
                                         <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleCloseTab(index);
-                                            }}
-                                            className="ml-0.5 hover:text-red-600 text-gray-500 text-xs"
+                                            onClick={(e) => handleCloseTab(tab.invoice.id, e)}
+                                            className="ml-2 text-gray-400 hover:text-red-500 text-base leading-none"
+                                            title="Close tab"
                                         >
                                             ×
                                         </button>
-                                    </button>
+                                    </div>
                                 ))}
                             </div>
                         )}
@@ -299,11 +565,12 @@ const DynamicPickupInterface: React.FC = () => {
                         <>
                             <InvoiceHeader
                                 invoice={activeTab.invoice}
+                                schedule={activeTab.schedule}
                                 allCount={allCount}
                                 unassignedCount={unassignedCount}
                                 assignedCount={assignedCount}
-                                activeFilter={activeTab.activeFilter}
-                                onFilterChange={(filter) => updateActiveTab({ activeFilter: filter })}
+                                activeFilter={currentState?.activeFilter || 'all'}
+                                onFilterChange={(filter) => updateLocalTabState(activeTab.invoice.id, { activeFilter: filter })}
                                 onAssign={handleOpenAssignModal}
                                 onFinish={handleFinish}
                                 hasSelection={hasSelection}
@@ -312,14 +579,18 @@ const DynamicPickupInterface: React.FC = () => {
 
                             <CategoryTabs
                                 categories={categories}
-                                activeCategory={activeTab.activeCategory}
-                                onCategoryChange={(category) => updateActiveTab({ activeCategory: category })}
+                                activeCategory={currentState?.activeCategory || 'All Items'}
+                                onCategoryChange={(category) => updateLocalTabState(activeTab.invoice.id, { activeCategory: category })}
+                                searchQuery={currentState?.searchQuery || ''}
+                                onSearchChange={(query) => updateLocalTabState(activeTab.invoice.id, { searchQuery: query })}
+                                onRefresh={handleRefresh}
+                                isRefreshing={isRefreshing}
                             />
 
                             <div className="flex-1 overflow-auto min-h-0">
                                 <ItemsTable
                                     items={filteredItems}
-                                    selectedItems={activeTab.selectedItems}
+                                    selectedItems={currentState?.selectedItems || new Set()}
                                     onToggleItem={handleToggleItem}
                                     onToggleAll={handleToggleAll}
                                 />
@@ -350,12 +621,12 @@ const DynamicPickupInterface: React.FC = () => {
                 <RightSidebar
                     activeTab={rightSidebarTab}
                     onTabChange={setRightSidebarTab}
-                    operations={warehouseOperations}
+                    operations={activeTab?.warehouseDetails?.operations || []}
                     pickSlips={activeTab?.pickSlips || []}
                     onManageOperations={() => { }}
-                    orderQueue={orderQueue}
-                    onSelectQueueOrder={(item) => handleSelectInvoice(item.invoice)}
-                    onRemoveQueueOrder={(id) => setOrderQueue(orderQueue.filter((q) => q.id !== id))}
+                    orderQueue={[]} // Removed orderQueue from store
+                    onSelectQueueOrder={(item) => openInvoiceTab(item.invoice)}
+                    onRemoveQueueOrder={(_id) => { }} // Removed removeFromQueue
                     invoices={invoices}
                     onSelectInvoice={handleSelectInvoiceFromModal}
                 />
@@ -364,7 +635,6 @@ const DynamicPickupInterface: React.FC = () => {
             <OpenInvoiceModal
                 isOpen={isOpenInvoiceModalOpen}
                 onClose={() => setIsOpenInvoiceModalOpen(false)}
-                invoices={invoices}
                 onSelectInvoice={handleSelectInvoiceFromModal}
             />
 
@@ -381,9 +651,12 @@ const DynamicPickupInterface: React.FC = () => {
             <AssignPickSlipModal
                 isOpen={isAssignModalOpen}
                 onClose={() => setIsAssignModalOpen(false)}
-                selectedItems={selectedItemsForModal}
-                warehouses={mockWarehouses}
-                pickers={mockPickers}
+                selectedItems={activeTab
+                    ? Array.from(currentState?.selectedItems || [])
+                        .map((id) => activeTab.items.find((item) => item.id === id))
+                        .filter((item): item is InvoiceItem => !!item)
+                    : []}
+                warehouses={warehouses}
                 onCreatePickSlip={handleCreatePickSlip}
             />
         </div>

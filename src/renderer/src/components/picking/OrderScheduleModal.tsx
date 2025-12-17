@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
     Dialog,
     DialogContent,
@@ -9,7 +9,7 @@ import { Button } from '@renderer/components/ui/button';
 import { Textarea } from '@renderer/components/ui/textarea';
 import { cn } from '@renderer/lib/utils';
 import { Invoice } from '@renderer/types/picking';
-import { Zap, Calendar, Clock } from 'lucide-react';
+import { Zap, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface OrderScheduleModalProps {
     isOpen: boolean;
@@ -19,10 +19,11 @@ interface OrderScheduleModalProps {
 }
 
 const TIME_SLOTS = [
-    '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
-    '11:00', '11:30', '12:00', '12:30', '13:00', '13:30',
-    '14:00', '14:30', '15:00', '15:30', '16:00', '16:30',
-    '17:00', '17:30', '18:00', '18:30', '19:00', '19:30',
+    '05:00 AM', '06:00 AM', '07:00 AM', '08:00 AM',
+    '09:00 AM', '10:00 AM', '11:00 AM', '12:00 PM',
+    '01:00 PM', '02:00 PM', '03:00 PM', '04:00 PM',
+    '05:00 PM', '06:00 PM', '07:00 PM', '08:00 PM',
+    '09:00 PM', '10:00 PM', '11:00 PM', '12:00 AM',
 ];
 
 export function OrderScheduleModal({
@@ -35,11 +36,19 @@ export function OrderScheduleModal({
     const [selectedDate, setSelectedDate] = useState<Date>(new Date());
     const [selectedTime, setSelectedTime] = useState<string>('');
     const [note, setNote] = useState('');
+    const [currentWeekStart, setCurrentWeekStart] = useState<Date>(new Date());
+    const dateInputRef = useRef<HTMLInputElement>(null);
 
     const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Ensure currentWeekStart is at start of day
+    const weekStart = new Date(currentWeekStart);
+    weekStart.setHours(0, 0, 0, 0);
+
     const weekDays = Array.from({ length: 7 }, (_, i) => {
-        const date = new Date(today);
-        date.setDate(today.getDate() + i);
+        const date = new Date(weekStart);
+        date.setDate(weekStart.getDate() + i);
         return date;
     });
 
@@ -59,6 +68,41 @@ export function OrderScheduleModal({
         return '';
     };
 
+    const navigateWeek = (direction: 'prev' | 'next') => {
+        const newStart = new Date(weekStart);
+        newStart.setDate(weekStart.getDate() + (direction === 'next' ? 7 : -7));
+
+        // Prevent going back past current week
+        if (direction === 'prev' && newStart < today) {
+            // If the new start date is before today, we are trying to go back past the current week.
+            // We should only allow this if the current weekStart is already before today.
+            // If weekStart is today or in the future, we shouldn't go back further than today.
+            if (weekStart.getTime() === today.getTime()) { // If current week starts today, don't go back
+                return;
+            }
+            // If current weekStart is in the future, and newStart goes before today, set to today.
+            if (weekStart > today && newStart < today) {
+                setCurrentWeekStart(today);
+                return;
+            }
+        }
+        setCurrentWeekStart(newStart);
+    };
+
+    const canGoPrev = weekStart.getTime() > today.getTime();
+
+    const handleDateSelect = (date: Date) => {
+        setSelectedDate(date);
+    };
+
+    const handleNativeDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.value) {
+            const date = new Date(e.target.value);
+            setSelectedDate(date);
+            setCurrentWeekStart(date); // Jump to that week
+        }
+    };
+
     const handleConfirm = () => {
         if (scheduleType === 'scheduled' && (!selectedDate || !selectedTime)) {
             return;
@@ -74,6 +118,7 @@ export function OrderScheduleModal({
         setSelectedDate(new Date());
         setSelectedTime('');
         setNote('');
+        setCurrentWeekStart(new Date()); // Reset week view
     };
 
     const handleClose = () => {
@@ -81,6 +126,7 @@ export function OrderScheduleModal({
         setSelectedDate(new Date());
         setSelectedTime('');
         setNote('');
+        setCurrentWeekStart(new Date()); // Reset week view
         onClose();
     };
 
@@ -91,77 +137,130 @@ export function OrderScheduleModal({
             <DialogContent className="max-w-md p-5">
                 <DialogHeader className="pb-2">
                     <DialogTitle className="text-base font-semibold">Order Schedule</DialogTitle>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                        {invoice.invoiceNo} · {invoice.customerName}
-                    </p>
+                    <div className="flex flex-col gap-1 mt-2 bg-muted/30 p-2 rounded-md border border-border/50">
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <p className="font-semibold text-sm">{invoice.invoiceNo}</p>
+                                <p className="text-xs text-muted-foreground">{invoice.customerName}</p>
+                            </div>
+                            <div className="text-right">
+                                <p className="font-bold text-sm text-primary">{invoice.totalAmount.toLocaleString()} {invoice.currency}</p>
+                                <p className="text-[10px] text-muted-foreground">{invoice.items.length} Items</p>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-between items-end pt-1 border-t border-border/50 mt-1">
+                            <div className="flex text-[10px] gap-1.5 flex-wrap">
+                                <span className={`px-2 py-0.5 rounded-full font-medium ${(invoice.status?.toLowerCase() === 'paid') ? 'bg-green-500 text-white' :
+                                    (invoice.status?.toLowerCase() === 'overdue') ? 'bg-red-500 text-white' :
+                                        'bg-amber-500 text-white'
+                                    }`}>
+                                    {invoice.status || 'Unknown'}
+                                </span>
+                                {invoice.returnStatus && invoice.returnStatus !== 'No' && (
+                                    <span className="px-2 py-0.5 rounded-full font-medium bg-rose-500 text-white">
+                                        {invoice.returnStatus}
+                                    </span>
+                                )}
+                            </div>
+                            <div className="text-right flex flex-col items-end">
+                                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                                    {invoice.invoiceDate ? new Date(invoice.invoiceDate).toLocaleDateString('en-GB') : ''}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                                    {invoice.invoiceDate ? new Date(invoice.invoiceDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : ''}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
                 </DialogHeader>
 
                 <div className="space-y-3 py-1">
-                    {/* Schedule Type Selection */}
+                    {/* Schedule Type Selection - Compact */}
                     <div className="grid grid-cols-2 gap-2">
                         <button
                             onClick={() => setScheduleType('instant')}
                             className={cn(
-                                'flex flex-col items-center gap-1.5 p-3 rounded-lg border transition-all',
+                                'flex flex-row items-center justify-center gap-2 p-2 rounded-lg border transition-all h-14',
                                 scheduleType === 'instant'
                                     ? 'border-blue-500 bg-blue-50 text-blue-600'
                                     : 'border-gray-300 bg-white hover:border-gray-400'
                             )}
                         >
-                            <div className={cn(
-                                'w-9 h-9 rounded-full flex items-center justify-center',
-                                scheduleType === 'instant' ? 'bg-blue-500 text-white' : 'bg-gray-200'
-                            )}>
-                                <Zap className="w-4 h-4" />
-                            </div>
-                            <span className="font-semibold text-xs">Instant</span>
-                            <span className="text-[10px] text-muted-foreground">Process Now</span>
+                            <Zap className="w-3 h-3" />
+                            <span className="font-semibold text-xs">Process Now</span>
                         </button>
 
                         <button
                             onClick={() => setScheduleType('scheduled')}
                             className={cn(
-                                'flex flex-col items-center gap-1.5 p-3 rounded-lg border transition-all',
+                                'flex flex-row items-center justify-center gap-2 p-2 rounded-lg border transition-all h-14',
                                 scheduleType === 'scheduled'
                                     ? 'border-blue-500 bg-blue-50 text-blue-600'
                                     : 'border-gray-300 bg-white hover:border-gray-400'
                             )}
                         >
-                            <div className={cn(
-                                'w-9 h-9 rounded-full flex items-center justify-center',
-                                scheduleType === 'scheduled' ? 'bg-blue-500 text-white' : 'bg-gray-200'
-                            )}>
-                                <Calendar className="w-4 h-4" />
-                            </div>
-                            <span className="font-semibold text-xs">Scheduled</span>
-                            <span className="text-[10px] text-muted-foreground">Pick Later</span>
+                            <Calendar className="w-3 h-3" />
+                            <span className="font-semibold text-xs">Schedule Later</span>
                         </button>
                     </div>
 
                     {/* Date & Time Picker for Scheduled */}
                     {scheduleType === 'scheduled' && (
-                        <div className="space-y-2.5 animate-in slide-in-from-top-2 duration-200">
-                            {/* Quick Week View */}
+                        <div className="space-y-3 animate-in slide-in-from-top-2 duration-200">
+                            {/* Date Navigation */}
                             <div>
-                                <label className="text-xs font-medium text-foreground mb-1.5 block">
-                                    Select Date
-                                </label>
-                                <div className="flex gap-1.5 overflow-x-auto pb-1">
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="text-xs font-medium text-foreground">
+                                        Choose Date and Time
+                                    </label>
+                                    <div className="flex items-center gap-1">
+                                        <button
+                                            onClick={() => navigateWeek('prev')}
+                                            disabled={!canGoPrev}
+                                            className="p-1 hover:bg-muted rounded-md disabled:opacity-30 transition-colors"
+                                        >
+                                            <ChevronLeft className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                            onClick={() => navigateWeek('next')}
+                                            className="p-1 hover:bg-muted rounded-md transition-colors"
+                                        >
+                                            <ChevronRight className="w-4 h-4" />
+                                        </button>
+                                        <div className="relative ml-1">
+                                            <button
+                                                onClick={() => dateInputRef.current?.showPicker()}
+                                                className="p-1 hover:bg-muted rounded-md transition-colors text-primary"
+                                            >
+                                                <Calendar className="w-4 h-4" />
+                                            </button>
+                                            <input
+                                                type="date"
+                                                ref={dateInputRef}
+                                                className="absolute top-full right-0 opacity-0 w-0 h-0"
+                                                onChange={handleNativeDateChange}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar justify-between">
                                     {weekDays.map((day, index) => (
                                         <button
                                             key={index}
-                                            onClick={() => setSelectedDate(day)}
+                                            onClick={() => handleDateSelect(day)}
                                             className={cn(
-                                                'flex-shrink-0 flex flex-col items-center p-1.5 rounded-lg min-w-[55px] transition-all',
+                                                'flex-shrink-0 flex flex-col items-center p-1.5 rounded-lg w-[13.5%] transition-all',
                                                 isSameDay(day, selectedDate)
-                                                    ? 'bg-blue-500 text-white'
-                                                    : 'bg-white hover:bg-gray-50 border border-gray-200'
+                                                    ? 'bg-blue-500 text-white shadow-sm'
+                                                    : 'bg-white hover:bg-gray-50 border border-gray-200 text-gray-700'
                                             )}
                                         >
-                                            <span className="text-[9px] font-medium uppercase leading-tight">
+                                            <span className="text-[9px] font-medium uppercase leading-tight opacity-80">
                                                 {formatDate(day, 'EEE')}
                                             </span>
-                                            <span className="text-base font-bold mt-0.5 leading-none">
+                                            <span className="text-sm font-bold mt-0.5 leading-none">
                                                 {formatDate(day, 'd')}
                                             </span>
                                             <span className="text-[9px] mt-0.5 leading-tight">
@@ -172,22 +271,18 @@ export function OrderScheduleModal({
                                 </div>
                             </div>
 
-                            {/* Time Slots */}
+                            {/* Time Slots - Grid Layout */}
                             <div>
-                                <label className="text-xs font-medium text-foreground mb-1.5 flex items-center gap-1">
-                                    <Clock className="w-3 h-3" />
-                                    Select Time
-                                </label>
-                                <div className="grid grid-cols-4 gap-1.5 max-h-[160px] overflow-y-auto pr-1">
+                                <div className="grid grid-cols-4 gap-2">
                                     {TIME_SLOTS.map((time) => (
                                         <button
                                             key={time}
                                             onClick={() => setSelectedTime(time)}
                                             className={cn(
-                                                'py-1.5 px-1.5 rounded-md text-[11px] font-medium transition-all border',
+                                                'py-1.5 px-0 text-center rounded-md text-[10px] font-medium transition-all border',
                                                 selectedTime === time
-                                                    ? 'bg-blue-500 text-white border-blue-500'
-                                                    : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300'
+                                                    ? 'bg-blue-500 text-white border-blue-500 shadow-sm'
+                                                    : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300 text-gray-700'
                                             )}
                                         >
                                             {time}
@@ -207,7 +302,7 @@ export function OrderScheduleModal({
                             placeholder="Add any special instructions..."
                             value={note}
                             onChange={(e) => setNote(e.target.value)}
-                            className="min-h-[60px] resize-none text-xs"
+                            className="min-h-[50px] resize-none text-xs"
                         />
                     </div>
                 </div>
@@ -229,4 +324,3 @@ export function OrderScheduleModal({
         </Dialog>
     );
 }
-

@@ -1674,6 +1674,9 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     }
   }, [poRef, poRefDate, internalNote, activeTabId])
 
+  console.log('SHD ===>', getCurrentTab()?.orderData?.name)
+  console.log('SHD ===>', getCurrentTab()?.invoiceNumber)
+
   return (
     <div className="px-4 pt-4 pb-0 bg-white h-full flex flex-col min-h-0 relative">
       <Tabs defaultValue="items" className="w-full h-full flex flex-col min-h-0">
@@ -1713,7 +1716,22 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
               </div>
             )}
           </div>
-          <div className="flex items-center justify-end gap-2 w-1/4 min-w-[260px]">
+          <div className="flex items-center justify-end gap-2 w-auto min-w-[400px]">
+            {/* Invoice and Order Info */}
+            {(currentTab?.invoiceNumber || currentTab?.orderData?.name) && (
+              <div className="flex flex-col items-end justify-center mr-1 min-w-[200px] whitespace-nowrap">
+                {currentTab?.invoiceNumber && (
+                  <div className="text-xs font-bold text-gray-800 leading-tight">
+                    {currentTab.invoiceNumber}
+                  </div>
+                )}
+                {currentTab?.orderData?.name && (
+                  <div className="text-[10px] text-gray-500 leading-tight">
+                    {currentTab.orderData.name}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="relative w-full">
               <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input

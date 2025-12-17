@@ -2893,7 +2893,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
   // ... and similarly for Returns list, use returnsTotal.
 
   return (
-    <div className="w-[480px] bg-white/60 backdrop-blur border-l border-white/20 flex flex-col overflow-y-auto scrollbar-hide">
+    <div className="w-[480px] bg-white/60 backdrop-blur border-l border-white/20 flex flex-col h-full">
       <div className="flex w-full border-b border-gray-200/60 bg-white/80 h-14">
         <button
           className={`flex-1 px-4 font-semibold text-sm border-b-3 transition-all h-full ${activeTab === 'product'
@@ -2923,6 +2923,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
           Prints
         </button>
         <button
+          style={{ height: '56px' }}
           className={`flex-1 px-4 font-medium text-sm border-b-3 transition-all h-full ${activeTab === 'payments'
             ? 'border-accent bg-white/90 text-accent font-semibold'
             : 'border-transparent text-gray-500 hover:text-black hover:bg-white/40'
