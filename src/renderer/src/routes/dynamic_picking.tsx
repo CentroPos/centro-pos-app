@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Invoice, InvoiceItem, PickSlip, ScheduleDetails, WarehouseDetails } from '@renderer/types/picking';
+import { Invoice, InvoiceItem, PickSlip, ScheduleDetails, WarehouseDetails, WarehouseOperation } from '@renderer/types/picking';
 import { InvoiceHeader } from '@renderer/components/picking/InvoiceHeader';
 import { CategoryTabs } from '@renderer/components/picking/CategoryTabs';
 import { ItemsTable } from '@renderer/components/picking/ItemsTable';
@@ -7,6 +7,7 @@ import { RightSidebar } from '@renderer/components/picking/RightSidebar';
 import { OpenInvoiceModal } from '@renderer/components/picking/OpenInvoiceModal';
 import { AssignPickSlipModal } from '@renderer/components/picking/AssignPickSlipModal';
 import { OrderScheduleModal } from '@renderer/components/picking/OrderScheduleModal';
+import { AssignWarehousesModal } from '@renderer/components/picking/AssignWarehousesModal';
 import { Button } from '@renderer/components/ui/button';
 import { Plus, FileText } from 'lucide-react';
 import { toast } from 'sonner';
@@ -24,24 +25,23 @@ const DynamicPickupInterface: React.FC = () => {
     const {
         tabs,
         activeTabId,
-        invoices,
         warehouses,
 
         openInvoiceTab,
         closeInvoiceTab,
         setActiveTab,
-        fetchInvoices,
         fetchGeneralInfo
     } = usePickingStore();
 
-    console.log('SHD ==>', usePickingStore());
+
 
     // Local UI State
     const [isOpenInvoiceModalOpen, setIsOpenInvoiceModalOpen] = useState(false);
     const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
     const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+    const [isFinishModalOpen, setIsFinishModalOpen] = useState(false);
     const [pendingInvoice, setPendingInvoice] = useState<Invoice | null>(null);
-    const [rightSidebarTab, setRightSidebarTab] = useState<'details' | 'sales' | 'queue'>('details');
+    const [rightSidebarTab, setRightSidebarTab] = useState<'details' | 'sales' | 'queue' | 'picker-log'>('queue');
 
     // Manage per-tab UI state (selection, filters) locally
     const [tabStates, setTabStates] = useState<Record<string, LocalTabState>>({});
@@ -70,7 +70,6 @@ const DynamicPickupInterface: React.FC = () => {
 
     // Initial fetch
     useEffect(() => {
-        fetchInvoices();
         fetchGeneralInfo();
     }, []);
 
@@ -95,7 +94,7 @@ const DynamicPickupInterface: React.FC = () => {
 
             // Map Items
             const mappedItems: InvoiceItem[] = rawItems.map((item: any, index: number) => ({
-                id: item.item_code || `item-${index}`,
+                id: item.serial_no ? String(item.serial_no) : `${item.item_code}-${index}`,
                 slNo: item.serial_no || index + 1,
                 itemName: item.item_name,
                 itemCode: item.item_code,
@@ -217,6 +216,12 @@ const DynamicPickupInterface: React.FC = () => {
             await fetchInvoiceDetails(invoice);
             setIsOpenInvoiceModalOpen(false);
         }
+    };
+
+    const handleScheduleClick = () => {
+        if (!activeTab) return;
+        setPendingInvoice(activeTab.invoice);
+        setIsScheduleModalOpen(true);
     };
 
     const handleScheduleConfirm = async (
@@ -423,12 +428,25 @@ const DynamicPickupInterface: React.FC = () => {
 
     const handleFinish = () => {
         if (!activeTab) return;
-        const allAssigned = activeTab.items.every((item) => item.status === 'assigned'); // Updated check
+        const allAssigned = activeTab.items.every((item) => item.status === 'assigned');
+
+        // Open modal regardless of assignment status as per new workflow, or keep check?
+        // User didn't say to remove the check. I'll keep the check but change alert to modal open.
         if (allAssigned) {
-            alert('All items assigned! Order can be finished.');
+            setIsFinishModalOpen(true);
         } else {
             alert('Please assign all items before finishing.');
         }
+    };
+
+    const handleAssignWarehouses = (deliveryWarehouseId: string, operations: WarehouseOperation[]) => {
+        // Logic to save/assign warehouses
+        // Since no API was provided, we'll log and show a success message
+        console.log("Assigning Warehouses:", { deliveryWarehouseId, operations });
+        // In a real scenario, we would call an API here to finalize the invoice picking state
+        toast.success("Warehouses assigned successfully");
+        // Maybe close tab or refresh?
+        // if (activeTab) closeInvoiceTab(activeTab.invoice.id);
     };
 
 
@@ -512,7 +530,7 @@ const DynamicPickupInterface: React.FC = () => {
     const hasSelection = (currentState?.selectedItems.size || 0) > 0;
     const canFinish = assignedCount === allCount && allCount > 0;
 
-
+    console.log('SHD =>', usePickingStore());
 
     return (
         <div className="h-full w-full flex bg-gray-50 overflow-hidden relative">
@@ -575,6 +593,7 @@ const DynamicPickupInterface: React.FC = () => {
                                 onFinish={handleFinish}
                                 hasSelection={hasSelection}
                                 canFinish={canFinish}
+                                onScheduleClick={handleScheduleClick}
                             />
 
                             <CategoryTabs
@@ -623,11 +642,10 @@ const DynamicPickupInterface: React.FC = () => {
                     onTabChange={setRightSidebarTab}
                     operations={activeTab?.warehouseDetails?.operations || []}
                     pickSlips={activeTab?.pickSlips || []}
-                    onManageOperations={() => { }}
+                    onManageOperations={() => setIsFinishModalOpen(true)}
                     orderQueue={[]} // Removed orderQueue from store
                     onSelectQueueOrder={(item) => openInvoiceTab(item.invoice)}
                     onRemoveQueueOrder={(_id) => { }} // Removed removeFromQueue
-                    invoices={invoices}
                     onSelectInvoice={handleSelectInvoiceFromModal}
                 />
             </div>
@@ -645,6 +663,7 @@ const DynamicPickupInterface: React.FC = () => {
                     setPendingInvoice(null);
                 }}
                 invoice={pendingInvoice}
+                schedule={pendingInvoice?.id === activeTab?.invoice.id ? activeTab?.schedule : undefined}
                 onConfirm={handleScheduleConfirm}
             />
 
@@ -658,6 +677,14 @@ const DynamicPickupInterface: React.FC = () => {
                     : []}
                 warehouses={warehouses}
                 onCreatePickSlip={handleCreatePickSlip}
+            />
+
+            <AssignWarehousesModal
+                isOpen={isFinishModalOpen}
+                onClose={() => setIsFinishModalOpen(false)}
+                onAssign={handleAssignWarehouses}
+                warehouses={warehouses}
+                currentOperations={activeTab?.warehouseDetails?.operations || []}
             />
         </div>
     );

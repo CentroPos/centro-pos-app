@@ -2,10 +2,11 @@ import { WarehouseOperation, PickSlip, OrderQueueItem, Invoice } from '@renderer
 import { cn } from '@renderer/lib/utils';
 import { OrderQueueTab } from './OrderQueueTab';
 import { SalesTab } from './SalesTab';
+import { PickerLogTab } from './PickerLogTab';
 
 interface RightSidebarProps {
-    activeTab: 'details' | 'sales' | 'queue';
-    onTabChange: (tab: 'details' | 'sales' | 'queue') => void;
+    activeTab: 'details' | 'sales' | 'queue' | 'picker-log';
+    onTabChange: (tab: 'details' | 'sales' | 'queue' | 'picker-log') => void;
     operations: WarehouseOperation[];
     pickSlips: PickSlip[];
     onManageOperations: () => void;
@@ -13,7 +14,6 @@ interface RightSidebarProps {
     orderQueue: OrderQueueItem[];
     onSelectQueueOrder: (item: OrderQueueItem) => void;
     onRemoveQueueOrder: (id: string) => void;
-    invoices?: Invoice[];
     onSelectInvoice?: (invoice: Invoice) => void;
 }
 
@@ -27,7 +27,6 @@ export function RightSidebar({
     orderQueue,
     onSelectQueueOrder,
     onRemoveQueueOrder,
-    invoices = [],
     onSelectInvoice,
 }: RightSidebarProps) {
     const getStatusLabel = (status: PickSlip['status']) => {
@@ -51,7 +50,7 @@ export function RightSidebar({
                 <button
                     onClick={() => onTabChange('details')}
                     className={cn(
-                        'flex-1 px-4 py-2.5 text-sm font-medium transition-colors border-b-2',
+                        'flex-1 px-3 py-2.5 text-xs font-medium transition-colors border-b-2 whitespace-nowrap',
                         activeTab === 'details'
                             ? 'text-primary border-primary'
                             : 'text-muted-foreground border-transparent hover:text-foreground'
@@ -62,7 +61,7 @@ export function RightSidebar({
                 <button
                     onClick={() => onTabChange('sales')}
                     className={cn(
-                        'flex-1 px-4 py-2.5 text-sm font-medium transition-colors border-b-2',
+                        'flex-1 px-3 py-2.5 text-xs font-medium transition-colors border-b-2 whitespace-nowrap',
                         activeTab === 'sales'
                             ? 'text-primary border-primary'
                             : 'text-muted-foreground border-transparent hover:text-foreground'
@@ -73,7 +72,7 @@ export function RightSidebar({
                 <button
                     onClick={() => onTabChange('queue')}
                     className={cn(
-                        'flex-1 px-4 py-2.5 text-sm font-medium transition-colors relative border-b-2',
+                        'flex-1 px-3 py-2.5 text-xs font-medium transition-colors relative border-b-2 whitespace-nowrap',
                         activeTab === 'queue'
                             ? 'text-primary border-primary'
                             : 'text-muted-foreground border-transparent hover:text-foreground'
@@ -81,10 +80,21 @@ export function RightSidebar({
                 >
                     Queue
                     {orderQueue.length > 0 && (
-                        <span className="absolute top-1 right-2 w-5 h-5 rounded-full bg-green-600 text-white text-xs flex items-center justify-center">
+                        <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-green-600 text-white text-[10px] flex items-center justify-center">
                             {orderQueue.length}
                         </span>
                     )}
+                </button>
+                <button
+                    onClick={() => onTabChange('picker-log')}
+                    className={cn(
+                        'flex-1 px-3 py-2.5 text-xs font-medium transition-colors border-b-2 whitespace-nowrap',
+                        activeTab === 'picker-log'
+                            ? 'text-primary border-primary'
+                            : 'text-muted-foreground border-transparent hover:text-foreground'
+                    )}
+                >
+                    Picker Log
                 </button>
             </div>
 
@@ -109,10 +119,10 @@ export function RightSidebar({
                                                 <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">
                                                     Warehouse
                                                 </th>
-                                                <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">
+                                                <th className="px-3 py-2 text-center text-xs font-semibold text-muted-foreground">
                                                     Type
                                                 </th>
-                                                <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">
+                                                <th className="px-3 py-2 text-center text-xs font-semibold text-muted-foreground">
                                                     Status
                                                 </th>
                                             </tr>
@@ -121,15 +131,15 @@ export function RightSidebar({
                                             {operations.map((op) => (
                                                 <tr key={op.warehouseId} className="border-t border-border">
                                                     <td className="px-3 py-2 text-foreground">{op.warehouseName}</td>
-                                                    <td className="px-3 py-2 text-muted-foreground">
-                                                        {op.isCustomerPickup ? 'Pickup' : 'Transfer'}
+                                                    <td className="px-3 py-2 text-muted-foreground text-center">
+                                                        {op.isCustomerPickup ? 'Delivery' : 'Transfer'}
                                                     </td>
-                                                    <td className="px-3 py-2">
+                                                    <td className="px-3 py-2 text-center">
                                                         <span className={cn(
                                                             "px-2 py-1 rounded-full text-xs",
                                                             op.status === 'confirmed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
                                                         )}>
-                                                            {op.status === 'draft' ? 'Draft' : 'Confirmed'}
+                                                            {op.status}
                                                         </span>
                                                     </td>
                                                 </tr>
@@ -146,18 +156,18 @@ export function RightSidebar({
                                 {pickSlips.map((originalSlip, index) => {
                                     // --- DUMMY CODE FOR UI TESTING ---
                                     const slip = { ...originalSlip };
-                                    if (index === 0) {
-                                        slip.status = 'not-started';
-                                        slip.assignedBy = 'System Admin';
-                                        slip.assignedOn = new Date();
-                                    } else if (index === 1) {
-                                        slip.status = 'in-progress';
-                                        slip.startTime = new Date(new Date().getTime() - 15 * 60000); // Started 15 mins ago
-                                    } else if (index === 2) {
-                                        slip.status = 'picked';
-                                        slip.endTime = new Date();
-                                        slip.durationMinutes = 12;
-                                    }
+                                    // if (index === 0) {
+                                    //     slip.status = 'not-started';
+                                    //     slip.assignedBy = 'System Admin';
+                                    //     slip.assignedOn = new Date();
+                                    // } else if (index === 1) {
+                                    //     slip.status = 'in-progress';
+                                    //     slip.startTime = new Date(new Date().getTime() - 15 * 60000); // Started 15 mins ago
+                                    // } else if (index === 2) {
+                                    //     slip.status = 'picked';
+                                    //     slip.endTime = new Date();
+                                    //     slip.durationMinutes = 12;
+                                    // }
                                     // ----------------------------------
 
                                     /* Helper to format date: DD/MM/YYYY hh:mm AM/PM */
@@ -229,7 +239,8 @@ export function RightSidebar({
                                                 {/* Right Side: Status & Time */}
                                                 <div className="flex flex-col items-end shrink-0 w-24">
                                                     <span className={badgeClass}>
-                                                        {getStatusLabel(slip.status)}
+                                                        {/* {getStatusLabel(slip.status)} */}
+                                                        {slip.status}
                                                     </span>
 
                                                     <div className="text-right space-y-0.5 pr-1">
@@ -284,6 +295,10 @@ export function RightSidebar({
                         onSelectOrder={onSelectQueueOrder}
                         onRemoveOrder={onRemoveQueueOrder}
                     />
+                )}
+
+                {activeTab === 'picker-log' && (
+                    <PickerLogTab />
                 )}
             </div>
         </div>
