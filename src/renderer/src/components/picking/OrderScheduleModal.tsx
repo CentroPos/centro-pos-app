@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
     Dialog,
     DialogContent,
@@ -8,13 +8,14 @@ import {
 import { Button } from '@renderer/components/ui/button';
 import { Textarea } from '@renderer/components/ui/textarea';
 import { cn } from '@renderer/lib/utils';
-import { Invoice } from '@renderer/types/picking';
+import { Invoice, ScheduleDetails } from '@renderer/types/picking';
 import { Zap, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface OrderScheduleModalProps {
     isOpen: boolean;
     onClose: () => void;
     invoice: Invoice | null;
+    schedule?: ScheduleDetails;
     onConfirm: (scheduleType: 'instant' | 'scheduled', scheduledDate?: Date, scheduledTime?: string, note?: string) => void;
 }
 
@@ -30,6 +31,7 @@ export function OrderScheduleModal({
     isOpen,
     onClose,
     invoice,
+    schedule,
     onConfirm,
 }: OrderScheduleModalProps) {
     const [scheduleType, setScheduleType] = useState<'instant' | 'scheduled'>('scheduled');
@@ -38,6 +40,36 @@ export function OrderScheduleModal({
     const [note, setNote] = useState('');
     const [currentWeekStart, setCurrentWeekStart] = useState<Date>(new Date());
     const dateInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (isOpen) {
+            if (schedule) {
+                setScheduleType(schedule.type);
+                setNote(schedule.note || '');
+
+                if (schedule.dateTime) {
+                    const d = new Date(schedule.dateTime);
+                    setSelectedDate(d);
+                    setCurrentWeekStart(d);
+
+                    // Format to match TIME_SLOTS (hh:00 AM/PM)
+                    // We assume slots are hourly.
+                    let hours = d.getHours();
+                    const ampm = hours >= 12 ? 'PM' : 'AM';
+                    hours = hours % 12;
+                    hours = hours ? hours : 12;
+                    const strTime = `${hours.toString().padStart(2, '0')}:00 ${ampm}`;
+                    setSelectedTime(strTime);
+                }
+            } else {
+                setScheduleType('scheduled');
+                setSelectedDate(new Date());
+                setSelectedTime('');
+                setNote('');
+                setCurrentWeekStart(new Date());
+            }
+        }
+    }, [isOpen, schedule]);
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);

@@ -54,18 +54,22 @@ export function OpenInvoiceModal({
 
             const rawInvoices = res?.data?.data || [];
 
-            const mappedInvoices: Invoice[] = rawInvoices.map((inv: any) => ({
-                id: inv.invoice_no,
-                invoiceNo: inv.invoice_no,
-                customerName: inv.customer_name,
-                totalAmount: inv.total_amount,
-                currency: ' SAR',
-                items: Array(inv.items_count).fill({}),
-                invoiceDate: inv.invoice_creation,
-                status: inv.status,
-                returnStatus: inv.reverse_status,
-                scheduleId: inv.schedule_id
-            }));
+            const mappedInvoices: Invoice[] = rawInvoices.map((inv: any) => {
+                console.log('INV DATA OpenInvoice:', inv, inv.schedule_type);
+                return {
+                    id: inv.invoice_no,
+                    invoiceNo: inv.invoice_no,
+                    customerName: inv.customer_name,
+                    totalAmount: inv.total_amount,
+                    currency: ' SAR',
+                    items: Array(inv.items_count).fill({}),
+                    invoiceDate: inv.invoice_creation,
+                    status: inv.status,
+                    returnStatus: inv.reverse_status,
+                    scheduleId: inv.schedule_id,
+                    scheduleType: inv.schedule_type
+                };
+            });
 
             if (isNewSearch) {
                 setInvoices(mappedInvoices);
@@ -172,6 +176,14 @@ export function OpenInvoiceModal({
                                                 </div>
 
                                                 <div className="text-right shrink-0">
+                                                    {invoice.scheduleType && (
+                                                        <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase mb-1 inline-block ${String(invoice.scheduleType).toLowerCase() === 'instant'
+                                                                ? 'bg-orange-100 text-orange-700'
+                                                                : 'bg-blue-100 text-blue-700'
+                                                            }`}>
+                                                            {invoice.scheduleType}
+                                                        </span>
+                                                    )}
                                                     <span className="text-sm font-bold text-primary block">
                                                         {invoice.totalAmount.toLocaleString()} {invoice.currency}
                                                     </span>

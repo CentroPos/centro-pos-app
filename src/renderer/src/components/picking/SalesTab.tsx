@@ -36,64 +36,22 @@ export function SalesTab({ onSelectInvoice }: SalesTabProps) {
             const rawInvoices = res?.data?.data || [];
 
             // Map API response to match Invoice interface and QueueOrder-like structure for UI
-            const mappedInvoices: Invoice[] = rawInvoices.map((inv: any) => ({
-                id: inv.invoice_no,
-                invoiceNo: inv.invoice_no,
-                customerName: inv.customer_name,
-                totalAmount: inv.total_amount,
-                currency: 'SAR', // Assuming SAR based on mock data
-                items: Array(inv.items_count).fill({}), // Mock items count length
-                invoiceDate: inv.invoice_creation, // "2025-12-15 18:13:30.260524"
-                status: inv.status, // "Unpaid", "Paid" etc for order_status
-                returnStatus: inv.reverse_status,
-                scheduleId: inv.schedule_id,
-                // Extra fields mapped for UI display if we extend Invoice type or just cast/use specific fields
-                // User mentioned "schedule_type 'instant/delivered'". API usually gives this.
-                // Let's assume 'status' from API is 'delivered'/'not-delivered' (delivery status) 
-                // and 'order_status' is Payment Status? 
-                // In OpenInvoiceModal mapping: 
-                // status: inv.status, returnStatus: inv.reverse_status.
-
-                // We'll use the API fields directly if possible or stick to Invoice type.
-                // Let's augment the Invoice type locally or just use 'any' casting in render if strictly needed, 
-                // but better to stick to Invoice type.
-                // Invoice type has: status, returnStatus.
-                // We need: Order Status (Paid/Unpaid), Return Status, Delivery Status (Instant/Delivered/etc).
-
-                // Wait, OpenInvoiceModal receives:
-                // matchesFilter ... item.status === 'not-delivered' ...
-                // In OpenInvoiceModal.tsx: 
-                // status: inv.status
-                // returnStatus: inv.reverse_status
-
-                // In OrderQueueTab (Instant layout):
-                // item.order_status (Paid/Overdue) -> This seems to vary. 
-                // Let's check OpenInvoiceModal render logic again.
-                // It renders `invoice.status` (e.g. "Unpaid") and `invoice.returnStatus`.
-
-                // User request: "keep the schedule_type 'instant/delivered' in the item tile top right cornet status"
-                // So top right badge = schedule_type? Or is it delivery status?
-                // "schedule_type 'instant/delivered'" sounds like 'type' field? No.
-                // Probably 'delivery_status'? 
-                // Let's look at `OpenInvoiceModal` mapping again...
-                // It doesn't map `schedule_type`.
-                // But user says "api is same as OpenInvoiceModal".
-                // Maybe the API field `status` IS the delivery status?
-                // In `OpenInvoiceModal` render: `getStatusColor(invoice.status)`.
-                // Labels: Paid, Overdue, or Amber (default).
-                // Usually Payment Status is Paid/Unpaid.
-                // Delivery Status is Delivered/Not Delivered.
-
-                // User said: "keep the schedule_type 'instant/delivered' in the item tile top right cornet status"
-                // I will add a `type` or `scheduleType` field to Invoice if needed, or just map it from API if available. 
-                // If not, I'll default to "Instant" as per context? 
-                // "keep the schedule_type 'instant/delivered'".
-                // Maybe the API returns `type`? 
-                // `get_dynamic_picking_list` usually returns `type`?
-                // I will assume `inv.type` or `inv.schedule_type` exists.
-                // I'll stick `any` for raw invoice access in render to be safe or add to type.
-                scheduleType: inv.type || 'instant' // Mocking/Optimistic
-            }));
+            const mappedInvoices: Invoice[] = rawInvoices.map((inv: any) => {
+                console.log('INV DATA SalesTab:', inv, inv.schedule_type);
+                return {
+                    id: inv.invoice_no,
+                    invoiceNo: inv.invoice_no,
+                    customerName: inv.customer_name,
+                    totalAmount: inv.total_amount,
+                    currency: 'SAR',
+                    items: Array(inv.items_count).fill({}),
+                    invoiceDate: inv.invoice_creation,
+                    status: inv.status,
+                    returnStatus: inv.reverse_status,
+                    scheduleId: inv.schedule_id,
+                    scheduleType: inv.schedule_type
+                };
+            });
 
             if (isNewSearch) {
                 setInvoices(mappedInvoices);
@@ -149,6 +107,15 @@ export function SalesTab({ onSelectInvoice }: SalesTabProps) {
         return d.toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
     };
 
+    const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+        const { scrollTop, clientHeight, scrollHeight } = e.currentTarget;
+        if (scrollHeight - scrollTop <= clientHeight + 50) {
+            if (!isLoading && hasMore) {
+                fetchInvoices();
+            }
+        }
+    };
+
     return (
         <div className="h-full flex flex-col">
             <div className="p-3 border-b border-gray-200 space-y-3 flex-shrink-0">
@@ -173,7 +140,7 @@ export function SalesTab({ onSelectInvoice }: SalesTabProps) {
                 </div>
             </div>
 
-            <div className="flex-1 overflow-auto p-3 space-y-2">
+            <div className="flex-1 overflow-auto p-3 space-y-2" onScroll={handleScroll}>
                 {invoices.length === 0 && !isLoading ? (
                     <div className="flex flex-col items-center justify-center py-8 text-gray-500">
                         <AlertCircle className="w-10 h-10 mb-2 opacity-50" />
@@ -218,16 +185,16 @@ export function SalesTab({ onSelectInvoice }: SalesTabProps) {
                                             <div className="flex flex-col items-end shrink-0 gap-1.5 min-w-[140px]">
                                                 {/* Schedule Type / Delivery Status Badge - Top Right */}
                                                 <div className="flex justify-end">
-                                                    <span className={cn(
-                                                        "text-[10px] px-2 py-0.5 rounded-full font-medium border whitespace-nowrap",
-                                                        // Logic for color based on type/status
-                                                        "bg-gray-50 text-gray-700 border-gray-200"
-                                                    )}>
-                                                        {/* User requested schedule_type "instant/delivered" here */}
-                                                        {/* Using item.status might be wrong if it is Payment status. */}
-                                                        {/* Assuming 'type' or 'scheduleType' or defaulting to "Instant" */}
-                                                        {(item as any).scheduleType || 'Instant'}
-                                                    </span>
+                                                    {item.scheduleType && (
+                                                        <span className={cn(
+                                                            "text-[10px] px-2 py-0.5 rounded-full font-medium border whitespace-nowrap",
+                                                            String(item.scheduleType).toLowerCase() === 'instant'
+                                                                ? "bg-orange-50 text-orange-700 border-orange-200"
+                                                                : "bg-blue-50 text-blue-700 border-blue-200"
+                                                        )}>
+                                                            {item.scheduleType}
+                                                        </span>
+                                                    )}
                                                 </div>
 
                                                 <span className="text-sm font-bold text-primary block mt-0.5">

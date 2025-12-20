@@ -13,6 +13,7 @@ interface InvoiceHeaderProps {
     onFinish: () => void;
     hasSelection: boolean;
     canFinish: boolean;
+    onScheduleClick?: () => void;
 }
 
 export function InvoiceHeader({
@@ -27,8 +28,8 @@ export function InvoiceHeader({
     onFinish,
     hasSelection,
     canFinish,
+    onScheduleClick
 }: InvoiceHeaderProps) {
-    console.log('SHD =>', invoice);
     return (
         <div className="bg-card border-b border-border flex-shrink-0">
             <div className="flex items-center justify-between px-4 py-3">
@@ -60,7 +61,10 @@ export function InvoiceHeader({
                     </div>
 
                     {schedule && (
-                        <div className="bg-muted/50 rounded-lg p-2 border border-border/50 flex flex-col gap-1.5 min-w-[200px]">
+                        <div
+                            onClick={onScheduleClick}
+                            className={`bg-muted/50 rounded-lg p-2 border border-border/50 flex flex-col gap-1.5 min-w-[200px] transition-all ${onScheduleClick ? 'cursor-pointer hover:bg-muted hover:border-border' : ''}`}
+                        >
                             <div className="flex items-center gap-2">
                                 {schedule.type === 'instant' ? (
                                     <div className="flex items-center gap-1.5 text-orange-600 bg-orange-50 px-2 py-0.5 rounded border border-orange-100">
