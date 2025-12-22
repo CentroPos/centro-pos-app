@@ -301,7 +301,7 @@ export function RightSidebar({
                 )}
 
                 {activeTab === 'picker-log' && (
-                    <PickerLogTab />
+                    <PickerLogTab onSelectInvoice={onSelectInvoice} />
                 )}
             </div>
         </div>
