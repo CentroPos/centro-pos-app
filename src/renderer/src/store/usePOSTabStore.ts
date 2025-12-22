@@ -161,6 +161,7 @@ export const usePOSTabStore = create<POSTabStore>()(
               const baseItem = {
                 item_code: itemCode,
                 item_name: it.item_name,
+                item_part_no: it.item_part_no,
                 label: it.description || it.item_name,
                 quantity: Number(it.qty || it.quantity || 0),
                 uom: it.uom || it.stock_uom,
@@ -591,6 +592,7 @@ export const usePOSTabStore = create<POSTabStore>()(
       getCurrentTabItems: () => {
         const state = get()
         const currentTab = state.tabs.find(tab => tab.id === state.activeTabId)
+        console.log('SHD ==> [getCurrentTabItems] currentTab', currentTab)
         return currentTab?.items || []
       },
 

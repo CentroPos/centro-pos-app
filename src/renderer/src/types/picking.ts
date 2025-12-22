@@ -70,7 +70,7 @@ export interface PickSlip {
   pickerId: string;
   pickerName: string;
   items: InvoiceItem[];
-  status: 'not-started' | 'in-progress' | 'picked' | 'Draft' | 'Completed';
+  status: 'Not Started' | 'In Process' | 'Picked' | 'Cancelled' | 'not-started' | 'in-progress' | 'picked' | 'Draft' | 'Completed';
   createdAt?: Date;
   startTime?: Date;
   endTime?: Date;

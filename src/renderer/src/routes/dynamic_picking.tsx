@@ -30,7 +30,7 @@ const DynamicPickupInterface: React.FC = () => {
         openInvoiceTab,
         closeInvoiceTab,
         setActiveTab,
-        fetchGeneralInfo
+        fetchGeneralInfo,
     } = usePickingStore();
 
 
@@ -42,6 +42,7 @@ const DynamicPickupInterface: React.FC = () => {
     const [isFinishModalOpen, setIsFinishModalOpen] = useState(false);
     const [pendingInvoice, setPendingInvoice] = useState<Invoice | null>(null);
     const [rightSidebarTab, setRightSidebarTab] = useState<'details' | 'sales' | 'queue' | 'picker-log'>('queue');
+    const [editingPickSlip, setEditingPickSlip] = useState<PickSlip | null>(null);
 
     // Manage per-tab UI state (selection, filters) locally
     const [tabStates, setTabStates] = useState<Record<string, LocalTabState>>({});
@@ -351,92 +352,22 @@ const DynamicPickupInterface: React.FC = () => {
         }
     };
 
-    const handleCreatePickSlip = async (warehouseId: string, pickerId: string | null, startTime: Date | null, endTime: Date | null) => {
-        if (!activeTab) return Promise.resolve(null);
-        const state = getTabState(activeTab.invoice.id);
-        if (state.selectedItems.size === 0) return Promise.resolve(null);
-
-        const warehouse = warehouses.find((w) => w.id === warehouseId);
-        if (!warehouse) return Promise.resolve(null);
-
-        // Find picker in warehouse's pickers list
-        const picker = pickerId
-            ? warehouse.pickers.find((p) => p.id === pickerId)
-            : null;
-
-        const selectedItemIds = Array.from(state.selectedItems);
-        const selectedItems = activeTab.items.filter(item => selectedItemIds.includes(item.id));
-
-        const payloadItems = selectedItems.map(item => ({
-            item_code: item.itemCode,
-            quantity: item.quantity,
-            uom: item.uom
-        }));
-
-        const formatTime = (date: Date) => {
-            const offset = date.getTimezoneOffset() * 60000;
-            const localDate = new Date(date.getTime() - offset);
-            return localDate.toISOString().slice(0, 23).replace('T', ' ');
-        };
-
-        const startDateTimeStr = startTime ? formatTime(startTime) : "";
-        const endDateTimeStr = endTime ? formatTime(endTime) : "";
-
-        try {
-            const res = await window.electronAPI?.proxy?.request({
-                url: '/api/method/centro_pos_apis.api.picking.assign_pick_slip',
-                method: 'POST',
-                data: {
-                    invoice_no: activeTab.invoice.invoiceNo,
-                    warehouse: warehouse.name,
-                    assigned_to: picker?.id || "",
-                    start_date_time: startDateTimeStr,
-                    end_date_time: endDateTimeStr,
-                    items: payloadItems
-                }
-            });
-
-            const data = res?.data?.data;
-            if (data) {
-                // Refresh invoice details to reflect changes
-                await fetchInvoiceDetails(activeTab.invoice);
-                // Clear selection
-                updateLocalTabState(activeTab.invoice.id, { selectedItems: new Set() });
-
-                return {
-                    id: data.picking_no,
-                    slipNo: data.picking_no,
-                    invoiceId: activeTab.invoice.id,
-                    warehouseId: warehouse.id,
-                    warehouseName: data.warehouse,
-                    pickerId: picker?.id || '',
-                    pickerName: data.assigned_to || picker?.name || 'Unassigned',
-                    items: [],
-                    status: 'not-started' as const,
-                    createdAt: new Date(),
-                    startTime: data.start_date_time ? new Date(data.start_date_time) : undefined,
-                    print_url: data.print_url
-                };
-            }
-            return null;
-        } catch (e: any) {
-            console.error("Failed to create pick slip", e);
-            toast.error(e?.message || "Failed to create pick slip");
-            return null;
-        }
-    };
-
     const handleFinish = () => {
         if (!activeTab) return;
         const allAssigned = activeTab.items.every((item) => item.status === 'assigned');
 
-        // Open modal regardless of assignment status as per new workflow, or keep check?
-        // User didn't say to remove the check. I'll keep the check but change alert to modal open.
         if (allAssigned) {
             setIsFinishModalOpen(true);
         } else {
             alert('Please assign all items before finishing.');
         }
+    };
+
+
+
+    const handlePickSlipClick = (slip: PickSlip) => {
+        setEditingPickSlip(slip);
+        setIsAssignModalOpen(true);
     };
 
     const handleAssignWarehouses = (deliveryWarehouseId: string, operations: WarehouseOperation[]) => {
@@ -647,6 +578,7 @@ const DynamicPickupInterface: React.FC = () => {
                     onSelectQueueOrder={(item) => openInvoiceTab(item.invoice)}
                     onRemoveQueueOrder={(_id) => { }} // Removed removeFromQueue
                     onSelectInvoice={handleSelectInvoiceFromModal}
+                    onPickSlipClick={handlePickSlipClick}
                 />
             </div>
 
@@ -669,14 +601,28 @@ const DynamicPickupInterface: React.FC = () => {
 
             <AssignPickSlipModal
                 isOpen={isAssignModalOpen}
-                onClose={() => setIsAssignModalOpen(false)}
-                selectedItems={activeTab
-                    ? Array.from(currentState?.selectedItems || [])
-                        .map((id) => activeTab.items.find((item) => item.id === id))
-                        .filter((item): item is InvoiceItem => !!item)
-                    : []}
+                onClose={() => {
+                    setIsAssignModalOpen(false);
+                    setEditingPickSlip(null);
+                }}
+                selectedItems={isAssignModalOpen && editingPickSlip
+                    ? editingPickSlip.items
+                    : activeTab
+                        ? Array.from(currentState?.selectedItems || [])
+                            .map((id) => activeTab.items.find((item) => item.id === id))
+                            .filter((item): item is InvoiceItem => !!item)
+                        : []
+                }
                 warehouses={warehouses}
-                onCreatePickSlip={handleCreatePickSlip}
+                invoiceNo={activeTab?.invoice.invoiceNo || ''}
+                existingPickSlip={editingPickSlip}
+                onSuccess={() => {
+                    if (activeTab) fetchInvoiceDetails(activeTab.invoice);
+                    if (!editingPickSlip && activeTab) {
+                        // Clear selection if it was a new assignment
+                        updateLocalTabState(activeTab.invoice.id, { selectedItems: new Set() });
+                    }
+                }}
             />
 
             <AssignWarehousesModal
@@ -685,6 +631,7 @@ const DynamicPickupInterface: React.FC = () => {
                 onAssign={handleAssignWarehouses}
                 warehouses={warehouses}
                 currentOperations={activeTab?.warehouseDetails?.operations || []}
+                invoiceNo={activeTab?.invoice.invoiceNo || ''}
             />
         </div>
     );

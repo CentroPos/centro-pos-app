@@ -5,6 +5,9 @@ import { Warehouse, WarehouseOperation } from '@renderer/types/picking';
 import { cn } from '@renderer/lib/utils';
 import { Check } from 'lucide-react';
 import { ScrollArea } from '@renderer/components/ui/scroll-area';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@renderer/components/ui/table';
+
+import { toast } from 'sonner';
 
 interface AssignWarehousesModalProps {
     isOpen: boolean;
@@ -12,6 +15,7 @@ interface AssignWarehousesModalProps {
     onAssign: (deliveryWarehouseId: string, operations: WarehouseOperation[]) => void;
     warehouses: Warehouse[];
     currentOperations: WarehouseOperation[];
+    invoiceNo: string;
 }
 
 export function AssignWarehousesModal({
@@ -19,10 +23,12 @@ export function AssignWarehousesModal({
     onClose,
     onAssign,
     warehouses,
-    currentOperations
+    currentOperations,
+    invoiceNo
 }: AssignWarehousesModalProps) {
     const [selectedDeliveryWarehouse, setSelectedDeliveryWarehouse] = useState<string | null>(null);
     const [operationsList, setOperationsList] = useState<WarehouseOperation[]>([]);
+    const [isAssigning, setIsAssigning] = useState(false);
 
     // Filter available delivery warehouses: explicitly marked or in current operations
     const availableDeliveryWarehouses = useMemo(() => {
@@ -87,42 +93,87 @@ export function AssignWarehousesModal({
         setOperationsList(newList);
     }, [selectedDeliveryWarehouse, isOpen, warehouses, currentOperations]); // Depend on currentOperations to reset correctly
 
-    const handleAssign = () => {
+    const handleAssign = async () => {
         // Allow assign if at least one pickup is selected (validation requirement)
         // And if we have a valid list
         if (operationsList.some(op => op.isCustomerPickup)) {
-            const deliveryId = selectedDeliveryWarehouse || (operationsList.find(op => op.isCustomerPickup)?.warehouseId || '');
-            onAssign(deliveryId, operationsList);
-            onClose();
+            setIsAssigning(true);
+            try {
+                const deliveryId = selectedDeliveryWarehouse || (operationsList.find(op => op.isCustomerPickup)?.warehouseId || '');
+                const deliveryWarehouse = warehouses.find(w => w.id === deliveryId);
+
+                const payload = {
+                    invoice_no: invoiceNo,
+                    delivery_warehouse: deliveryWarehouse?.name || '',
+                    operations: operationsList.map(op => ({
+                        warehouse: op.warehouseName,
+                        customer_pickup: op.isCustomerPickup
+                    }))
+                };
+
+                console.log("Assign Warehouse Payload:", payload);
+
+                const res = await window.electronAPI?.proxy?.request({
+                    url: '/api/method/centro_pos_apis.api.picking.assign_warehouse_operation',
+                    method: 'POST',
+                    data: payload
+                });
+
+                if (res && (res.status === 200 || res.status === 201)) { // Accept 201 as strictly success too if needed, usually 200 for RPC
+                    toast.success("Successfully assigned warehouses");
+                    onAssign(deliveryId, operationsList);
+                    onClose();
+                } else {
+                    console.error("Assign Warehouse Error:", res);
+                    toast.error("Failed to assign warehouses. Please try again.");
+                }
+            } catch (error) {
+                console.error("Assign Warehouse API Error:", error);
+                toast.error("An error occurred while assigning warehouses.");
+            } finally {
+                setIsAssigning(false);
+            }
         }
     };
 
     const handleTogglePickup = (index: number) => {
-        // Prevent toggling the first item if it is the enforced Delivery Warehouse
-        if (index === 0 && selectedDeliveryWarehouse) return;
+        const isDeliveryRow = index === 0 && selectedDeliveryWarehouse !== null;
+        // Check if row should be disabled (logic duplicated from render for safety)
+        const isSingleRow = operationsList.length === 1;
+        const selectedWH = warehouses.find(w => w.id === selectedDeliveryWarehouse);
+        const isDeliveryWarehouse = selectedWH?.is_delivery_warehouse;
+        const isFirstLineDelivery = isDeliveryRow && isDeliveryWarehouse;
+        const isDone = (operationsList[index].status || '').toLowerCase() === 'done';
+
+        // Prevent toggling if disabled
+        if (isSingleRow) return;
+        if (isFirstLineDelivery) return;
+        if (isDone) return;
 
         setOperationsList(prev => {
             const newList = [...prev];
-            // If we toggle one ON, should we toggle others OFF? 
-            // "one internal transfer will mandatory" -> implies single pickup.
-            // I'll enforce single pickup interaction: if I check one, uncheck others.
-
-            const newState = !newList[index].isCustomerPickup;
-            if (newState) {
-                // If checking this one, uncheck all others
-                newList.forEach((op, i) => {
-                    op.isCustomerPickup = (i === index);
-                });
-            } else {
-                // If unchecking, just uncheck
-                newList[index] = { ...newList[index], isCustomerPickup: false };
-            }
-
+            // Toggle the target row
+            newList[index] = { ...newList[index], isCustomerPickup: !newList[index].isCustomerPickup };
             return newList;
         });
     };
 
-    const isValid = operationsList.some(op => op.isCustomerPickup);
+    // Validation Logic
+    const isValid = useMemo(() => {
+        const hasSelection = operationsList.some(op => op.isCustomerPickup);
+        if (!hasSelection) return false;
+
+        const isDeliveryRow = selectedDeliveryWarehouse !== null;
+        const isDeliverySelected = isDeliveryRow && operationsList[0]?.isCustomerPickup;
+
+        // If Delivery Row is selected, NO other rows should be selected (Exclusivity)
+        if (isDeliverySelected) {
+            const othersSelected = operationsList.slice(1).some(op => op.isCustomerPickup);
+            return !othersSelected;
+        }
+
+        return true;
+    }, [operationsList, selectedDeliveryWarehouse]);
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -133,17 +184,17 @@ export function AssignWarehousesModal({
                     </DialogHeader>
 
                     <div className="mt-4 space-y-2">
-                        <label className="text-sm font-medium text-gray-700">Delivery Warehouse</label>
+                        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Delivery Warehouse</label>
                         <div className="flex flex-wrap gap-2">
                             {availableDeliveryWarehouses.map((warehouse) => (
                                 <Button
                                     key={warehouse.id}
-                                    variant={selectedDeliveryWarehouse === warehouse.id ? 'default' : 'secondary'}
+                                    variant="outline"
                                     className={cn(
-                                        "h-8 rounded-full text-xs font-medium transition-all",
+                                        "h-8 rounded-full px-4 text-xs font-medium border transition-all",
                                         selectedDeliveryWarehouse === warehouse.id
-                                            ? "bg-green-500 hover:bg-green-600 text-white border-transparent"
-                                            : "bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200"
+                                            ? "bg-green-700 hover:bg-green-800 text-white border-green-700 shadow-sm"
+                                            : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
                                     )}
                                     onClick={() => setSelectedDeliveryWarehouse(warehouse.id)}
                                 >
@@ -156,67 +207,102 @@ export function AssignWarehousesModal({
 
                 <div className="flex-1 overflow-hidden px-6 pb-2">
                     <div className="border rounded-lg bg-white overflow-hidden flex flex-col h-full">
-                        <div className="bg-gray-50 border-b px-4 py-2 flex text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-                            <div className="flex-1">Warehouse</div>
-                            <div className="flex-1 text-center">Customer Pickup</div>
-                            <div className="flex-[3]">Pick Slips</div>
-                            <div className="flex-1 text-center">Status</div>
-                        </div>
                         <ScrollArea className="flex-1">
-                            <div className="divide-y divide-gray-100">
-                                {operationsList.map((op, index) => {
-                                    const isDeliveryRow = index === 0 && selectedDeliveryWarehouse !== null;
+                            <Table>
+                                <TableHeader className="sticky top-0 bg-slate-100 z-10 text-xs border-b border-slate-200 shadow-sm">
+                                    <TableRow className="hover:bg-transparent">
+                                        <TableHead className="font-bold text-slate-700 pl-4 text-left">Warehouse</TableHead>
+                                        <TableHead className="w-[150px] font-bold text-center text-slate-700">Customer Pickup</TableHead>
+                                        <TableHead className="w-auto flex-1 font-bold text-slate-700 text-left">Pick Slips</TableHead>
+                                        <TableHead className="w-[100px] font-bold text-center text-slate-700">Status</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {operationsList.map((op, index) => {
+                                        const isDeliveryRow = index === 0 && selectedDeliveryWarehouse !== null;
+                                        const isDone = (op.status || '').toLowerCase() === 'done';
+                                        const isPending = (op.status || '').toLowerCase() === 'pending';
 
-                                    return (
-                                        <div key={`${op.warehouseName}-${index}`} className="flex items-center px-4 py-3 text-sm">
-                                            <div className="flex-1 font-medium text-gray-900">
-                                                {op.warehouseName}
-                                            </div>
-                                            <div className="flex-1 flex justify-center">
-                                                <div
-                                                    className={cn(
-                                                        "w-5 h-5 rounded border flex items-center justify-center transition-colors",
-                                                        op.isCustomerPickup
-                                                            ? "bg-green-500 border-green-500 text-white"
-                                                            : "bg-white border-gray-300",
-                                                        isDeliveryRow
-                                                            ? "opacity-50 cursor-not-allowed"
-                                                            : "cursor-pointer hover:border-green-400"
-                                                    )}
-                                                    onClick={() => handleTogglePickup(index)}
-                                                >
-                                                    {op.isCustomerPickup && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                                                </div>
-                                            </div>
-                                            <div className="flex-[3] flex flex-wrap gap-1.5 items-center">
-                                                {op.pickSlips && op.pickSlips.length > 0 ? (
-                                                    op.pickSlips.map((slip) => (
-                                                        <span
-                                                            key={slip}
-                                                            className="px-2 py-0.5 bg-gray-100 rounded-md text-[11px] font-medium text-gray-600 border border-gray-200"
-                                                            title={slip}
-                                                        >
-                                                            {slip}
-                                                        </span>
-                                                    ))
-                                                ) : (
-                                                    <span className="text-gray-400 text-xs">-</span>
+                                        // Checkbox Logic
+                                        const isSingleRow = operationsList.length === 1;
+                                        const selectedWH = warehouses.find(w => w.id === selectedDeliveryWarehouse);
+                                        // Use optional chaining carefully - assuming warehouse object structure
+                                        const isDeliveryWarehouse = selectedWH && 'is_delivery_warehouse' in selectedWH && !!selectedWH.is_delivery_warehouse;
+                                        const isFirstLineDelivery = isDeliveryRow && isDeliveryWarehouse;
+
+                                        // Condition: "if only having one row, the checkbox will true by default and inactive"
+                                        // Condition: "first line should be inactive if ... is delivery warehouse"
+                                        // Condition: "if done ... inactive"
+                                        const isCheckboxDisabled = isSingleRow || isFirstLineDelivery || isDone;
+
+                                        return (
+                                            <TableRow
+                                                key={`${op.warehouseName}-${index}`}
+                                                className={cn(
+                                                    "text-xs hover:bg-muted/50 transition-colors border-b last:border-0",
+                                                    isDone && "opacity-50 pointer-events-none bg-muted/30"
                                                 )}
-                                            </div>
-                                            <div className="flex-1 flex justify-center">
-                                                <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px] font-medium border border-gray-200 uppercase">
-                                                    {op.status || 'Draft'}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                                {operationsList.length === 0 && (
-                                    <div className="p-8 text-center text-gray-400 text-sm">
-                                        Select a delivery warehouse to begin
-                                    </div>
-                                )}
-                            </div>
+                                            >
+                                                <TableCell className="font-medium pl-4 py-3 text-left">
+                                                    {op.warehouseName}
+                                                </TableCell>
+                                                <TableCell className="text-center">
+                                                    <div className="flex justify-center">
+                                                        <div
+                                                            className={cn(
+                                                                "w-5 h-5 rounded border flex items-center justify-center transition-all",
+                                                                op.isCustomerPickup
+                                                                    ? "bg-green-700 border-green-700 text-white"
+                                                                    : "bg-white border-slate-300 hover:border-green-600",
+                                                                isCheckboxDisabled
+                                                                    ? "opacity-50 cursor-not-allowed"
+                                                                    : "cursor-pointer"
+                                                            )}
+                                                            onClick={() => !isCheckboxDisabled && handleTogglePickup(index)}
+                                                        >
+                                                            {op.isCustomerPickup && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                                                        </div>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-left w-[40%]">
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {op.pickSlips && op.pickSlips.length > 0 ? (
+                                                            op.pickSlips.map((slip) => (
+                                                                <span
+                                                                    key={slip}
+                                                                    className="px-2 py-0.5 bg-slate-100 rounded-md text-[10px] font-medium text-slate-600 border border-slate-200"
+                                                                    title={slip}
+                                                                >
+                                                                    {slip}
+                                                                </span>
+                                                            ))
+                                                        ) : (
+                                                            <span className="text-muted-foreground">-</span>
+                                                        )}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-center">
+                                                    <span className={cn(
+                                                        "px-2 py-0.5 rounded text-[10px] font-bold uppercase border tracking-wide",
+                                                        isPending && "bg-orange-100 text-orange-700 border-orange-200",
+                                                        isDone && "bg-green-100 text-green-700 border-green-200",
+                                                        !isPending && !isDone && "bg-slate-100 text-slate-600 border-slate-200"
+                                                    )}>
+                                                        {op.status || 'Draft'}
+                                                    </span>
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })}
+                                    {operationsList.length === 0 && (
+                                        <TableRow>
+                                            <TableCell colSpan={4} className="h-24 text-center text-muted-foreground italic">
+                                                Select a delivery warehouse to begin
+                                            </TableCell>
+                                        </TableRow>
+                                    )}
+                                </TableBody>
+                            </Table>
                         </ScrollArea>
                     </div>
                 </div>
@@ -227,11 +313,15 @@ export function AssignWarehousesModal({
                     </Button>
                     <Button
                         onClick={handleAssign}
-                        disabled={!isValid}
-                        className="bg-blue-500 hover:bg-blue-600 text-white min-w-[100px]"
+                        disabled={!isValid || isAssigning}
+                        className="bg-slate-200 text-slate-900 hover:bg-slate-300 min-w-[100px] border border-slate-300"
                     >
-                        <Check className="w-4 h-4 mr-2" />
-                        Assign
+                        {isAssigning ? (
+                            <div className="w-4 h-4 border-2 border-slate-600 border-t-transparent rounded-full animate-spin mr-2" />
+                        ) : (
+                            <Check className="w-4 h-4 mr-2" />
+                        )}
+                        {isAssigning ? 'Assigning...' : 'Assign'}
                     </Button>
                 </div>
             </DialogContent>

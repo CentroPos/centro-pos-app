@@ -167,6 +167,7 @@ const POSInterface: React.FC = () => {
   const selectedCustomer = getCurrentTabCustomer()
 
   const items = getCurrentTabItems();
+  console.log('SHD ==> [POSInterface = items]', items)
   const currentTab = getCurrentTab();
   const selectedPriceList = currentTab?.orderData?.price_list || 'Standard Selling'
 

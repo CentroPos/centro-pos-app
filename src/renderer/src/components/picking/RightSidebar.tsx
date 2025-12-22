@@ -179,22 +179,25 @@ export function RightSidebar({
                                         return { date: dateStr, time: timeStr };
                                     };
 
-                                    const isDraft = slip.status === 'not-started';
-                                    const isStarted = slip.status === 'in-progress';
-                                    const isPicked = slip.status === 'picked' || slip.status === 'Completed';
+                                    const isDraft = slip.status === 'Not Started' || slip.status === 'not-started';
+                                    const isStarted = slip.status === 'In Process' || slip.status === 'in-progress';
+                                    const isPicked = slip.status === 'Picked' || slip.status === 'picked' || slip.status === 'Completed';
+                                    const isCancelled = slip.status === 'Cancelled';
 
                                     // Determine background color based on status
-                                    let statusBg = 'bg-gray-100 border-gray-200';
+                                    let statusBg = 'bg-gray-50 border-gray-200'; // Default/Cancelled
                                     if (isDraft) statusBg = 'bg-red-50 border-red-100 hover:bg-red-100/50';
                                     if (isStarted) statusBg = 'bg-orange-50 border-orange-100 hover:bg-orange-100/50';
                                     if (isPicked) statusBg = 'bg-green-50 border-green-100 hover:bg-green-100/50';
+                                    if (isCancelled) statusBg = 'bg-slate-50 border-slate-200 hover:bg-slate-100/50 opacity-75';
 
                                     /* Status Badge Colors */
                                     const badgeClass = cn(
                                         "px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide mb-1 inline-block text-center w-full",
                                         isDraft && "bg-red-100 text-red-700",
                                         isStarted && "bg-orange-100 text-orange-700",
-                                        isPicked && "bg-green-100 text-green-700"
+                                        isPicked && "bg-green-100 text-green-700",
+                                        isCancelled && "bg-slate-100 text-slate-500 line-through"
                                     );
 
                                     return (
