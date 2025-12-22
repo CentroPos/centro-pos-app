@@ -27,19 +27,6 @@ export function RightSidebar({
     onSelectInvoice,
     orderQueue, // Kept for header badge if still passed, but marked as optional
 }: RightSidebarProps) {
-    const getStatusLabel = (status: PickSlip['status']) => {
-        switch (status) {
-            case 'not-started':
-                return 'Not Started';
-            case 'in-progress':
-                return 'In Progress';
-            case 'picked':
-                return 'Picked';
-            default:
-                return status;
-        }
-    };
-
     const hasPickSlips = pickSlips.length > 0;
 
     return (
@@ -151,7 +138,7 @@ export function RightSidebar({
                         <div>
                             <h3 className="font-semibold text-foreground mb-3">Picking Slips</h3>
                             <div className="space-y-2">
-                                {pickSlips.map((originalSlip, index) => {
+                                {pickSlips.map((originalSlip) => {
                                     // --- DUMMY CODE FOR UI TESTING ---
                                     const slip = { ...originalSlip };
                                     // if (index === 0) {

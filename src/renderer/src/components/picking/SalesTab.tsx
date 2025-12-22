@@ -75,10 +75,6 @@ export function SalesTab({ onSelectInvoice }: SalesTabProps) {
         fetchInvoices(true);
     }, []); // Run once on mount
 
-    const handleSearch = () => {
-        fetchInvoices(true);
-    };
-
     const handleRefresh = () => {
         fetchInvoices(true);
     };
