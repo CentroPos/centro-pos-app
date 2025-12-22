@@ -12,7 +12,7 @@ interface PickItem {
 interface PickResult {
     pickerName: string;
     pickerId: string;
-    duration: number;
+    duration: string | number; // API returns string "MM:SS" or similar?
     assigned: string;
     startTime: string;
     endTime: string;
@@ -20,45 +20,28 @@ interface PickResult {
     invoiceNo: string;
     customerName: string;
     items: PickItem[];
+    message?: string;
 }
 
-// ============= Mock Data Generator =============
-const generateMockResult = (_barcode: string): PickResult => {
-    const names = ["SAHAD PAREED", "JOHN SMITH", "MARIA GARCIA", "ALEX JOHNSON"];
-    const customers = ["BISMI Co.", "ALPHA RETAIL", "MEGA MART", "QUICK SHIP"];
-    const items = [
-        { name: "ABC THE ITEM NAME 500 GM", uom: "CTN" },
-        { name: "XYZ PRODUCT 1KG", uom: "PCS" },
-        { name: "DEF GOODS 250 ML", uom: "BOX" },
-        { name: "GHI SUPPLY 750 GM", uom: "CTN" },
-    ];
-
-    const numItems = Math.floor(Math.random() * 5) + 2;
-    const generatedItems = Array.from({ length: numItems }, (_, i) => ({
-        slNo: i + 1,
-        name: items[i % items.length].name,
-        itemCode: `ITM-${Math.floor(Math.random() * 90000) + 10000}`,
-        uom: items[i % items.length].uom,
-        qty: Math.floor(Math.random() * 10) + 1,
-    }));
-
-    const now = new Date();
-    const duration = Math.floor(Math.random() * 20) + 5;
-    const startTime = new Date(now.getTime() - duration * 60000);
-
-    return {
-        pickerName: names[Math.floor(Math.random() * names.length)],
-        pickerId: `PCK-${Math.floor(Math.random() * 9000) + 1000}`,
-        duration,
-        assigned: names[Math.floor(Math.random() * names.length)].split(" ")[0],
-        startTime: `Today, ${startTime.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}`,
-        endTime: `Today, ${now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}`,
-        pickSlipNo: `PCK-2025-${Math.floor(Math.random() * 90000) + 10000}`,
-        invoiceNo: `INV-2025-${Math.floor(Math.random() * 90000) + 10000}`,
-        customerName: customers[Math.floor(Math.random() * customers.length)],
-        items: generatedItems,
-    };
+const formatTime = (dateStr: string) => {
+    if (!dateStr) return '--:--';
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return dateStr;
+    return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
 };
+
+const formatDateSubtitle = (dateStr: string) => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return '';
+    const today = new Date();
+    if (date.toDateString() === today.toDateString()) {
+        return "Today";
+    }
+    return date.toLocaleDateString("en-US", { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+import { toast } from "sonner";
 
 // ============= Barcode Icon Component =============
 const BarcodeIcon = ({ className }: { className?: string }) => (
@@ -95,21 +78,58 @@ const PickerFeedbackScreen = () => {
     }, [maintainFocus]);
 
     // Handle paste event - triggers API call
-    const handlePaste = useCallback((e: React.ClipboardEvent<HTMLInputElement>) => {
+    const handlePaste = useCallback(async (e: React.ClipboardEvent<HTMLInputElement>) => {
         const pastedText = e.clipboardData.getData("text");
         if (pastedText.trim()) {
             e.preventDefault();
             setScanValue(pastedText);
             setIsLoading(true);
 
-            // Simulate API call with delay
-            setTimeout(() => {
-                const newResult = generateMockResult(pastedText.trim());
-                setResult(newResult);
+            try {
+                const res = await window.electronAPI?.proxy?.request({
+                    url: '/api/method/centro_pos_apis.api.picking.complete_pick_slip_scan',
+                    method: 'POST',
+                    data: {
+                        pick_list_id: pastedText.trim()
+                    }
+                });
+
+                const data = res?.data?.data;
+                if (data) {
+                    const mappedResult: PickResult = {
+                        pickerName: data.picker_name || 'Unknown',
+                        pickerId: data.picker_id || '-',
+                        duration: data.duration || '-',
+                        assigned: data.assigned_by || 'System',
+                        startTime: data.start_date_time,
+                        endTime: data.end_date_time,
+                        pickSlipNo: data.pick_slip_id,
+                        invoiceNo: data.invoice_id,
+                        customerName: data.customer_name || 'Unknown',
+                        message: data.message,
+                        items: (data.items || []).map((item: any, index: number) => ({
+                            slNo: index + 1,
+                            name: item.item_name,
+                            itemCode: item.item_code,
+                            uom: item.uom,
+                            qty: item.quantity
+                        }))
+                    };
+
+                    setResult(mappedResult);
+                    toast.success(data.message || "Scan processed successfully");
+                } else {
+                    toast.error("Invalid response from server");
+                }
+
+            } catch (error: any) {
+                console.error("Scan failed", error);
+                toast.error(error?.response?.data?.message || error?.message || "Failed to process scan");
+            } finally {
                 setIsLoading(false);
                 setScanValue("");
                 setTimeout(() => inputRef.current?.focus(), 0);
-            }, 800);
+            }
         }
     }, []);
 
@@ -221,13 +241,13 @@ const PickerFeedbackScreen = () => {
                             <div className="space-y-6">
                                 <div>
                                     <p className="text-xs text-gray-500 uppercase tracking-widest mb-1 font-black">START TIME</p>
-                                    <p className="text-lg text-white font-medium tracking-wide">{result.startTime.split(', ')[1]}</p>
-                                    <p className="text-xs text-gray-600">Today</p>
+                                    <p className="text-lg text-white font-medium tracking-wide">{formatTime(result.startTime)}</p>
+                                    <p className="text-xs text-gray-600">{formatDateSubtitle(result.startTime)}</p>
                                 </div>
                                 <div>
                                     <p className="text-xs text-gray-500 uppercase tracking-widest mb-1 font-black">END TIME</p>
-                                    <p className="text-lg text-[#22c55e] font-medium tracking-wide">{result.endTime.split(', ')[1]}</p>
-                                    <p className="text-xs text-gray-600">Today</p>
+                                    <p className="text-lg text-[#22c55e] font-medium tracking-wide">{formatTime(result.endTime)}</p>
+                                    <p className="text-xs text-gray-600">{formatDateSubtitle(result.endTime)}</p>
                                 </div>
                             </div>
 
@@ -244,6 +264,16 @@ const PickerFeedbackScreen = () => {
                                 <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1 font-bold">INVOICE NO</p>
                                 <p className="text-xl font-bold text-white tracking-wider">{result.invoiceNo}</p>
                             </div>
+
+
+
+                            {result.message && (
+                                <div className="py-2">
+                                    <p className="text-sm font-bold text-[#fbbf24] tracking-wide leading-tight">
+                                        {result.message}
+                                    </p>
+                                </div>
+                            )}
 
                             <div className="h-px bg-[#30363d] w-full my-2"></div>
 
