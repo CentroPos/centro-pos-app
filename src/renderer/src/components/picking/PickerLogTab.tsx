@@ -276,7 +276,7 @@ export function PickerLogTab({ onSelectInvoice }: PickerLogTabProps) {
                                 key={`${item.pick_slip_id}-${index}`}
                                 onClick={() => handleItemClick(item)}
                                 className={cn(
-                                    "w-full text-left border rounded-lg hover:shadow-md hover:border-primary/30 transition-all group overflow-hidden relative cursor-pointer active:scale-[0.99]",
+                                    "w-full text-left border rounded-lg hover:shadow-md hover:border-primary/30 hover:bg-gray-50/50 transition-all group overflow-hidden relative cursor-pointer active:scale-[0.99]",
                                     item.status === 'warn' ? "bg-red-50 border-red-200" : "bg-white border-gray-200"
                                 )}
                             >
