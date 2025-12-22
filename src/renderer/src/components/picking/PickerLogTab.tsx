@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { cn } from '@renderer/lib/utils';
-import { PickerLogItem } from '@renderer/types/picking';
+import { PickerLogItem, Invoice } from '@renderer/types/picking';
 import { Search, RefreshCw, User, Clock, RotateCcw, Box, FileText } from 'lucide-react';
 import { Input } from '@renderer/components/ui/input';
 import { Button } from '@renderer/components/ui/button';
@@ -13,7 +13,11 @@ import {
 } from "@renderer/components/ui/select";
 import { toast } from 'sonner';
 
-export function PickerLogTab() {
+interface PickerLogTabProps {
+    onSelectInvoice?: (invoice: Invoice) => void;
+}
+
+export function PickerLogTab({ onSelectInvoice }: PickerLogTabProps) {
     const [activeSubTab, setActiveSubTab] = useState<'active' | 'logs'>('active');
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedPicker, setSelectedPicker] = useState<string>('all');
@@ -27,56 +31,69 @@ export function PickerLogTab() {
     const [alertCount, setAlertCount] = useState(0);
 
     // Initial Fetch & Refresh
-    const fetchLogs = useCallback(async (isRefresh = false, search = searchQuery) => {
-        if (isLoading) return;
-        if (!hasMore && !isRefresh && page > 1) return;
+    const fetchLogs = useCallback(
+        async (isRefresh = false, search = searchQuery) => {
+            if (isLoading) return;
+            if (!hasMore && !isRefresh && page > 1) return;
 
-        setIsLoading(true);
-        if (isRefresh) setIsRefreshing(true);
+            setIsLoading(true);
+            if (isRefresh) setIsRefreshing(true);
 
-        const currentPage = isRefresh ? 1 : page;
+            const currentPage = isRefresh ? 1 : page;
+            const isLogsTab = activeSubTab === 'logs';
 
-        try {
-            const res = await window.electronAPI?.proxy?.request({
-                url: '/api/method/centro_pos_apis.api.picking.get_active_worker_log',
-                method: 'GET',
-                params: {
-                    search_key: search,
-                    limit_start: currentPage,
-                    limit_page_length: 20
+            try {
+                const res = await window.electronAPI?.proxy?.request({
+                    url: isLogsTab
+                        ? '/api/method/centro_pos_apis.api.picking.get_worker_log'
+                        : '/api/method/centro_pos_apis.api.picking.get_active_worker_log',
+                    method: 'GET',
+                    params: {
+                        search_key: search,
+                        limit_start: currentPage,
+                        limit_page_length: 20
+                    }
+                });
+
+                console.log(`SHD ==> [${isLogsTab ? 'get_worker_log' : 'get_active_worker_log'}]`, res);
+
+                if (res?.data?.data) {
+                    const responseData = res.data.data;
+                    const newLogs = isLogsTab ? responseData.worker_log : responseData.data;
+                    const count = responseData.count;
+
+                    if (!isLogsTab) {
+                        setAlertCount(count?.active_picker_alert_count || 0);
+                    }
+
+                    console.log(`SHD ==> [${isLogsTab ? 'get_worker_log' : 'get_active_worker_log'}] data:`, newLogs);
+                    console.log(`SHD ==> [${isLogsTab ? 'get_worker_log' : 'get_active_worker_log'}] count:`, count);
+
+                    if (isRefresh || currentPage === 1) {
+                        setLogs(newLogs || []);
+                        setHasMore((newLogs || []).length === 20);
+                        setPage(2);
+                    } else {
+                        setLogs((prev) => [...prev, ...(newLogs || [])]);
+                        setHasMore((newLogs || []).length === 20);
+                        setPage((prev) => prev + 1);
+                    }
                 }
-            });
-
-            console.log('SHD ==> [get_active_worker_log]', res);
-
-            if (res?.data?.data) {
-                const { data: newLogs, count } = res.data.data;
-                setAlertCount(count?.active_picker_alert_count || 0);
-                console.log('SHD ==> [get_active_worker_log]', newLogs);
-                console.log('SHD ==> [get_active_worker_log]', count);
-                if (isRefresh || currentPage === 1) {
-                    setLogs(newLogs);
-                    setHasMore(newLogs.length === 20);
-                    setPage(2);
-                } else {
-                    setLogs(prev => [...prev, ...newLogs]);
-                    setHasMore(newLogs.length === 20);
-                    setPage(prev => prev + 1);
-                }
+            } catch (error) {
+                console.error('Failed to fetch picker logs', error);
+                toast.error('Failed to load picking logs');
+            } finally {
+                setIsLoading(false);
+                if (isRefresh) setIsRefreshing(false);
             }
-        } catch (error) {
-            console.error("Failed to fetch picker logs", error);
-            toast.error("Failed to load picking logs");
-        } finally {
-            setIsLoading(false);
-            if (isRefresh) setIsRefreshing(false);
-        }
-    }, [page, hasMore, searchQuery, isLoading]);
+        },
+        [page, hasMore, searchQuery, isLoading, activeSubTab]
+    );
 
     // Initial Load
     useEffect(() => {
         fetchLogs(true);
-    }, []);
+    }, [activeSubTab]); // Refetch on tab change
 
     // Debounced Search
     useEffect(() => {
@@ -153,6 +170,28 @@ export function PickerLogTab() {
         const d = new Date(dateStr);
         if (isNaN(d.getTime())) return dateStr;
         return d.toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+    };
+
+    const handleItemClick = (item: PickerLogItem) => {
+        console.log('SHD ==> Log item clicked:', item);
+        if (!onSelectInvoice) {
+            console.warn('SHD ==> onSelectInvoice is not defined');
+            return;
+        }
+
+        // Map PickerLogItem to Invoice structure expected by fetchInvoiceDetails/openInvoiceTab
+        const invoice: Invoice = {
+            id: item.invoice_id,
+            invoiceNo: item.invoice_id,
+            customerName: item.customer_name,
+            totalAmount: 0, // Not available in log response, fetchInvoiceDetails will fetch full data
+            currency: 'SAR',
+            items: Array(item.items_count).fill({}),
+            invoiceDate: item.start_date_time,
+            status: item.is_closed ? 'Picked' : 'In Process',
+        };
+
+        onSelectInvoice(invoice);
     };
 
     return (
@@ -233,10 +272,11 @@ export function PickerLogTab() {
                 ) : (
                     filteredData.map((item, index) => {
                         return (
-                            <div
+                            <button
                                 key={`${item.pick_slip_id}-${index}`}
+                                onClick={() => handleItemClick(item)}
                                 className={cn(
-                                    "w-full text-left border rounded-lg hover:shadow-sm transition-all group overflow-hidden relative",
+                                    "w-full text-left border rounded-lg hover:shadow-md hover:border-primary/30 transition-all group overflow-hidden relative cursor-pointer active:scale-[0.99]",
                                     item.status === 'warn' ? "bg-red-50 border-red-200" : "bg-white border-gray-200"
                                 )}
                             >
@@ -331,7 +371,7 @@ export function PickerLogTab() {
                                         {!item.is_closed ? 'Assigned' : 'Modified'} by <span className="font-semibold">{item.assigned_by}</span> on {formatFooterDateTime(item.assigned_on)}
                                     </span>
                                 </div>
-                            </div>
+                            </button>
                         );
                     })
                 )}
