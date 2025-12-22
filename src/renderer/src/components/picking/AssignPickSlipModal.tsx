@@ -327,6 +327,41 @@ export function AssignPickSlipModal({
         }
     };
 
+    // API: Cancel Pick Slip
+    const handleCancelAssign = async () => {
+        if (!createdSlip) return;
+
+        if (!confirm("Are you sure, if cancel it the assigned items will move to un-asigned")) {
+            return;
+        }
+
+        setIsCreating(true);
+
+        try {
+            const res = await window.electronAPI?.proxy?.request({
+                url: '/api/method/centro_pos_apis.api.picking.cancel_pick_slip',
+                method: 'POST',
+                data: {
+                    pick_list_id: createdSlip.id,
+                    reason: ""
+                }
+            });
+
+            const data = res?.data;
+            if (res?.status === 200) {
+                toast.success(data?.message || "Pick slip cancelled successfully");
+                if (onSuccess) onSuccess();
+                onClose();
+            }
+
+        } catch (e: any) {
+            console.error("Failed to cancel pick slip", e);
+            toast.error(e?.message || "Failed to cancel pick slip");
+        } finally {
+            setIsCreating(false);
+        }
+    };
+
     // Manual update or Assign action (Bottom Right Button)
     const handleMainAction = async () => {
         if (createdSlip) {
@@ -689,7 +724,17 @@ export function AssignPickSlipModal({
                             </div>
                         </div>
 
-                        <div className="absolute right-0">
+                        <div className="absolute right-0 flex items-center gap-2">
+                            {createdSlip && (
+                                <Button
+                                    variant="destructive"
+                                    onClick={handleCancelAssign}
+                                    disabled={isCreating}
+                                    className="bg-red-50 text-red-600 hover:bg-red-100 border border-red-200"
+                                >
+                                    Cancel Assign
+                                </Button>
+                            )}
                             <Button
                                 variant="default"
                                 onClick={handleMainAction}

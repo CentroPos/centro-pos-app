@@ -210,9 +210,11 @@ export const usePickingStore = create<PickingState>((set, get) => ({
       return
     }
 
-    if (tabs.length >= 6) {
-      toast.error('Maximum 6 tabs allowed. Please close some tabs first.')
-      return
+    let currentTabs = [...tabs];
+
+    if (currentTabs.length >= 6) {
+      const removed = currentTabs.shift();
+      toast.info(`Closed oldest order ${removed?.invoice.invoiceNo} to open new one`);
     }
 
     const newTab: InvoiceTab = {
@@ -224,10 +226,10 @@ export const usePickingStore = create<PickingState>((set, get) => ({
       warehouseDetails: details?.warehouseDetails
     }
 
-    set(state => ({
-      tabs: [...state.tabs, newTab],
+    set({
+      tabs: [...currentTabs, newTab],
       activeTabId: invoice.id
-    }))
+    })
   },
 
   closeInvoiceTab: (invoiceId) => {

@@ -41,7 +41,7 @@ const DynamicPickupInterface: React.FC = () => {
     const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
     const [isFinishModalOpen, setIsFinishModalOpen] = useState(false);
     const [pendingInvoice, setPendingInvoice] = useState<Invoice | null>(null);
-    const [rightSidebarTab, setRightSidebarTab] = useState<'details' | 'sales' | 'queue' | 'picker-log'>('queue');
+    const [rightSidebarTab, setRightSidebarTab] = useState<'details' | 'sales' | 'queue' | 'picker-log'>('sales');
     const [editingPickSlip, setEditingPickSlip] = useState<PickSlip | null>(null);
 
     // Manage per-tab UI state (selection, filters) locally
@@ -206,6 +206,7 @@ const DynamicPickupInterface: React.FC = () => {
         if (existingTab) {
             setActiveTab(invoice.id);
             setIsOpenInvoiceModalOpen(false);
+            setRightSidebarTab('details');
             return;
         }
 
@@ -213,9 +214,11 @@ const DynamicPickupInterface: React.FC = () => {
             setPendingInvoice(invoice);
             setIsScheduleModalOpen(true);
             setIsOpenInvoiceModalOpen(false);
+            setRightSidebarTab('details'); // Optimistic switch
         } else {
             await fetchInvoiceDetails(invoice);
             setIsOpenInvoiceModalOpen(false);
+            setRightSidebarTab('details');
         }
     };
 

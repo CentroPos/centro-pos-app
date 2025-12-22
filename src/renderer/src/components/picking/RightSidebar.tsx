@@ -225,6 +225,11 @@ export function RightSidebar({
                                                             <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 font-semibold border-b-2">
                                                                 {slip.items.length} Items
                                                             </span>
+                                                            {isPicked && slip.durationMinutes !== undefined && (
+                                                                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 font-semibold border-b-2">
+                                                                    {slip.durationMinutes} Min
+                                                                </span>
+                                                            )}
                                                         </div>
                                                     </div>
 
@@ -264,11 +269,6 @@ export function RightSidebar({
                                                                 <>
                                                                     <p className="text-[11px] font-medium text-foreground">{date}</p>
                                                                     <p className="text-[11px] text-muted-foreground">{time}</p>
-                                                                    {slip.durationMinutes !== undefined && (
-                                                                        <p className="text-xs font-bold text-green-700 mt-1">
-                                                                            {slip.durationMinutes} Min
-                                                                        </p>
-                                                                    )}
                                                                 </>
                                                             );
                                                         })()}
