@@ -47,9 +47,9 @@ export const mockPickers: Picker[] = [
 ];
 
 export const mockWarehouses: Warehouse[] = [
-  { id: 'wh1', name: 'Main WH', type: 'main' },
-  { id: 'wh2', name: 'Depot 1', type: 'depot' },
-  { id: 'wh3', name: 'Depot 2', type: 'depot' },
-  { id: 'wh4', name: 'Delivery WH', type: 'delivery' },
+  { id: 'wh1', name: 'Main WH', type: 'main', is_delivery_warehouse: true, is_sales_warehouse: true, pickers: mockPickers },
+  { id: 'wh2', name: 'Depot 1', type: 'depot', is_delivery_warehouse: false, is_sales_warehouse: true, pickers: mockPickers },
+  { id: 'wh3', name: 'Depot 2', type: 'depot', is_delivery_warehouse: false, is_sales_warehouse: true, pickers: mockPickers },
+  { id: 'wh4', name: 'Delivery WH', type: 'delivery', is_delivery_warehouse: true, is_sales_warehouse: false, pickers: mockPickers },
 ];
 

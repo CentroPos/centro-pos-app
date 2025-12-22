@@ -9,7 +9,7 @@ import type { SubmitHandler } from 'react-hook-form'
 // import { API_Endpoints } from '@renderer/config/endpoints'
 // import { useMutationQuery } from '@renderer/hooks/react-query/useReactQuery'
 import { ControlledTextField } from '../form/controlled-text-field'
-import { Loader2, Lock, UserIcon } from 'lucide-react'
+import { AlertCircle, Loader2, Lock, UserIcon } from 'lucide-react'
 import { Button } from '../ui/button'
 import { Form } from '../ui/form'
 import { toast } from 'sonner'
@@ -38,6 +38,7 @@ const LoginPage: React.FC = () => {
   const [updateMessage, setUpdateMessage] = React.useState<string>('')
   const [availableVersion, setAvailableVersion] = React.useState<string | null>(null)
   const [downloadProgress, setDownloadProgress] = React.useState<number>(0)
+  const [showBaseUrlPopup, setShowBaseUrlPopup] = React.useState(false)
 
   const form = useForm<FormData>({
     resolver: yupResolver(schema),
@@ -169,7 +170,7 @@ const LoginPage: React.FC = () => {
       console.log('1. Calling storeLogin...')
       await storeLogin({ username: data.email, password: data.password })
       console.log('2. StoreLogin successful')
-      
+
       // Only save base URL to localStorage AFTER successful login
       if (typeof window !== 'undefined') {
         try {
@@ -179,14 +180,14 @@ const LoginPage: React.FC = () => {
           console.warn('Failed to persist base URL', storageError)
         }
       }
-      
+
       toast.success('Login successful!')
       console.log('4. Toast shown, navigating to POS...')
-      
+
       // Navigate to POS page after successful login
       navigate({ to: '/pos', replace: true })
       console.log('5. Navigation completed')
-      
+
     } catch (err: any) {
       console.error('=== LOGIN FAILED ===', err)
       const errorMsg = err?.message || err?.error || COMMON_ERROR_MESSAGE
@@ -272,9 +273,9 @@ const LoginPage: React.FC = () => {
         <div className="glass-effect rounded-3xl modern-shadow w-full max-w-md p-8 z-10 relative">
           <div className="text-center mb-8">
             <div className="w-32 h-32 mx-auto mb-4 flex items-center justify-center">
-              <img 
-                src={centroerpLogo} 
-                alt="Centroerp Logo" 
+              <img
+                src={centroerpLogo}
+                alt="Centroerp Logo"
                 className="w-full h-full object-contain"
               />
             </div>
@@ -293,15 +294,7 @@ const LoginPage: React.FC = () => {
               </div>
             )}
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-2">
-                <ControlledTextField
-                  name="baseUrl"
-                  label={"Base URL"}
-                  className="block text-sm font-semibold text-gray-700"
-                  required
-                  control={form.control}
-                  placeholder="Enter the ERPNext base URL"
-                />
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 <ControlledTextField
                   name="email"
                   leftIcon={<UserIcon />}
@@ -406,14 +399,70 @@ const LoginPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="hidden md:block fixed right-60 top-1/2 transform -translate-y-1/2 z-20">
+        {/* Floating Action Button and Popup */}
+        <div className="fixed bottom-8 right-8 z-50 flex flex-col items-end">
+          {showBaseUrlPopup && (
+            <div className="mb-4 w-80 p-6 rounded-2xl glass-effect modern-shadow animate-in fade-in slide-in-from-bottom-4 duration-300 border border-white/20">
+              <Form {...form}>
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <AlertCircle className="text-primary w-5 h-5" />
+                    </div>
+                    <h3 className="font-bold text-gray-800">Connection Settings</h3>
+                  </div>
+                  <ControlledTextField
+                    name="baseUrl"
+                    label={"Base URL"}
+                    className="block text-sm font-semibold text-gray-700"
+                    required
+                    control={form.control}
+                    placeholder="https://your-instance.erpnext.com"
+                  />
+                  <p className="text-[11px] text-gray-500 leading-relaxed">
+                    Enter the full URL of your ERPNext server instance to establish a connection.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-xs h-8"
+                    onClick={() => setShowBaseUrlPopup(false)}
+                  >
+                    Done
+                  </Button>
+                </div>
+              </Form>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setShowBaseUrlPopup(!showBaseUrlPopup)}
+            className={`flex items-center justify-center w-14 h-14 rounded-full shadow-2xl transition-all duration-500 hover:scale-110 active:scale-95 group relative ${showBaseUrlPopup
+              ? 'bg-red-500 text-white rotate-90'
+              : 'bg-[#0f172a] text-white hover:bg-primary'
+              }`}
+            title="Configure Connection"
+          >
+            <AlertCircle size={28} className={showBaseUrlPopup ? '' : 'group-hover:animate-bounce'} />
+            {!showBaseUrlPopup && (
+              <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-4 w-4 bg-accent"></span>
+              </span>
+            )}
+          </button>
+        </div>
+
+        <div className="hidden md:block fixed right-60 top-1/2 transform -translate-y-1/2 z-20 opacity-60">
           <div className="glass-effect rounded-2xl p-8 w-80 modern-shadow">
             <div className="space-y-6">
               <div className="text-center">
                 <div className="w-20 h-20 mx-auto mb-4 flex items-center justify-center">
-                  <img 
-                    src={centroerpLogo} 
-                    alt="Centroerp Logo" 
+                  <img
+                    src={centroerpLogo}
+                    alt="Centroerp Logo"
                     className="w-full h-full object-contain"
                   />
                 </div>
