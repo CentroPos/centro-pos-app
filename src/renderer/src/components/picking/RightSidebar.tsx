@@ -11,9 +11,9 @@ interface RightSidebarProps {
     pickSlips: PickSlip[];
     onManageOperations: () => void;
     onPickSlipClick?: (pickSlip: PickSlip) => void;
-    orderQueue: OrderQueueItem[];
-    onSelectQueueOrder: (item: OrderQueueItem) => void;
-    onRemoveQueueOrder: (id: string) => void;
+    orderQueue?: OrderQueueItem[];
+    onSelectQueueOrder?: (item: OrderQueueItem) => void;
+    onRemoveQueueOrder?: (id: string) => void;
     onSelectInvoice?: (invoice: Invoice) => void;
 }
 
@@ -24,10 +24,8 @@ export function RightSidebar({
     pickSlips,
     onManageOperations,
     onPickSlipClick,
-    orderQueue,
-    onSelectQueueOrder,
-    onRemoveQueueOrder,
     onSelectInvoice,
+    orderQueue, // Kept for header badge if still passed, but marked as optional
 }: RightSidebarProps) {
     const getStatusLabel = (status: PickSlip['status']) => {
         switch (status) {
@@ -79,7 +77,7 @@ export function RightSidebar({
                     )}
                 >
                     Queue
-                    {orderQueue.length > 0 && (
+                    {orderQueue && orderQueue.length > 0 && (
                         <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-green-600 text-white text-[10px] flex items-center justify-center">
                             {orderQueue.length}
                         </span>
@@ -293,11 +291,7 @@ export function RightSidebar({
                 )}
 
                 {activeTab === 'queue' && (
-                    <OrderQueueTab
-                        orderQueue={orderQueue}
-                        onSelectOrder={onSelectQueueOrder}
-                        onRemoveOrder={onRemoveQueueOrder}
-                    />
+                    <OrderQueueTab onSelectInvoice={onSelectInvoice} />
                 )}
 
                 {activeTab === 'picker-log' && (

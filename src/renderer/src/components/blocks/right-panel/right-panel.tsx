@@ -3079,7 +3079,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
               <div className="p-4 border-b border-gray-200/60 bg-white/90">
                 <div className="flex items-center justify-between mb-3">
                   <h4 className="font-bold text-gray-800">Stock Details</h4>
-                  <Button
+                  {/* <Button
                     type="button"
                     onClick={handleOpenSplitWarehouse}
                     className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded flex items-center gap-2"
@@ -3087,7 +3087,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                   >
                     Split Wise
                     <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+Shift+W</span>
-                  </Button>
+                  </Button> */}
                 </div>
                 <div className="space-y-2">
                   {stockLoading && <div className="text-xs text-gray-500">Loading stock...</div>}
