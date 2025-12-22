@@ -438,6 +438,7 @@ const PrintsTabContent: React.FC = () => {
     if (isInstantPrintActive) return
 
     const selectedItem = printItems.find((item) => getItemKey(item) === activePrintTab)
+
     if (!selectedItem) return
 
     const activeFormatUrl = selectedItem.selected_format_url || getDefaultFormatUrl(selectedItem)
@@ -1216,6 +1217,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
 
   // Get the currently selected item
+  console.log('SHD ==> [RightPanel => selectedItemId]', selectedItemId)
+  console.log('SHD ==> [RightPanel => items]', items)
   const selectedItem = selectedItemId
     ? items.find((item) => item.item_code === selectedItemId)
     : null
@@ -1673,7 +1676,11 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [productArabicName, setProductArabicName] = useState<string>('')
 
   // Unified product data used by the Product tab UI
+
+  console.log('SHD ==> [RightPanel => productListData]', productListData)
+  console.log('SHD ==> [RightPanel => selectedItem]', selectedItem)
   const productData = (() => {
+    const itemPartNo = productListData?.item_part_no || selectedItem?.item_part_no || ''
     const code = productListData?.item_id || selectedItem?.item_code || ''
     const name = productListData?.item_name || selectedItem?.item_name || ''
     const defaultUom = productListData?.default_uom || 'Nos'
@@ -1748,6 +1755,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
     return {
       item_code: code,
+      item_part_no: itemPartNo,
       item_name: name,
       standard_rate: standardRate,
       min_price: minPrice,
@@ -2116,7 +2124,13 @@ const RightPanel: React.FC<RightPanelProps> = ({
             limit_page_length: 20
           }
         })
-        console.log('📦 Stock API Response:')
+        console.log('📦 Stock API Response: SHD')
+        console.log('📦 PAYLOAD', {
+          item_id: itemId,
+          search_text: '',
+          limit_start: 0,
+          limit_page_length: 20
+        })
         console.log('  - Full response:', res)
         console.log('  - Response success:', res?.success)
         console.log('  - Response status:', res?.status)

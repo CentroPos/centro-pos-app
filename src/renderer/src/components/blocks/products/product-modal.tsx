@@ -127,7 +127,7 @@ const ProductSearch: React.FC<{
           limit_page_length
         }
       })
-
+      console.log('SHD ==> [ProductModal]', res)
       if (requestId !== latestRequestId.current) return
       const rows = Array.isArray(res?.data?.data) ? res.data.data : []
       console.log('[ProductModal] Received', rows.length, 'rows (cumulative)')

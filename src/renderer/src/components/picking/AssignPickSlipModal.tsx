@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@renderer/components/ui/button';
 import { InvoiceItem, PickSlip, Warehouse } from '@renderer/types/picking';
 import { cn } from '@renderer/lib/utils';
-import { Printer, Play, Check, Clock } from 'lucide-react';
+import { Printer, Play, Check } from 'lucide-react';
 import {
     Table,
     TableBody,
@@ -14,19 +14,16 @@ import {
 } from '@renderer/components/ui/table';
 import { ScrollArea } from '@renderer/components/ui/scroll-area';
 import { toast } from 'sonner';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-} from '@renderer/components/ui/select';
+
 
 interface AssignPickSlipModalProps {
     isOpen: boolean;
     onClose: () => void;
     selectedItems: InvoiceItem[];
     warehouses: Warehouse[];
-    onCreatePickSlip: (warehouseId: string, pickerId: string | null, startTime: Date | null, endTime: Date | null) => Promise<PickSlip | null>;
+    invoiceNo: string;
+    existingPickSlip?: PickSlip | null;
+    onSuccess?: () => void;
 }
 
 export function AssignPickSlipModal({
@@ -34,7 +31,9 @@ export function AssignPickSlipModal({
     onClose,
     selectedItems,
     warehouses,
-    onCreatePickSlip,
+    invoiceNo,
+    existingPickSlip,
+    onSuccess
 }: AssignPickSlipModalProps) {
     const [selectedWarehouse, setSelectedWarehouse] = useState<string | null>(null);
     const [selectedPicker, setSelectedPicker] = useState<string | null>(null);
@@ -46,7 +45,7 @@ export function AssignPickSlipModal({
     const [isCreating, setIsCreating] = useState(false);
 
     const categories = [...new Set(selectedItems.map((item) => item.category))];
-    const durations = [2, 4, 6, 8, 10, 15, 20, 25, 30];
+
 
     // Filter pickers based on selected warehouse
     const availablePickers = selectedWarehouse
@@ -54,33 +53,71 @@ export function AssignPickSlipModal({
         : [];
 
     useEffect(() => {
-        if (isOpen && warehouses.length > 0 && !selectedWarehouse) {
-            setSelectedWarehouse(warehouses[0].id);
+        if (isOpen) {
+            if (existingPickSlip) {
+                // Edit Mode initialization
+                // Try to match warehouse by ID first, then by name
+                const matchingWarehouse = warehouses.find(w => w.id === existingPickSlip.warehouseId || w.name === existingPickSlip.warehouseName || w.name === existingPickSlip.warehouseId);
+
+                if (matchingWarehouse) {
+                    setSelectedWarehouse(matchingWarehouse.id);
+
+                    // Also try to match picker robustly from the matching warehouse's pickers
+                    const pickers = matchingWarehouse.pickers || [];
+                    const rawPickerValue = (existingPickSlip as any).pickerName || existingPickSlip.pickerId;
+
+                    const matchingPicker = pickers.find(p =>
+                        p.id === rawPickerValue ||
+                        p.name === rawPickerValue ||
+                        p.picker_no === rawPickerValue
+                    );
+
+                    // Fallback to existing ID if no match found (or if it's null)
+                    setSelectedPicker(matchingPicker ? matchingPicker.id : (existingPickSlip.pickerId || rawPickerValue));
+                } else {
+                    // Fallback to direct ID if defined, but arguably we should always find match
+                    setSelectedWarehouse(existingPickSlip.warehouseId);
+                    setSelectedPicker(existingPickSlip.pickerId);
+                }
+
+                setStartTime(existingPickSlip.startTime ? new Date(existingPickSlip.startTime) : null);
+                setPickedTime(existingPickSlip.endTime ? new Date(existingPickSlip.endTime) : null);
+                setCreatedSlip(existingPickSlip);
+            } else if (warehouses.length > 0 && !selectedWarehouse) {
+                // New Mode default
+                setSelectedWarehouse(warehouses[0].id);
+            }
         }
-    }, [isOpen, warehouses]);
+    }, [isOpen, warehouses, existingPickSlip]);
 
     // Reset state on close or open
     useEffect(() => {
         if (isOpen) {
-            setCreatedSlip(null);
             setIsCreating(false);
+            if (!existingPickSlip) {
+                setCreatedSlip(null);
+            }
         } else {
             resetState();
         }
-    }, [isOpen]);
+    }, [isOpen, existingPickSlip]);
 
-    // Reset picker and times when warehouse changes
+    // Reset picker and times when warehouse changes (ONLY IN CREATE MODE)
     useEffect(() => {
-        setSelectedPicker(null);
-        setStartTime(null);
-        setPickedTime(null);
-    }, [selectedWarehouse]);
+        if (!existingPickSlip && isOpen) {
+            setSelectedPicker(null);
+            setStartTime(null);
+            setPickedTime(null);
+        }
+    }, [selectedWarehouse, existingPickSlip, isOpen]);
 
-    // Reset times when picker changes to restart cycle
+    // Reset times when picker changes to restart cycle (ONLY IN CREATE MODE)
     useEffect(() => {
-        setStartTime(null);
-        setPickedTime(null);
-    }, [selectedPicker]);
+        if (!existingPickSlip && isOpen) {
+            setStartTime(null);
+            setPickedTime(null);
+        }
+    }, [selectedPicker, existingPickSlip, isOpen]);
 
 
     useEffect(() => {
@@ -92,11 +129,19 @@ export function AssignPickSlipModal({
                 // Get unique items for payload
                 const uniqueItemsMap = new Map();
                 selectedItems.forEach(item => {
-                    const key = `${item.itemCode}_${item.uom}`;
+                    if (!item.itemCode) return;
+                    const key = `${item.itemCode}_${item.uom || ''}`;
                     if (!uniqueItemsMap.has(key)) {
                         uniqueItemsMap.set(key, { item_code: item.itemCode, uom: item.uom });
                     }
                 });
+
+                if (uniqueItemsMap.size === 0) {
+                    setIsLoadingAvailability(false);
+                    return;
+                }
+
+                console.log("Fetching availability for items:", Array.from(uniqueItemsMap.values()));
 
                 const warehouseName = warehouses.find(w => w.id === selectedWarehouse)?.name;
 
@@ -109,13 +154,16 @@ export function AssignPickSlipModal({
                     }
                 });
 
-                const data = res?.data?.data || [];
+                // Check for data in 'message' (common in Frappe) or 'data'
+                const data = res?.data?.message || res?.data?.data || [];
                 const newMap: Record<string, any> = {};
 
-                data.forEach((avail: any) => {
-                    const key = `${avail.item_code}_${avail.uom}`;
-                    newMap[key] = avail;
-                });
+                if (Array.isArray(data)) {
+                    data.forEach((avail: any) => {
+                        const key = `${avail.item_code}_${avail.uom}`;
+                        newMap[key] = avail;
+                    });
+                }
 
                 setAvailabilityMap(newMap);
 
@@ -130,76 +178,161 @@ export function AssignPickSlipModal({
         fetchAvailability();
     }, [isOpen, selectedWarehouse, selectedItems]);
 
-    // Start action: Set start time + Update API
-    const handleStart = async () => {
-        if (!selectedWarehouse || !selectedPicker) return;
-        const now = new Date();
-        setStartTime(now);
 
-        setIsCreating(true);
-        const slip = await onCreatePickSlip(selectedWarehouse, selectedPicker, now, null);
-        setIsCreating(false);
-        if (slip) setCreatedSlip(slip);
+    const formatApiDate = (d: Date) => {
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     };
 
-    // Picked action: Set end time + Update API
-    const handlePicked = async () => {
-        if (!selectedWarehouse || !selectedPicker || !startTime) return;
-        const now = new Date();
-        setPickedTime(now);
-
+    // API: Assign Pick Slip (Create)
+    const handleAssign = async () => {
+        if (!selectedWarehouse) return;
         setIsCreating(true);
-        const slip = await onCreatePickSlip(selectedWarehouse, selectedPicker, startTime, now);
-        setIsCreating(false);
-        if (slip) setCreatedSlip(slip);
-    };
 
-    const handleDurationUpdate = async (minutesStr: string) => {
-        if (!startTime || !selectedWarehouse || !selectedPicker) {
-            toast.error("Please start the picking first");
-            return;
-        }
+        const warehouse = warehouses.find(w => w.id === selectedWarehouse);
+        const picker = availablePickers.find(p => p.id === selectedPicker);
 
-        const minutes = parseInt(minutesStr);
-        if (isNaN(minutes)) return;
+        const payloadItems = selectedItems.map(item => ({
+            serial_no: item.slNo,
+            item_code: item.itemCode,
+            quantity: item.quantity,
+            uom: item.uom
+        }));
 
-        const newEndTime = new Date(startTime.getTime() + minutes * 60000);
-        setPickedTime(newEndTime);
+        try {
+            const res = await window.electronAPI?.proxy?.request({
+                url: '/api/method/centro_pos_apis.api.picking.assign_pick_slip',
+                method: 'POST',
+                data: {
+                    invoice_no: invoiceNo,
+                    warehouse: warehouse?.name,
+                    assigned_to: picker?.id || "",
+                    items: payloadItems
+                }
+            });
 
-        setIsCreating(true);
-        const slip = await onCreatePickSlip(selectedWarehouse, selectedPicker, startTime, newEndTime);
-        setIsCreating(false);
-        if (slip) {
-            setCreatedSlip(slip);
-            toast.success(`Updated picking duration to ${minutes} mins`);
-        }
-    };
+            const data = res?.data?.data;
+            if (data) {
+                toast.success(data.message || "Pick slip assigned successfully");
 
-    // Manual update or Assign action
-    const handleCreate = async () => {
-        if (selectedWarehouse) {
-            setIsCreating(true);
-            const slip = await onCreatePickSlip(selectedWarehouse, selectedPicker, startTime, pickedTime);
+                const newSlip: PickSlip = {
+                    id: data.picking_no,
+                    slipNo: data.picking_no,
+                    invoiceId: invoiceNo, // we have invoiceNo prop
+                    warehouseId: warehouse?.id || '',
+                    warehouseName: data.warehouse,
+                    pickerId: picker?.id || '',
+                    pickerName: data.assigned_to || picker?.name || 'Unassigned',
+                    items: [], // we could map from selectedItems but parent refresh handles it better? 
+                    // Actually let's just keep minimal structure for UI display
+                    status: 'not-started',
+                    createdAt: new Date(),
+                    print_url: data.picking_slip_url
+                };
+
+                setCreatedSlip(newSlip);
+                if (onSuccess) onSuccess();
+            }
+        } catch (e: any) {
+            console.error("Failed to assign pick slip", e);
+            toast.error(e?.message || "Failed to assign pick slip");
+        } finally {
             setIsCreating(false);
-            if (slip) {
-                setCreatedSlip(slip);
-            }
         }
     };
 
-    const handlePrint = async () => {
-        if (createdSlip?.print_url) {
-            try {
-                await (window.electronAPI?.proxy as any)?.print({
-                    url: createdSlip.print_url,
-                    silent: false
-                });
-            } catch (error) {
-                console.error("Print failed", error);
-                toast.error("Failed to print pick slip");
+    // API: Update Pick Slip
+    const handleUpdate = async (st: Date | null, et: Date | null) => {
+        if (!createdSlip) return;
+
+        // We set isCreating to true just to show spinner on the button if needed, 
+        // or we can handle loading separately. Reusing isCreating for simplicity.
+        setIsCreating(true);
+
+        try {
+            const payload = {
+                pick_list_id: createdSlip.id,
+                assigned_to: selectedPicker || '',
+                start_time: selectedPicker ? (st ? formatApiDate(st) : "") : "",
+                end_time: selectedPicker ? (et ? formatApiDate(et) : "") : ""
+            };
+
+            const res = await window.electronAPI?.proxy?.request({
+                url: '/api/method/centro_pos_apis.api.picking.update_assign_pick_slip',
+                method: 'POST',
+                data: payload
+            });
+
+            const data = res?.data?.data;
+            if (data) {
+                toast.success(data.message || "Pick slip updated successfully");
+
+                // Update local state
+                setCreatedSlip(prev => prev ? ({
+                    ...prev,
+                    pickerId: selectedPicker || prev.pickerId, // Update picker locally
+                    print_url: data.picking_slip_url,
+                    status: et ? 'picked' : (st ? 'in-progress' : 'not-started'),
+                    startTime: st || undefined,
+                    endTime: et || undefined
+                }) : null);
+
+                if (onSuccess) onSuccess();
             }
+        } catch (e: any) {
+            console.error("Failed to update pick slip", e);
+            toast.error(e?.message || "Failed to update pick slip");
+        } finally {
+            setIsCreating(false);
+        }
+    };
+
+    // Start action (Local State Only)
+    const handleStart = () => {
+        if (!selectedPicker) return;
+        setStartTime(new Date());
+    };
+
+    // Picked action (Local State Only)
+    const handlePicked = () => {
+        if (!startTime) return;
+        setPickedTime(new Date());
+    };
+
+    const handleClearStart = () => {
+        setStartTime(null);
+        setPickedTime(null); // Clear end time if start is cleared
+    };
+
+    const handleClearEnd = () => {
+        setPickedTime(null);
+    };
+
+    const toLocalISO = (d: Date) => {
+        const offset = d.getTimezoneOffset() * 60000;
+        return new Date(d.getTime() - offset).toISOString().slice(0, 16);
+    };
+
+    const handleDateChange = (type: 'start' | 'end', val: string) => {
+        if (!val) return;
+        const d = new Date(val);
+        if (isNaN(d.getTime())) return;
+
+        if (type === 'start') {
+            setStartTime(d);
+            // If new start is after end, clear end? Or let user fix.
+            if (pickedTime && d > pickedTime) setPickedTime(null);
         } else {
-            toast.error("No print URL available");
+            setPickedTime(d);
+        }
+    };
+
+    // Manual update or Assign action (Bottom Right Button)
+    const handleMainAction = async () => {
+        if (createdSlip) {
+            await handleUpdate(startTime, pickedTime);
+        } else {
+            await handleAssign();
         }
     };
 
@@ -215,10 +348,6 @@ export function AssignPickSlipModal({
     const resetAndClose = () => {
         resetState();
         onClose();
-    };
-
-    const formatTime = (date: Date) => {
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     };
 
     const getDuration = () => {
@@ -256,42 +385,91 @@ export function AssignPickSlipModal({
                     </DialogHeader>
 
                     <div className="grid grid-cols-2 gap-4 mt-4">
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium">Select Warehouse</label>
-                            <div className="flex flex-wrap gap-2">
-                                {warehouses.map((warehouse) => (
-                                    <Button
-                                        key={warehouse.id}
-                                        variant={selectedWarehouse === warehouse.id ? 'default' : 'outline'}
-                                        onClick={() => setSelectedWarehouse(warehouse.id)}
-                                        className="h-auto py-2 px-3"
-                                    >
-                                        <div className="flex flex-col items-start gap-0.5">
-                                            <span className="font-semibold">{warehouse.name}</span>
-                                            {/* Removed code as it might not be in type */}
+                        {createdSlip && (
+                            <div className="col-span-2 bg-blue-50/50 border border-blue-100 rounded-lg p-3 flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div>
+                                        <p className="text-[10px] uppercase text-muted-foreground font-semibold">Pick Slip ID</p>
+                                        <p className="text-sm font-bold text-foreground">{createdSlip.slipNo}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] uppercase text-muted-foreground font-semibold">Current Status</p>
+                                        <div className={cn(
+                                            "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide",
+                                            createdSlip.status === 'not-started' && "bg-red-100 text-red-700",
+                                            createdSlip.status === 'in-progress' && "bg-orange-100 text-orange-700",
+                                            (createdSlip.status === 'picked' || createdSlip.status === 'Completed') && "bg-green-100 text-green-700"
+                                        )}>
+                                            {createdSlip.status}
                                         </div>
-                                    </Button>
-                                ))}
+                                    </div>
+                                </div>
+                                {createdSlip.assignedBy && (
+                                    <div className="text-right">
+                                        <p className="text-[10px] uppercase text-muted-foreground font-semibold">Assigned By</p>
+                                        <p className="text-xs font-medium text-foreground">{createdSlip.assignedBy}</p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="space-y-2">
+                            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Select Warehouse</label>
+                            <div className="flex flex-wrap gap-2">
+                                {warehouses
+                                    .filter(w => !w.is_delivery_warehouse)
+                                    .map((warehouse) => {
+                                        const isSelected = selectedWarehouse === warehouse.id;
+                                        const isDisabled = !!existingPickSlip || !!createdSlip;
+
+                                        return (
+                                            <Button
+                                                key={warehouse.id}
+                                                variant="outline"
+                                                onClick={() => !isDisabled && setSelectedWarehouse(warehouse.id)}
+                                                disabled={isDisabled && !isSelected}
+                                                className={cn(
+                                                    "h-8 rounded-full px-4 text-xs font-medium border transition-all",
+                                                    isSelected
+                                                        ? "bg-green-700 hover:bg-green-800 text-white border-green-700 shadow-sm"
+                                                        : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200",
+                                                    !isSelected && isDisabled && "opacity-40"
+                                                )}
+                                            >
+                                                {warehouse.name}
+                                            </Button>
+                                        );
+                                    })}
                             </div>
                         </div>
 
-                        {selectedWarehouse && availablePickers.length > 0 && (
+                        {selectedWarehouse && (
                             <div className="space-y-2">
-                                <label className="text-sm font-medium">Select Picker (Optional)</label>
+                                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Select Picker (Optional)</label>
                                 <div className="flex flex-wrap gap-2">
-                                    {availablePickers.map((picker) => (
-                                        <Button
-                                            key={picker.id}
-                                            variant={selectedPicker === picker.id ? 'default' : 'outline'}
-                                            onClick={() => setSelectedPicker(prev => prev === picker.id ? null : picker.id)}
-                                            className="h-auto py-2 px-3"
-                                        >
-                                            <div className="flex flex-col items-start gap-0.5">
-                                                <span className="font-semibold">{picker.name}</span>
-                                                <span className="text-[10px] opacity-80">{picker.picker_no}</span>
-                                            </div>
-                                        </Button>
-                                    ))}
+                                    {availablePickers.length > 0 ? availablePickers.map((picker) => {
+                                        const isSelected = selectedPicker === picker.id;
+                                        return (
+                                            <Button
+                                                key={picker.id}
+                                                variant="outline"
+                                                onClick={() => setSelectedPicker(prev => prev === picker.id ? null : picker.id)}
+                                                className={cn(
+                                                    "h-8 rounded-full px-4 text-xs font-medium border transition-all",
+                                                    isSelected
+                                                        ? "bg-green-700 hover:bg-green-800 text-white border-green-700 shadow-sm"
+                                                        : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
+                                                )}
+                                            >
+                                                <span className="mr-1">{picker.name}</span>
+                                                <span className="opacity-70 text-[10px]">({picker.picker_no})</span>
+                                            </Button>
+                                        );
+                                    }) : (
+                                        <div className="text-xs text-muted-foreground italic px-2">
+                                            No pickers available in this warehouse.
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -320,33 +498,42 @@ export function AssignPickSlipModal({
 
                         <ScrollArea className="flex-1">
                             <Table>
-                                <TableHeader className="sticky top-0 bg-background z-10">
-                                    <TableRow>
-                                        <TableHead className="w-[100px]">Item Code</TableHead>
-                                        <TableHead>Description</TableHead>
-                                        <TableHead className="w-[80px]">UOM</TableHead>
-                                        <TableHead className="text-right w-[80px]">Qty</TableHead>
-                                        <TableHead className="w-[100px] text-right">Stock</TableHead>
+                                <TableHeader className="sticky top-0 bg-slate-100 z-10 text-xs border-b border-slate-200 shadow-sm">
+                                    <TableRow className="hover:bg-transparent">
+                                        <TableHead className="w-[50px] font-bold text-center text-slate-700">SL No</TableHead>
+                                        <TableHead className="w-[80px] font-bold text-center text-slate-700">INV SL NO</TableHead>
+                                        <TableHead className="w-[300px] font-bold text-left text-slate-700 pl-4">ITEM</TableHead>
+                                        <TableHead className="w-[120px] font-bold text-center text-slate-700">CATEGORY</TableHead>
+                                        <TableHead className="w-[80px] font-bold text-center text-slate-700">UOM</TableHead>
+                                        <TableHead className="w-[80px] font-bold text-center text-slate-700">QUANTITY</TableHead>
+                                        <TableHead className="w-[100px] font-bold text-center text-slate-700">ON-HAND QTY</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {selectedItems.map((item) => {
+                                    {selectedItems.map((item, index) => {
                                         const availKey = `${item.itemCode}_${item.uom}`;
                                         const availability = availabilityMap[availKey];
-                                        const stockQty = availability ? availability.actual_qty : null;
+                                        const stockQty = availability ? availability.onhand_qty : null;
                                         const hasStock = stockQty !== null ? stockQty >= item.quantity : true;
 
                                         return (
-                                            <TableRow key={item.id} className={!hasStock ? 'bg-red-50 hover:bg-red-100' : ''}>
-                                                <TableCell className="font-medium">{item.itemCode}</TableCell>
-                                                <TableCell className="max-w-[200px] truncate" title={item.itemName}>
-                                                    {item.itemName}
+                                            <TableRow key={item.id} className={cn("text-xs transition-colors border-b last:border-0", !hasStock ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-muted/50')}>
+                                                <TableCell className="text-center text-muted-foreground font-medium">{index + 1}</TableCell>
+                                                <TableCell className="text-center font-medium">{item.slNo || '-'}</TableCell>
+                                                <TableCell className="py-2" title={item.itemName}>
+                                                    <div className="flex flex-col gap-0.5">
+                                                        <span className="font-semibold text-foreground text-xs">{item.itemName}</span>
+                                                        <span className="text-[10px] text-muted-foreground truncate max-w-[280px] leading-tight">{item.itemPartNo || item.itemCode}</span>
+                                                    </div>
                                                 </TableCell>
-                                                <TableCell>{item.uom}</TableCell>
-                                                <TableCell className="text-right">{item.quantity}</TableCell>
-                                                <TableCell className={cn("text-right", !hasStock && "text-red-600 font-bold")}>
+                                                <TableCell className="text-center text-muted-foreground">{item.category || '-'}</TableCell>
+                                                <TableCell className="text-center font-medium">{item.uom}</TableCell>
+                                                <TableCell className="text-center font-bold">{item.quantity}</TableCell>
+                                                <TableCell className={cn("text-center font-bold", !hasStock ? "text-red-600" : "text-green-600")}>
                                                     {isLoadingAvailability ? (
-                                                        <span className="w-4 h-4 rounded-full border-2 border-primary border-t-transparent animate-spin inline-block" />
+                                                        <div className="flex justify-center">
+                                                            <span className="w-3 h-3 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                                                        </div>
                                                     ) : (
                                                         stockQty !== null ? stockQty : '-'
                                                     )}
@@ -367,74 +554,157 @@ export function AssignPickSlipModal({
                         </div>
                     )}
 
-
-                    <div className="flex items-center gap-3 pt-4 border-t border-border">
-                        <Button
-                            variant="secondary"
-                            onClick={handlePrint}
-                            disabled={!createdSlip?.print_url}
-                        >
-                            <Printer className="w-4 h-4 mr-1" />
-                            Print Slip
-                        </Button>
-
-                        <div className="flex items-center gap-2 ml-auto">
-                            {/* Always show Start/picked controls to allow updates */}
+                    <div className="relative flex items-center justify-center pt-4 border-t border-border mt-auto">
+                        <div className="absolute left-0">
                             <Button
-                                variant={startTime ? 'secondary' : 'outline'}
-                                onClick={handleStart}
-                                disabled={!!startTime && !createdSlip}
-                            >
-                                <Play className="w-4 h-4 mr-1" />
-                                {createdSlip && startTime ? 'Update Start' : 'Start'}
-                                {startTime && (
-                                    <span className="text-xs ml-1">{formatTime(startTime)}</span>
-                                )}
-                            </Button>
+                                variant="secondary"
+                                onClick={async () => {
+                                    if (createdSlip?.print_url) {
+                                        try {
+                                            const response = await fetch(createdSlip.print_url);
+                                            console.log('SHD ==> [PRINT]', createdSlip.print_url);
+                                            console.log('SHD ==> [PRINT => response]', response);
+                                            const blob = await response.blob();
+                                            console.log('SHD ==> [PRINT => blob]', blob);
+                                            if (blob) {
+                                                const reader = new FileReader();
+                                                reader.onloadend = async () => {
+                                                    const base64data = reader.result as string;
+                                                    console.log('SHD ==> [PRINT => base64]', base64data.substring(0, 50) + '...');
 
-                            <Select
-                                disabled={!startTime}
-                                onValueChange={handleDurationUpdate}
+                                                    // Try using the dedicated printPDF method first (like in right-panel)
+                                                    if (window.electronAPI?.print?.printPDF) {
+                                                        await window.electronAPI.print.printPDF(base64data);
+                                                    }
+                                                    // Fallback to proxy print if available
+                                                    else if ((window.electronAPI?.proxy as any)?.print) {
+                                                        await (window.electronAPI?.proxy as any)?.print({
+                                                            url: base64data,
+                                                            silent: false
+                                                        });
+                                                    }
+                                                };
+                                                reader.readAsDataURL(blob);
+                                            } else {
+                                                toast.error("Failed to download print file");
+                                            }
+                                        } catch (error) {
+                                            console.error("Print failed", error);
+                                            toast.error("Failed to print pick slip");
+                                        }
+                                    } else {
+                                        toast.error("No print URL available");
+                                    }
+                                }}
+                                disabled={!createdSlip?.print_url}
                             >
-                                <SelectTrigger
-                                    className="h-10 px-3 py-2 bg-muted rounded-lg border-none hover:bg-muted/80 transition-colors gap-2 w-auto min-w-[100px]"
-                                >
-                                    <Clock className="w-4 h-4 text-muted-foreground" />
-                                    <span className="text-xl font-bold tabular-nums text-foreground">{getDuration()}</span>
-                                </SelectTrigger>
-                                <SelectContent align="end">
-                                    <div className="p-2 text-xs text-muted-foreground font-medium">Set Duration (mins)</div>
-                                    {durations.map(d => (
-                                        <SelectItem key={d} value={d.toString()}>{d} mins</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-
-                            <Button
-                                variant={pickedTime ? 'default' : 'outline'}
-                                onClick={handlePicked}
-                                disabled={(!startTime || !!pickedTime) && !createdSlip}
-                            >
-                                <Check className="w-4 h-4 mr-1" />
-                                Picked
-                                {pickedTime && (
-                                    <span className="text-xs ml-1">{formatTime(pickedTime)}</span>
-                                )}
+                                <Printer className="w-4 h-4 mr-1" />
+                                Print Slip
                             </Button>
                         </div>
 
-                        <Button
-                            variant="default"
-                            onClick={handleCreate}
-                            disabled={!selectedWarehouse || isCreating}
-                        >
-                            {isCreating ? (
-                                <span className="animate-spin mr-2">⏳</span>
-                            ) : (
-                                <Check className="w-4 h-4 mr-1" />
-                            )}
-                            {createdSlip ? 'Update' : 'Assign'}
-                        </Button>
+                        {/* Centered Time Controls */}
+                        <div className={cn(
+                            "flex items-center gap-4 bg-muted/30 p-1.5 rounded-lg border transition-all duration-200",
+                            (!createdSlip || !selectedPicker) && "opacity-50 pointer-events-none grayscale"
+                        )}>
+                            {/* Start Section */}
+                            <div className="flex flex-col gap-0.5">
+                                <span className="text-[9px] uppercase font-bold text-muted-foreground px-1">Start Time</span>
+                                <div className="flex items-center gap-1">
+                                    {!startTime ? (
+                                        <Button
+                                            size="sm"
+                                            className="h-8 bg-green-600 hover:bg-green-700 text-white"
+                                            onClick={handleStart}
+                                            disabled={!selectedPicker}
+                                            title={!selectedPicker ? "Select a picker first" : "Start Picking"}
+                                        >
+                                            <Play className="w-3 h-3 mr-1.5" />
+                                            Start
+                                        </Button>
+                                    ) : (
+                                        <div className="flex items-center bg-white border rounded-md overflow-hidden h-8">
+                                            <input
+                                                type="datetime-local"
+                                                value={toLocalISO(startTime)}
+                                                onChange={(e) => handleDateChange('start', e.target.value)}
+                                                className="h-full border-none text-xs px-2 focus:ring-0 w-[140px]"
+                                            />
+                                            <button
+                                                onClick={handleClearStart}
+                                                className="h-full px-2 hover:bg-red-50 text-gray-400 hover:text-red-500 border-l"
+                                            >
+                                                ×
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Timer Display */}
+                            <div className="flex flex-col items-center justify-center min-w-[80px] px-2">
+                                <span className="text-[9px] uppercase font-bold text-muted-foreground mb-0.5">Duration</span>
+                                <div className={cn(
+                                    "font-mono text-lg font-bold leading-none tabular-nums",
+                                    !startTime ? "text-muted-foreground/30" :
+                                        (pickedTime ? "text-green-600" : "text-blue-600")
+                                )}>
+                                    {getDuration()}
+                                </div>
+                            </div>
+
+                            {/* End Section */}
+                            <div className="flex flex-col gap-0.5">
+                                <span className="text-[9px] uppercase font-bold text-muted-foreground px-1">End Time</span>
+                                <div className="flex items-center gap-1">
+                                    {!pickedTime ? (
+                                        <Button
+                                            size="sm"
+                                            variant={startTime ? "default" : "outline"}
+                                            className={cn("h-8", startTime && "bg-blue-600 hover:bg-blue-700 text-white")}
+                                            onClick={handlePicked}
+                                            disabled={!startTime}
+                                        >
+                                            <Check className="w-3 h-3 mr-1.5" />
+                                            End
+                                        </Button>
+                                    ) : (
+                                        <div className="flex items-center bg-white border rounded-md overflow-hidden h-8">
+                                            <input
+                                                type="datetime-local"
+                                                value={toLocalISO(pickedTime)}
+                                                onChange={(e) => handleDateChange('end', e.target.value)}
+                                                className="h-full border-none text-xs px-2 focus:ring-0 w-[140px]"
+                                            />
+                                            <button
+                                                onClick={handleClearEnd}
+                                                className="h-full px-2 hover:bg-red-50 text-gray-400 hover:text-red-500 border-l"
+                                            >
+                                                ×
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="absolute right-0">
+                            <Button
+                                variant="default"
+                                onClick={handleMainAction}
+                                // Logic: Create (Assign) if !createdSlip. Update if createdSlip.
+                                // Disabled if no warehouse selected (for Create) OR isCreating.
+                                disabled={!selectedWarehouse || isCreating}
+                            >
+                                {isCreating ? (
+                                    <span className="animate-spin mr-2">⏳</span>
+                                ) : (
+                                    <Check className="w-4 h-4 mr-1" />
+                                )}
+                                {createdSlip ? 'Update' : 'Assign'}
+                            </Button>
+                        </div>
                     </div>
                 </div>
             </DialogContent>
