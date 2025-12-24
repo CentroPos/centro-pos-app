@@ -3,6 +3,7 @@ import { Calendar, Clock, StickyNote, Zap } from 'lucide-react';
 
 interface InvoiceHeaderProps {
     invoice: Invoice;
+    isWarehouseAssigned: boolean;
     schedule?: ScheduleDetails;
     allCount: number;
     unassignedCount: number;
@@ -18,6 +19,7 @@ interface InvoiceHeaderProps {
 
 export function InvoiceHeader({
     invoice,
+    isWarehouseAssigned,
     schedule,
     allCount,
     unassignedCount,
@@ -30,6 +32,7 @@ export function InvoiceHeader({
     canFinish,
     onScheduleClick
 }: InvoiceHeaderProps) {
+    console.log('isWarehouseAssigned', isWarehouseAssigned);
     return (
         <div className="bg-card border-b border-border flex-shrink-0">
             <div className="flex items-center justify-between px-4 py-3">
@@ -141,16 +144,19 @@ export function InvoiceHeader({
                         >
                             Assign
                         </button>
-                        <button
-                            onClick={onFinish}
-                            disabled={!canFinish}
-                            className={`h-12 px-6 rounded-xl font-bold text-sm shadow-sm transition-all flex items-center justify-center min-w-[100px] ${canFinish
-                                ? 'bg-emerald-600 text-white hover:bg-emerald-700 hover:shadow shadow-emerald-600/20'
-                                : 'bg-muted text-muted-foreground cursor-not-allowed opacity-50'
-                                }`}
-                        >
-                            Finish
-                        </button>
+                        {!isWarehouseAssigned && (
+                            <button
+                                onClick={onFinish}
+                                disabled={!canFinish}
+                                className={`h-12 px-6 rounded-xl font-bold text-sm shadow-sm transition-all flex items-center justify-center min-w-[100px] ${canFinish
+                                    ? 'bg-emerald-600 text-white hover:bg-emerald-700 hover:shadow shadow-emerald-600/20'
+                                    : 'bg-muted text-muted-foreground cursor-not-allowed opacity-50'
+                                    }`}
+                            >
+                                Finish
+                            </button>
+                        )}
+
                     </div>
                 </div>
             </div>

@@ -8,7 +8,8 @@ interface InvoiceTab {
   pickSlips: PickSlip[]
   operations: WarehouseOperation[]
   schedule?: ScheduleDetails
-  warehouseDetails?: WarehouseDetails
+  warehouseDetails?: WarehouseDetails,
+  isWarehouseAssigned?: boolean
 }
 
 interface PickingState {
@@ -197,6 +198,8 @@ export const usePickingStore = create<PickingState>((set, get) => ({
 
   openInvoiceTab: (invoice, details) => {
     const { tabs, setActiveTab } = get()
+
+    console.log('SHD => [openInvoiceTab]', details);
     
     // Check if already open
     const existingIndex = tabs.findIndex(t => t.invoice.id === invoice.id)
@@ -206,6 +209,7 @@ export const usePickingStore = create<PickingState>((set, get) => ({
              tabs: state.tabs.map((t, i) => i === existingIndex ? { ...t, ...details } : t)
          }))
       }
+      console.log('SHD => [openInvoiceTab]', tabs);
       setActiveTab(invoice.id)
       return
     }
@@ -223,7 +227,8 @@ export const usePickingStore = create<PickingState>((set, get) => ({
       pickSlips: details?.pickSlips || [],
       operations: details?.operations || [],
       schedule: details?.schedule,
-      warehouseDetails: details?.warehouseDetails
+      warehouseDetails: details?.warehouseDetails,
+      isWarehouseAssigned: details?.isWarehouseAssigned
     }
 
     set({

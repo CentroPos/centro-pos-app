@@ -92,6 +92,7 @@ const DynamicPickupInterface: React.FC = () => {
 
             const invoiceData = data.invoices || {};
             const rawItems = invoiceData.items || [];
+            const warehouseAssigned = data.is_warehouse_assigned || false;
 
             // Map Items
             const mappedItems: InvoiceItem[] = rawItems.map((item: any, index: number) => ({
@@ -191,7 +192,8 @@ const DynamicPickupInterface: React.FC = () => {
                 pickSlips,
                 operations,
                 schedule,
-                warehouseDetails
+                warehouseDetails,
+                isWarehouseAssigned: warehouseAssigned
             });
 
         } catch (e) {
@@ -464,7 +466,7 @@ const DynamicPickupInterface: React.FC = () => {
     const hasSelection = (currentState?.selectedItems.size || 0) > 0;
     const canFinish = assignedCount === allCount && allCount > 0;
 
-    console.log('SHD =>', usePickingStore());
+    console.log('SHD => [usePickingStore]', usePickingStore());
 
     return (
         <div className="h-full w-full flex bg-gray-50 overflow-hidden relative">
@@ -517,6 +519,7 @@ const DynamicPickupInterface: React.FC = () => {
                         <>
                             <InvoiceHeader
                                 invoice={activeTab.invoice}
+                                isWarehouseAssigned={activeTab.isWarehouseAssigned ? activeTab.isWarehouseAssigned : false}
                                 schedule={activeTab.schedule}
                                 allCount={allCount}
                                 unassignedCount={unassignedCount}
