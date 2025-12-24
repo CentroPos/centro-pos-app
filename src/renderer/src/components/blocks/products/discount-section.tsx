@@ -7,7 +7,7 @@ import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 import { useHotkeys } from 'react-hotkeys-hook'
 import BottomErrorBox from '../common/bottom-error-box'
-import BottomZatcaBox from '../common/bottom-zatca-box'
+// import BottomZatcaBox from '../common/bottom-zatca-box'
 import CustomerSearchModal from '../customer/customer-modal'
 import { toast } from 'sonner'
 
@@ -56,9 +56,9 @@ const DiscountSection: React.FC<Props> = ({
   onCloseErrors,
   onErrorBoxFocusChange,
   onFocusItem,
-  zatcaResponses = [],
-  onCloseZatcaResponses,
-  onZatcaBoxFocusChange,
+  // zatcaResponses = [],
+  // onCloseZatcaResponses,
+  // onZatcaBoxFocusChange,
   forceOpenCustomerModal,
   onCustomerModalChange,
   onCustomerSelect
@@ -493,7 +493,7 @@ const DiscountSection: React.FC<Props> = ({
               <div
                 className={`flex items-center justify-center px-4 py-1 rounded-md shadow-sm border border-white/20 bg-gradient-to-r ${getZatcaRibbonStyle(zatcaColor)} text-white`}
                 style={{ height: '38px', minWidth: '100px' }}
-              >
+              ><div className="text-[10px] uppercase tracking-wide">ZATCA</div> &nbsp;&nbsp;&nbsp;
                 <div className="text-[10px] font-bold uppercase tracking-wide">{zatcaStatus}</div>
               </div>
             )}
@@ -675,14 +675,14 @@ const DiscountSection: React.FC<Props> = ({
       )}
 
       {/* Bottom Zatca Box */}
-      {zatcaResponses.length > 0 && (
+      {/* {zatcaResponses.length > 0 && (
         <BottomZatcaBox
           zatcaResponses={zatcaResponses}
           isVisible={true}
           onClose={() => onCloseZatcaResponses?.()}
           onFocusChange={onZatcaBoxFocusChange}
         />
-      )}
+      )} */}
 
       {/* Customer Search Modal */}
       <CustomerSearchModal

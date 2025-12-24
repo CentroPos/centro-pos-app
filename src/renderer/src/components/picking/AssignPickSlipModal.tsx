@@ -592,37 +592,37 @@ export function AssignPickSlipModal({
                     <div className="relative flex items-center justify-center pt-4 border-t border-border mt-auto">
                         <div className="absolute left-0">
                             <Button
-                                variant="secondary"
+                                variant="default"
+                                className="bg-slate-700 hover:bg-slate-800 text-white"
                                 onClick={async () => {
                                     if (createdSlip?.print_url) {
                                         try {
-                                            const response = await fetch(createdSlip.print_url);
-                                            console.log('SHD ==> [PRINT]', createdSlip.print_url);
-                                            console.log('SHD ==> [PRINT => response]', response);
-                                            const blob = await response.blob();
-                                            console.log('SHD ==> [PRINT => blob]', blob);
-                                            if (blob) {
-                                                const reader = new FileReader();
-                                                reader.onloadend = async () => {
-                                                    const base64data = reader.result as string;
-                                                    console.log('SHD ==> [PRINT => base64]', base64data.substring(0, 50) + '...');
+                                            console.log('SHD ==> [PRINT] Fetching PDF from:', createdSlip.print_url);
 
-                                                    // Try using the dedicated printPDF method first (like in right-panel)
-                                                    if (window.electronAPI?.print?.printPDF) {
-                                                        await window.electronAPI.print.printPDF(base64data);
-                                                    }
-                                                    // Fallback to proxy print if available
-                                                    else if ((window.electronAPI?.proxy as any)?.print) {
-                                                        await (window.electronAPI?.proxy as any)?.print({
-                                                            url: base64data,
-                                                            silent: false
-                                                        });
-                                                    }
-                                                };
-                                                reader.readAsDataURL(blob);
+                                            // Use proxy API as seen in right-panel.tsx
+                                            // It returns { success: boolean, pdfData: string (base64 data url), ... }
+                                            const res = await window.electronAPI?.proxy?.request({
+                                                url: createdSlip.print_url,
+                                                method: 'GET'
+                                            });
+
+                                            console.log('SHD ==> [PRINT RESPONSE]', res);
+
+                                            if (res?.pdfData) {
+                                                const pdfDataUrl = res.pdfData;
+                                                console.log('SHD ==> [PRINT] PDF Data URL received, length:', pdfDataUrl.length);
+
+                                                if (window.electronAPI?.print?.printPDF) {
+                                                    await window.electronAPI.print.printPDF(pdfDataUrl);
+                                                } else {
+                                                    console.error("Print API not available");
+                                                    toast.error("Print API not available");
+                                                }
                                             } else {
-                                                toast.error("Failed to download print file");
+                                                console.error("No PDF data in response");
+                                                toast.error("Failed to load PDF data");
                                             }
+
                                         } catch (error) {
                                             console.error("Print failed", error);
                                             toast.error("Failed to print pick slip");
@@ -753,6 +753,6 @@ export function AssignPickSlipModal({
                     </div>
                 </div>
             </DialogContent>
-        </Dialog>
+        </Dialog >
     );
 }

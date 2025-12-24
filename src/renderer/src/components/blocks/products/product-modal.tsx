@@ -324,10 +324,16 @@ const ProductSearch: React.FC<{
 
               // Compute On Hand quantity for default_uom
               const defaultUom = product.default_uom || primaryUOM.uom
-              const onHandQty = Array.isArray(product.uom_details)
-                ? (product.uom_details.find((d: any) => String(d.uom).toLowerCase() === String(defaultUom).toLowerCase())?.qty ?? 0)
+              // const onHandQty = Array.isArray(product.uom_details)
+              //   ? (product.uom_details.find((d: any) => String(d.uom).toLowerCase() === String(defaultUom).toLowerCase())?.total_qty ?? 0)
+              //   : 0
+              const availableQty = Array.isArray(product.uom_details)
+                ? (product.uom_details.find((d: any) => String(d.uom).toLowerCase() === String(defaultUom).toLowerCase())?.balance_qty ?? 0)
                 : 0
-
+              // const reservedQty = Array.isArray(product.uom_details)
+              //   ? (product.uom_details.find((d: any) => String(d.uom).toLowerCase() === String(defaultUom).toLowerCase())?.reserved_qty ?? 0)
+              //   : 0
+              console.log('SHD ==>:[product]', product)
               console.log('🔍 Processed product data:', {
                 code,
                 itemName,
@@ -356,6 +362,7 @@ const ProductSearch: React.FC<{
                       uom: primaryUOM.uom,
                       quantity: 1,
                       discount_percentage: 0,
+                      default_warehouse: product.default_warehouse,
                       uomRates: (Array.isArray(product.uom_details) ? Object.fromEntries(product.uom_details.map((d: any) => [d.uom, d.rate])) : {})
                     } as any)
                   }}
@@ -374,11 +381,15 @@ const ProductSearch: React.FC<{
                       </p>
                       <p
                         className={`text-[11px] mt-1 ${selectedIndex === index
-                          ? 'text-primary-foreground/80'
-                          : 'text-muted-foreground'
+                          ? Number(availableQty || 0) <= 0
+                            ? 'text-red-500 font-medium'
+                            : 'text-primary-foreground/80'
+                          : Number(availableQty || 0) <= 0
+                            ? 'text-red-500 font-medium'
+                            : 'text-muted-foreground/80'
                           }`}
                       >
-                        On Hand: {Number(onHandQty || 0)} {defaultUom || primaryUOM.uom}
+                        Available Quantity: {Number(availableQty || 0)} {defaultUom || primaryUOM.uom}
                       </p>
                     </div>
                     <Badge variant={selectedIndex === index ? 'secondary' : 'outline'}>

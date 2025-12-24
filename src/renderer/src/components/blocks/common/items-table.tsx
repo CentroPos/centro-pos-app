@@ -2290,11 +2290,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                   if (navigatingRef.current) return
                                   handleSaveEdit()
                                 }}
-                                className="w-[70px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center truncate"
+                                className="w-[70px] text-[10px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center truncate"
                                 readOnly
                               />
                             ) : (
-                              <div className={`px-2 py-1 ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>{item.uom || 'Nos'}</div>
+                              <div className={`px-2 py-1 ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>{item.uom || 'Nos'} </div>
                             )}
                           </TableCell>
 

@@ -20,6 +20,7 @@ interface POSProfile {
   warehouse?: string
   custom_hide_cost_and_margin_info?: number
   custom_show_purchase_history?: number
+  taxes_and_charges?: string
 }
 
 interface POSProfileStore {
