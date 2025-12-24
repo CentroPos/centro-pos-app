@@ -1275,9 +1275,10 @@ const RightPanel: React.FC<RightPanelProps> = ({
         },
         true
       )
+      console.log('❌❌❌0 SHD ===>[response]:', response)
       let list = extractList(response)
       let productData = findProduct(list)
-
+      console.log('❌❌❌0 SHD ===>:', productData)
       if (!productData) {
         console.log('🔄 Item not returned via item filter, trying search_text fallback...')
         response = await tryProductList(
@@ -1291,10 +1292,11 @@ const RightPanel: React.FC<RightPanelProps> = ({
           },
           true
         )
+        console.log('❌ SHD ===>:', response)
         list = extractList(response)
         productData = findProduct(list)
       }
-
+      console.log('❌❌❌1 SHD ===>:', productData)
       if (!productData) {
         console.log('🔄 Still not found, trying broader fetch without filters...')
         response = await tryProductList(
@@ -1310,7 +1312,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
         list = extractList(response)
         productData = findProduct(list)
       }
-
+      console.log('❌❌❌2 SHD ===>:', productData)
       if (!productData) {
         console.log('🔄 Fallback to POST with item filter...')
         response = await tryProductList(
@@ -1331,6 +1333,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
       if (productData) {
         console.log('✅ Product list data set:', productData)
         console.log('📊 UOM details:', productData.uom_details)
+        console.log('❌❌❌3 SHD ===>:', productData)
         setProductListData(productData)
       } else {
         console.log('❌ No product data found for item:', itemCode)
@@ -1717,11 +1720,26 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
     // Calculate on-hand qty for the current UOM (selected item's UOM)
     const onHandQty = (() => {
+      console.log("SHD ==> [uomDetails]", uomDetails)
       if (!uomDetails || uomDetails.length === 0) return 0
       const match = uomDetails.find(
         (d: any) => String(d.uom).toLowerCase() === String(displayUom).toLowerCase()
       )
-      return Number(match?.qty || 0)
+      return Number(match?.total_qty || 0)
+    })()
+    const availableQty = (() => {
+      if (!uomDetails || uomDetails.length === 0) return 0
+      const match = uomDetails.find(
+        (d: any) => String(d.uom).toLowerCase() === String(displayUom).toLowerCase()
+      )
+      return Number(match?.balance_qty || 0)
+    })()
+    const reserverdQty = (() => {
+      if (!uomDetails || uomDetails.length === 0) return 0
+      const match = uomDetails.find(
+        (d: any) => String(d.uom).toLowerCase() === String(displayUom).toLowerCase()
+      )
+      return Number(match?.reserved_qty || 0)
     })()
     const costPrice = Number(productListData?.cost_price ?? selectedItem?.cost ?? 0)
     // Calculate margin based on unit price from table (if manually changed) or API
@@ -1761,6 +1779,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
       min_price: minPrice,
       max_price: maxPrice,
       on_hand: onHandQty,
+      available_qty: availableQty,
+      reserved_qty: reserverdQty,
       on_hand_uom: displayUom, // Include the UOM for display
       cost: costPrice,
       margin: marginPct,
@@ -3064,13 +3084,34 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       </div>
                     </>
                   )}
-                  <div className="p-3 bg-gradient-to-r from-red-50 to-pink-50 rounded-xl col-span-2">
-                    <div className="text-xs text-gray-600">On Hand</div>
+                  <div className="p-3 bg-gradient-to-r from-green-50 to-green-50/50 rounded-xl col-span-2">
+                    <div className="text-xs text-gray-600">Available Qty</div>
                     {productListLoading ? (
                       <div className="font-bold text-gray-500">Loading...</div>
                     ) : (
-                      <div className="font-bold text-red-600">{productData.on_hand} {productData.on_hand_uom || 'units'}</div>
+                      <span className="font-bold text-green-600">{productData.available_qty} <span className="text-[12px]">({productData.on_hand_uom || 'units'})</span></span>
                     )}
+                  </div>
+                  <div className="p-3 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl">
+                    <div className="text-xs text-gray-600">On Hand Quantity</div>
+                    <div className="font-bold text-gray-600">
+                      {productListLoading ? (
+                        <div className="font-bold text-gray-500">Loading...</div>
+                      ) : (
+                        <span className="font-bold text-gray-500 opacity-80">{productData.on_hand} <span className="text-[12px]">({productData.on_hand_uom || 'units'})</span></span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl">
+                    <div className="text-xs text-gray-600">Reserved Quantity</div>
+                    <div className="font-bold text-gray-600">
+                      {productListLoading ? (
+                        <div className="font-bold text-gray-500">Loading...</div>
+                      ) : (
+                        <span className="font-bold text-gray-500 opacity-80">{productData.reserved_qty} <span className="text-[12px]">({productData.on_hand_uom || 'units'})</span></span>
+                      )}
+
+                    </div>
                   </div>
                 </div>
               </div>

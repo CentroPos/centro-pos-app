@@ -228,6 +228,8 @@ const ActionButtons: React.FC<Props> = ({
   const currentTab = getCurrentTab()
   const globalDiscountPercent = getCurrentTabGlobalDiscount()
 
+  console.log('SHD ===> Current Tab Items:', items)
+
   // Derive selectedPriceList from the current tab's order data
   // Fallback to 'Standard Selling' if not set
   const selectedPriceList = currentTab?.orderData?.price_list || 'Standard Selling'
@@ -747,13 +749,15 @@ const ActionButtons: React.FC<Props> = ({
           rawDiscount: item.discount_percentage
         })
 
+        console.log('SHD ==>[item]', item)
+
         return {
           item_code: item.item_code || item.code,
           qty,
           uom: item.uom || 'Nos',
           rate,
           discount_percentage: discount,
-          warehouse: item.warehouse || 'Stores - NAB'
+          warehouse: item.default_warehouse || 'Main WH - NB' // 'Stores - NAB'
         }
       })
 
@@ -847,13 +851,15 @@ const ActionButtons: React.FC<Props> = ({
         customer: finalCustomerId,
         posting_date: postingDate, // Use the date selected in the order details box
         selling_price_list: selectedPriceList,
-        taxes_and_charges: 'VAT 15% - NAB', // Default tax, can be made configurable
+        taxes_and_charges: profile?.taxes_and_charges, // Default tax, can be made configurable
         additional_discount_percentage: globalDiscountPercent, // Global discount from bottom section
         items: mappedItems,
         custom_stock_adjustment_sources: customStockAdjustmentSources,
         is_reserved: isReserved,
         disable_rounded_total: disable_rounded_total
       }
+
+      console.log('SHD ==>[orderData]', orderData)
 
       // Add Other Details fields if present
       if (po_no) {
