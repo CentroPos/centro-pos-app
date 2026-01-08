@@ -1,6 +1,7 @@
 @import 'tw-animate-css';
 @import './base.css';
 @import '@fortawesome/fontawesome-free/css/all.min.css';
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -12,12 +13,18 @@ html {
 
 /* Override body styles for login page only */
 body {
+  font-family: 'Inter', sans-serif !important;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   background-size: cover;
   user-select: none;
+}
+
+/* Preserve Font Awesome icons */
+.fa, .fas, .far, .fal, .fab {
+  font-family: "Font Awesome 6 Free", "Font Awesome 6 Brands" !important;
 }
 
 #root {
@@ -178,6 +185,7 @@ body {
 
 /* Override body styles for POS app when needed */
 body.pos-app {
+  font-family: 'Inter', sans-serif !important;
   display: block;
   overflow: auto;
   user-select: auto;
@@ -190,4 +198,94 @@ body.pos-app {
   justify-content: flex-start;
   flex-direction: column;
   min-height: 100vh;
+}
+
+/* Hide spinner arrows on all number inputs (Chrome, Edge, Safari, Firefox) */
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Hide scrollbar but keep scroll functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* Internet Explorer 10+ */
+  scrollbar-width: none;  /* Firefox */
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Safari and Chrome */
+}
+
+/* Hide scrollbar globally for the POS app */
+body.pos-app {
+  overflow: hidden;
+}
+
+body.pos-app * {
+  scrollbar-width: none !important;  /* Firefox */
+  -ms-overflow-style: none !important;  /* Internet Explorer 10+ */
+}
+
+body.pos-app *::-webkit-scrollbar {
+  display: none !important;  /* Safari and Chrome */
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Additional scrollbar hiding for all elements */
+* {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+*::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Fix toast visibility in dark mode */
+[data-sonner-toaster] {
+  --normal-bg: var(--popover) !important;
+  --normal-text: var(--popover-foreground) !important;
+  --normal-border: var(--border) !important;
+}
+
+[data-sonner-toast] {
+  background: var(--popover) !important;
+  color: var(--popover-foreground) !important;
+  border: 1px solid var(--border) !important;
+}
+
+[data-sonner-toast] [data-description] {
+  color: var(--popover-foreground) !important;
+  opacity: 1 !important;
+  font-weight: 400 !important;
+}
+
+[data-sonner-toast] [data-title] {
+  color: var(--popover-foreground) !important;
+  font-weight: 600 !important;
+}
+
+/* Ensure error toast text is fully visible in dark mode */
+[data-sonner-toast][data-type="error"] {
+  background: white !important;
+  color: black !important;
+  border: 1px solid #dc2626 !important;
+}
+
+[data-sonner-toast][data-type="error"] [data-description] {
+  color: black !important;
+  opacity: 1 !important;
+  font-weight: 400 !important;
+}
+
+[data-sonner-toast][data-type="error"] [data-title] {
+  color: black !important;
+  font-weight: 600 !important;
 }

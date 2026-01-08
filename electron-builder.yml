@@ -1,8 +1,11 @@
-appId: com.electron.app
-productName: centrric-erpnext-pos
+appId: com.centroerp.app
+productName: Centroerp
 directories:
   buildResources: build
 files:
+  - 'out/**/*'
+  - 'package.json'
+  - 'centric_white.jpg'
   - '!**/.vscode/*'
   - '!src/*'
   - '!electron.vite.config.{js,ts,mjs,cjs}'
@@ -12,7 +15,12 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: centrric-erpnext-pos
+  executableName: Centroerp
+  icon: centric_white.jpg
+  target:
+    - target: nsis
+      arch:
+        - x64
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
@@ -38,8 +46,14 @@ linux:
 appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
-publish:
-  provider: generic
-  url: https://example.com/auto-updates
+# Publish configuration for auto-updates
+# Uncomment this when you want to publish builds that support auto-updates
+# The publish config is EMBEDDED in the built app, telling it where to check for updates
+# When ready to publish: uncomment below and use build-publish-secure.ps1
+# publish:
+#   provider: github
+#   owner: CentroPos
+#   repo: centro-pos-app
+#   token: ${GITHUB_TOKEN}  # Read from github-token.txt via build-publish-secure.ps1
 electronDownload:
   mirror: https://github.com/electron/electron/releases/download/

@@ -1,0 +1,95 @@
+name: Build Windows
+
+on:
+  push:
+    branches:
+      - master
+      - main
+      - cognifyr
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - master
+      - main
+      - cognifyr
+  workflow_dispatch: # Allows manual triggering from GitHub UI
+    inputs:
+      publish:
+        description: 'Publish to GitHub Releases'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  build-windows:
+    name: Build Windows Installer
+    runs-on: windows-latest
+    permissions:
+      contents: write  # Required for creating GitHub Releases
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run typecheck
+        run: npm run typecheck
+
+      - name: Build application
+        run: npm run build
+
+      - name: Determine if should publish
+        id: should_publish
+        run: |
+          $isTag = "${{ startsWith(github.ref, 'refs/tags/v') }}" -eq "True"
+          $manualPublish = "${{ github.event.inputs.publish }}" -eq "true"
+          
+          if ($isTag -or $manualPublish) {
+            echo "publish=true" >> $env:GITHUB_OUTPUT
+            if ($isTag) { Write-Host "Will publish: Tag detected" }
+            if ($manualPublish) { Write-Host "Will publish: Manual trigger with publish=true" }
+          } else {
+            echo "publish=false" >> $env:GITHUB_OUTPUT
+            Write-Host "Will NOT publish: Regular build only"
+          }
+
+      - name: Build Windows installer (without publish)
+        if: steps.should_publish.outputs.publish == 'false'
+        run: npm run build:win
+        env:
+          GH_TOKEN: ""  # Explicitly disable GitHub publishing
+
+      - name: Build and Publish Windows installer to GitHub Releases
+        if: steps.should_publish.outputs.publish == 'true'
+        run: npm run build:win:publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Windows installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: |
+            dist/*.exe
+            dist/*.exe.blockmap
+          retention-days: 30
+
+      - name: Upload build logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            dist/builder-debug.yml
+            dist/builder-effective-config.yaml
+          retention-days: 7
+

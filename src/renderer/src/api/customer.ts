@@ -36,13 +36,18 @@ export interface CustomerCreateData {
 // Transform Frappe customer response - simple and working
 const transformCustomer = (frappeCustomer: any): Customer | null => {
   if (!frappeCustomer) return null
+  // Fallback: derive a simple address string from primary_address HTML if address_line_1 missing
+  const rawPrimaryAddress: string | undefined = frappeCustomer.primary_address
+  const derivedAddress = !frappeCustomer.address_line_1 && typeof rawPrimaryAddress === 'string'
+    ? rawPrimaryAddress.replace(/<br\s*\/?>(\n)?/gi, ', ').replace(/<[^>]+>/g, '').replace(/\s+,/g, ',').replace(/,\s*,/g, ', ').trim()
+    : undefined
 
   return {
     id: frappeCustomer.name,
     name: frappeCustomer.customer_name || frappeCustomer.name,
     email: frappeCustomer.email_id || '',
     phone: frappeCustomer.mobile_no || null,
-    address: frappeCustomer.address_line_1 || null,
+    address: frappeCustomer.address_line_1 || derivedAddress || null,
     city: frappeCustomer.city || null,
     state: frappeCustomer.state || null,
     country: frappeCustomer.country || null,
@@ -55,42 +60,69 @@ const transformCustomer = (frappeCustomer: any): Customer | null => {
   }
 }
 
-// Transform Frappe customer list response - simple and working
+// Transform Frappe customer list response from centro_pos_apis.api.customer.customer_list
 const transformCustomerList = (response: any): Customer[] => {
+  console.log('🔄 transformCustomerList input:', response)
   if (!response) return []
 
-  let customers: any[] = []
+  // API returns: { data: [ { name, customer_name, ... } ] }
+  const customers = Array.isArray(response?.data) ? response.data : Array.isArray(response?.message) ? response.message : ([] as any[])
+  console.log('📋 transformCustomerList customers:', customers)
 
-  // Handle different Frappe response structures
-  if (Array.isArray(response)) {
-    customers = response
-  } else if (response.data && Array.isArray(response.data)) {
-    customers = response.data
-  } else if (response.message && Array.isArray(response.message)) {
-    customers = response.message
-  }
-
-  return customers
-    .map((customer) => transformCustomer(customer))
+  const transformed = customers
+    .map((c: any) =>
+      transformCustomer({
+        name: c.name,  // This will be mapped to id in transformCustomer
+        customer_name: c.customer_name,
+        email_id: c.email_id,
+        mobile_no: c.mobile_no,
+        gst_number: c.tax_id,
+        address_line_1: c.address_line1,
+        city: c.city,
+        state: c.state,
+        pincode: c.pincode,
+        customer_type: 'Individual',
+        disabled: 0,
+        creation: '',
+        modified: ''
+      })
+    )
     .filter((customer): customer is Customer => customer !== null)
+  
+  console.log('✅ transformCustomerList result:', transformed)
+  return transformed
 }
 
 export const customersAPI = {
   // Get all customers
   getAll: async (params = {}): Promise<Customer[]> => {
     try {
-      const defaultParams = {
-        limit_start: 0,
-        limit_page_length: 100
+      console.log('🔍 customersAPI.getAll called with params:', params)
+      const defaultParams: any = {
+        limit_start: 1,
+        limit_page_length: 50
       }
 
-      const response = await api.get(API_Endpoints.CUSTOMERS, {
-        params: { ...defaultParams, ...params }
+      // Use the same custom method that works in console for consistent data
+      const proxyRes = await window.electronAPI?.proxy?.request({
+        url: '/api/method/centro_pos_apis.api.customer.customer_list',
+        params: {
+          search_term: '',
+          ...defaultParams,
+          ...params
+        }
       })
 
-      return transformCustomerList(response.data)
+      console.log('📦 customersAPI.getAll response:', proxyRes)
+      console.log('📦 customersAPI.getAll data:', proxyRes?.data)
+      console.log('📦 customersAPI.getAll data.data:', proxyRes?.data?.data)
+
+      // Custom method returns shape: { data: [ ... ] }
+      const transformed = transformCustomerList(proxyRes?.data?.data)
+      console.log('✅ customersAPI.getAll transformed:', transformed)
+      return transformed
     } catch (error) {
-      console.error('Get customers error:', error)
+      console.error('❌ customersAPI.getAll error:', error)
       throw error
     }
   },
@@ -98,8 +130,8 @@ export const customersAPI = {
   // Get customer by ID
   getById: async (id: string): Promise<Customer | null> => {
     try {
-      const response = await api.get(`/resource/Customer/${id}`)
-      const transformed = transformCustomer(response.data.data)
+      const response = await api.get(`${API_Endpoints.CUSTOMERS}/${id}`)
+      const transformed = transformCustomer(response.data?.data || response.data)
       if (!transformed) {
         throw new Error('Customer not found')
       }
@@ -123,11 +155,13 @@ export const customersAPI = {
         order_by: 'customer_name asc'
       }
 
-      const response = await api.get('/method/frappe.client.get_list', {
+      // Use proxy to ensure authenticated context
+      const proxyRes = await window.electronAPI?.proxy?.request({
+        url: '/api/method/frappe.client.get_list',
         params: { ...searchParams, ...params }
       })
 
-      return transformCustomerList(response.data.message)
+      return transformCustomerList(proxyRes?.data?.message)
     } catch (error) {
       console.error('Search customers error:', error)
       throw error

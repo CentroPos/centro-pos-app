@@ -1,0 +1,291 @@
+import { WarehouseOperation, PickSlip, OrderQueueItem, Invoice } from '@renderer/types/picking';
+import { cn } from '@renderer/lib/utils';
+import { OrderQueueTab } from './OrderQueueTab';
+import { SalesTab } from './SalesTab';
+import { PickerLogTab } from './PickerLogTab';
+
+interface RightSidebarProps {
+    activeTab: 'details' | 'sales' | 'queue' | 'picker-log';
+    onTabChange: (tab: 'details' | 'sales' | 'queue' | 'picker-log') => void;
+    operations: WarehouseOperation[];
+    pickSlips: PickSlip[];
+    onManageOperations: () => void;
+    onPickSlipClick?: (pickSlip: PickSlip) => void;
+    orderQueue?: OrderQueueItem[];
+    onSelectQueueOrder?: (item: OrderQueueItem) => void;
+    onRemoveQueueOrder?: (id: string) => void;
+    onSelectInvoice?: (invoice: Invoice) => void;
+}
+
+export function RightSidebar({
+    activeTab,
+    onTabChange,
+    operations,
+    pickSlips,
+    onManageOperations,
+    onPickSlipClick,
+    onSelectInvoice,
+    orderQueue, // Kept for header badge if still passed, but marked as optional
+}: RightSidebarProps) {
+    const hasPickSlips = pickSlips.length > 0;
+
+    return (
+        <div className="w-[450px] border-l border-border bg-card flex flex-col flex-shrink-0 h-full">
+            <div className="flex border-b border-border flex-shrink-0">
+                <button
+                    onClick={() => onTabChange('details')}
+                    className={cn(
+                        'flex-1 px-3 py-2.5 text-xs font-medium transition-colors border-b-2 whitespace-nowrap',
+                        activeTab === 'details'
+                            ? 'text-primary border-primary'
+                            : 'text-muted-foreground border-transparent hover:text-foreground'
+                    )}
+                >
+                    Details
+                </button>
+                <button
+                    onClick={() => onTabChange('sales')}
+                    className={cn(
+                        'flex-1 px-3 py-2.5 text-xs font-medium transition-colors border-b-2 whitespace-nowrap',
+                        activeTab === 'sales'
+                            ? 'text-primary border-primary'
+                            : 'text-muted-foreground border-transparent hover:text-foreground'
+                    )}
+                >
+                    Sales
+                </button>
+                <button
+                    onClick={() => onTabChange('queue')}
+                    className={cn(
+                        'flex-1 px-3 py-2.5 text-xs font-medium transition-colors relative border-b-2 whitespace-nowrap',
+                        activeTab === 'queue'
+                            ? 'text-primary border-primary'
+                            : 'text-muted-foreground border-transparent hover:text-foreground'
+                    )}
+                >
+                    Queue
+                    {orderQueue && orderQueue.length > 0 && (
+                        <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-green-600 text-white text-[10px] flex items-center justify-center">
+                            {orderQueue.length}
+                        </span>
+                    )}
+                </button>
+                <button
+                    onClick={() => onTabChange('picker-log')}
+                    className={cn(
+                        'flex-1 px-3 py-2.5 text-xs font-medium transition-colors border-b-2 whitespace-nowrap',
+                        activeTab === 'picker-log'
+                            ? 'text-primary border-primary'
+                            : 'text-muted-foreground border-transparent hover:text-foreground'
+                    )}
+                >
+                    Picker Log
+                </button>
+            </div>
+
+            <div className="flex-1 overflow-auto">
+                {activeTab === 'details' && (
+                    <div className="p-4 space-y-6">
+                        {hasPickSlips && (
+                            <div>
+                                <div className="flex items-center justify-between mb-3">
+                                    <h3 className="font-semibold text-foreground">Warehouse Operations</h3>
+                                    <button
+                                        onClick={onManageOperations}
+                                        className="text-sm text-primary hover:underline"
+                                    >
+                                        Manage
+                                    </button>
+                                </div>
+                                <div className="border border-border rounded-lg overflow-hidden">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-muted">
+                                            <tr>
+                                                <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">
+                                                    Warehouse
+                                                </th>
+                                                <th className="px-3 py-2 text-center text-xs font-semibold text-muted-foreground">
+                                                    Type
+                                                </th>
+                                                <th className="px-3 py-2 text-center text-xs font-semibold text-muted-foreground">
+                                                    Status
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {operations.map((op) => (
+                                                <tr key={op.warehouseId} className="border-t border-border">
+                                                    <td className="px-3 py-2 text-foreground">{op.warehouseName}</td>
+                                                    <td className="px-3 py-2 text-muted-foreground text-center">
+                                                        {op.isCustomerPickup ? 'Delivery' : 'Transfer'}
+                                                    </td>
+                                                    <td className="px-3 py-2 text-center">
+                                                        <span className={cn(
+                                                            "px-2 py-1 rounded-full text-xs",
+                                                            op.status === 'confirmed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
+                                                        )}>
+                                                            {op.status}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        <div>
+                            <h3 className="font-semibold text-foreground mb-3">Picking Slips</h3>
+                            <div className="space-y-2">
+                                {pickSlips.map((originalSlip) => {
+                                    // --- DUMMY CODE FOR UI TESTING ---
+                                    const slip = { ...originalSlip };
+                                    // if (index === 0) {
+                                    //     slip.status = 'not-started';
+                                    //     slip.assignedBy = 'System Admin';
+                                    //     slip.assignedOn = new Date();
+                                    // } else if (index === 1) {
+                                    //     slip.status = 'in-progress';
+                                    //     slip.startTime = new Date(new Date().getTime() - 15 * 60000); // Started 15 mins ago
+                                    // } else if (index === 2) {
+                                    //     slip.status = 'picked';
+                                    //     slip.endTime = new Date();
+                                    //     slip.durationMinutes = 12;
+                                    // }
+                                    // ----------------------------------
+
+                                    /* Helper to format date: DD/MM/YYYY hh:mm AM/PM */
+                                    const formatDateTime = (date?: Date) => {
+                                        if (!date) return { date: '-', time: '-' };
+                                        const d = new Date(date);
+                                        const dateStr = d.toLocaleDateString('en-GB'); // DD/MM/YYYY
+                                        const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true });
+                                        return { date: dateStr, time: timeStr };
+                                    };
+
+                                    const isDraft = slip.status === 'Not Started' || slip.status === 'not-started';
+                                    const isStarted = slip.status === 'In Process' || slip.status === 'in-progress';
+                                    const isPicked = slip.status === 'Picked' || slip.status === 'picked' || slip.status === 'Completed';
+                                    const isCancelled = slip.status === 'Cancelled';
+
+                                    // Determine background color based on status
+                                    let statusBg = 'bg-gray-50 border-gray-200'; // Default/Cancelled
+                                    if (isDraft) statusBg = 'bg-red-50 border-red-100 hover:bg-red-100/50';
+                                    if (isStarted) statusBg = 'bg-orange-50 border-orange-100 hover:bg-orange-100/50';
+                                    if (isPicked) statusBg = 'bg-green-50 border-green-100 hover:bg-green-100/50';
+                                    if (isCancelled) statusBg = 'bg-slate-50 border-slate-200 hover:bg-slate-100/50 opacity-75';
+
+                                    /* Status Badge Colors */
+                                    const badgeClass = cn(
+                                        "px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide mb-1 inline-block text-center w-full",
+                                        isDraft && "bg-red-100 text-red-700",
+                                        isStarted && "bg-orange-100 text-orange-700",
+                                        isPicked && "bg-green-100 text-green-700",
+                                        isCancelled && "bg-slate-100 text-slate-500 line-through"
+                                    );
+
+                                    return (
+                                        <div
+                                            key={slip.id}
+                                            onClick={() => onPickSlipClick?.(slip)}
+                                            className={cn(
+                                                "p-3 border rounded-lg cursor-pointer transition-all group",
+                                                statusBg
+                                            )}
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                {/* Left Side: Info */}
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-baseline justify-between mb-1">
+                                                        <p className="font-bold text-foreground text-sm">{slip.slipNo}</p>
+                                                    </div>
+
+                                                    <div className="text-xs text-muted-foreground space-y-1.5 mt-0.5">
+                                                        <p className="font-medium text-foreground truncate">{slip.warehouseName}</p>
+                                                        <div className="flex flex-wrap gap-1.5">
+                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 font-semibold border-b-2">
+                                                                {slip.pickerName}
+                                                            </span>
+                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 font-semibold border-b-2">
+                                                                {slip.items.length} Items
+                                                            </span>
+                                                            {isPicked && slip.durationMinutes !== undefined && (
+                                                                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 font-semibold border-b-2">
+                                                                    {slip.durationMinutes} Min
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Draft Info */}
+                                                    {isDraft && slip.assignedBy && (
+                                                        <div className="mt-2 pt-2 border-t border-red-100/50 text-[10px] text-red-600/80 truncate">
+                                                            Assigned by {slip.assignedBy} on {slip.assignedOn ? (() => {
+                                                                const { date, time } = formatDateTime(slip.assignedOn);
+                                                                return `${date} ${time}`;
+                                                            })() : ''}
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Right Side: Status & Time */}
+                                                <div className="flex flex-col items-end shrink-0 w-24">
+                                                    <span className={badgeClass}>
+                                                        {/* {getStatusLabel(slip.status)} */}
+                                                        {slip.status}
+                                                    </span>
+
+                                                    <div className="text-right space-y-0.5 pr-1">
+
+                                                        {isStarted && slip.startTime && (() => {
+                                                            const { date, time } = formatDateTime(slip.startTime);
+                                                            return (
+                                                                <>
+                                                                    <p className="text-[11px] font-medium text-foreground">{date}</p>
+                                                                    <p className="text-[11px] text-muted-foreground">{time}</p>
+                                                                </>
+                                                            );
+                                                        })()}
+
+                                                        {isPicked && slip.endTime && (() => {
+                                                            const { date, time } = formatDateTime(slip.endTime);
+                                                            return (
+                                                                <>
+                                                                    <p className="text-[11px] font-medium text-foreground">{date}</p>
+                                                                    <p className="text-[11px] text-muted-foreground">{time}</p>
+                                                                </>
+                                                            );
+                                                        })()}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                                {pickSlips.length === 0 && (
+                                    <div className="p-4 text-center text-muted-foreground text-sm border border-dashed border-border rounded-lg">
+                                        No pick slips created yet
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === 'sales' && (
+                    <SalesTab onSelectInvoice={onSelectInvoice} />
+                )}
+
+                {activeTab === 'queue' && (
+                    <OrderQueueTab onSelectInvoice={onSelectInvoice} />
+                )}
+
+                {activeTab === 'picker-log' && (
+                    <PickerLogTab onSelectInvoice={onSelectInvoice} />
+                )}
+            </div>
+        </div>
+    );
+}
+

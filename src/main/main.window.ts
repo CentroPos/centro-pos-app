@@ -9,6 +9,7 @@ export async function createWindow() {
   const win = new BrowserWindow({
     width: 1024,
     height: 768,
+    title: 'Centroerp',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -24,8 +25,8 @@ export async function createWindow() {
 
   win.loadURL(URL)
 
-  if (isDev) win.webContents.openDevTools()
-  else win.removeMenu()
+  // Do not auto-open DevTools; keep menu hidden in production
+  if (!isDev) win.removeMenu()
 
   win.on('closed', () => {
     win.destroy()

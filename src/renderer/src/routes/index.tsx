@@ -1,11 +1,6 @@
-import ProtectedLayout from '@renderer/components/hocs/ProtectedLayout'
-import POSInterface from '@renderer/components/layout/pos-Interface'
+import LoginInterface from '@renderer/components/layout/login-Interface'
 import { createFileRoute } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/')({
-  component: () => (
-    <ProtectedLayout>
-      <POSInterface />
-    </ProtectedLayout>
-  )
+  component: () => <LoginInterface />
 })

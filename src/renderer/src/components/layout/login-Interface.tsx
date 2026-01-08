@@ -6,19 +6,23 @@ import { useForm } from 'react-hook-form'
 import { yupResolver } from '@hookform/resolvers/yup'
 
 import type { SubmitHandler } from 'react-hook-form'
-import { API_Endpoints } from '@renderer/config/endpoints'
-import { useMutationQuery } from '@renderer/hooks/react-query/useReactQuery'
+// import { API_Endpoints } from '@renderer/config/endpoints'
+// import { useMutationQuery } from '@renderer/hooks/react-query/useReactQuery'
 import { ControlledTextField } from '../form/controlled-text-field'
-import { Loader2, Lock, UserIcon } from 'lucide-react'
+import { AlertCircle, Loader2, Lock, UserIcon } from 'lucide-react'
 import { Button } from '../ui/button'
 import { Form } from '../ui/form'
-import { useAuth } from '@renderer/hooks/useAuth'
 import { toast } from 'sonner'
 import { COMMON_ERROR_MESSAGE } from '@renderer/data/messages'
 import { useAuthStore } from '../../store/useAuthStore';
-
+import { useNavigate } from '@tanstack/react-router';
+import { BASE_URL_STORAGE_KEY, getApiBaseUrl, sanitizeBaseUrl } from '@renderer/config/production'
+import { setApiBaseUrl } from '@renderer/services/api'
+import { setFetchApiBaseUrl } from '@renderer/services/fetchAPI'
+import centroerpLogo from '@renderer/assets/centric_image.png'
 
 const schema = Yup.object().shape({
+  baseUrl: Yup.string().required('Base URL is required'),
   email: Yup.string().required('This field is required'),
   password: Yup.string()
     .required('This field is required')
@@ -28,48 +32,231 @@ const schema = Yup.object().shape({
 type FormData = Yup.InferType<typeof schema>
 
 const LoginPage: React.FC = () => {
+  const defaultBaseUrl = React.useMemo(() => getApiBaseUrl(), [])
+  const [appVersion, setAppVersion] = React.useState<string>('')
+  const [updateStatus, setUpdateStatus] = React.useState<'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error'>('idle')
+  const [updateMessage, setUpdateMessage] = React.useState<string>('')
+  const [availableVersion, setAvailableVersion] = React.useState<string | null>(null)
+  const [downloadProgress, setDownloadProgress] = React.useState<number>(0)
+  const [showBaseUrlPopup, setShowBaseUrlPopup] = React.useState(false)
 
   const form = useForm<FormData>({
     resolver: yupResolver(schema),
     defaultValues: {
+      baseUrl: defaultBaseUrl,
       email: '',
       password: ''
     }
   })
 
-  const { isLoading } = useAuthStore();
+  const { isLoading, login: storeLogin } = useAuthStore()
+  const navigate = useNavigate()
 
+  React.useEffect(() => {
+    const loadAppVersion = async () => {
+      try {
+        const version = await window.electronAPI?.app?.getVersion?.()
+        if (version) {
+          setAppVersion(version)
+        }
+      } catch (error) {
+        console.warn('Failed to load app version', error)
+      }
+    }
 
-  const { mutate, error } = useMutationQuery({
-    endPoint: API_Endpoints.LOGIN,
-    method: 'POST'
-  })
+    const setupUpdateListeners = () => {
+      const appAPI = window.electronAPI?.app
+      if (!appAPI) return
 
-  const { login } = useAuth()
+      appAPI.onUpdateChecking?.(() => {
+        setUpdateStatus('checking')
+        setUpdateMessage('Checking for updates...')
+        setAvailableVersion(null)
+      })
+
+      appAPI.onUpdateAvailable?.((info) => {
+        setUpdateStatus('available')
+        setUpdateMessage(`Update ${info.version} available`)
+        setAvailableVersion(info.version || null)
+      })
+
+      appAPI.onUpdateNotAvailable?.(() => {
+        setUpdateStatus('idle')
+        setUpdateMessage('Application is up to date')
+        setAvailableVersion(null)
+        setDownloadProgress(0)
+      })
+
+      appAPI.onUpdateError?.((error) => {
+        setUpdateStatus('error')
+        setUpdateMessage(error.message || 'Update failed')
+      })
+
+      appAPI.onUpdateDownloadProgress?.((progress) => {
+        setUpdateStatus('downloading')
+        setDownloadProgress(progress.percent || 0)
+        setUpdateMessage(`Downloading update... ${Math.round(progress.percent)}%`)
+      })
+
+      appAPI.onUpdateDownloaded?.((info) => {
+        setUpdateStatus('downloaded')
+        setUpdateMessage(`Update ${info.version} downloaded. Click install to finish.`)
+        setAvailableVersion(info.version || null)
+      })
+    }
+
+    loadAppVersion()
+    setupUpdateListeners()
+
+    return () => {
+      window.electronAPI?.app?.removeUpdateListeners?.()
+    }
+  }, [])
+
+  React.useEffect(() => {
+    let isMounted = true
+
+    const syncBaseUrlFromMain = async () => {
+      if (typeof window === 'undefined' || !window.electronAPI?.proxy?.getBaseUrl) {
+        return
+      }
+
+      try {
+        const mainBaseUrl = await window.electronAPI.proxy.getBaseUrl()
+        const normalized = sanitizeBaseUrl(mainBaseUrl)
+
+        if (!isMounted) {
+          return
+        }
+
+        // Only update form value and API URLs, but don't save to localStorage here
+        // localStorage should only be updated after successful login
+        form.setValue('baseUrl', normalized, { shouldDirty: false, shouldTouch: false })
+        setApiBaseUrl(normalized)
+        setFetchApiBaseUrl(normalized)
+      } catch (error) {
+        console.warn('Failed to retrieve base URL from main process', error)
+      }
+    }
+
+    void syncBaseUrlFromMain()
+
+    return () => {
+      isMounted = false
+    }
+  }, [form])
+
+  // Remove API mutation login flow; we'll use proxy-backed auth via storeLogin
+  const error = null as unknown as any
 
 
   console.log('forms.f', form.formState.errors)
 
   const onSubmit: SubmitHandler<FormData> = async (data: FormData) => {
-    const adjustedData = {
-      usr: data.email,
-      pwd: data.password
-    }
-    mutate(
-      {
-        data: adjustedData,
-        params: {}
-      },
-      {
-        onSuccess: (res) => {
-          login(res)
-        },
-        onError: (err) => {
-          toast.error(COMMON_ERROR_MESSAGE)
-          console.error('Login failed:', err)
+    try {
+      const normalizedBaseUrl = sanitizeBaseUrl(data.baseUrl)
+
+      // Set base URL for current session (but don't persist yet)
+      setApiBaseUrl(normalizedBaseUrl)
+      setFetchApiBaseUrl(normalizedBaseUrl)
+
+      if (typeof window !== 'undefined' && window.electronAPI?.proxy?.setBaseUrl) {
+        await window.electronAPI.proxy.setBaseUrl(normalizedBaseUrl)
+      }
+
+      form.setValue('baseUrl', normalizedBaseUrl, { shouldDirty: false, shouldTouch: false })
+
+      console.log('=== LOGIN ATTEMPT ===')
+      console.log('1. Calling storeLogin...')
+      await storeLogin({ username: data.email, password: data.password })
+      console.log('2. StoreLogin successful')
+
+      // Only save base URL to localStorage AFTER successful login
+      if (typeof window !== 'undefined') {
+        try {
+          window.localStorage.setItem(BASE_URL_STORAGE_KEY, normalizedBaseUrl)
+          console.log('3. Base URL saved to localStorage:', normalizedBaseUrl)
+        } catch (storageError) {
+          console.warn('Failed to persist base URL', storageError)
         }
       }
-    )
+
+      toast.success('Login successful!')
+      console.log('4. Toast shown, navigating to POS...')
+
+      // Navigate to POS page after successful login
+      navigate({ to: '/pos', replace: true })
+      console.log('5. Navigation completed')
+
+    } catch (err: any) {
+      console.error('=== LOGIN FAILED ===', err)
+      const errorMsg = err?.message || err?.error || COMMON_ERROR_MESSAGE
+      toast.error(errorMsg)
+      // Don't save base URL if login fails - keep the previously saved one
+    }
+  }
+
+  const handleCheckForUpdates = async () => {
+    try {
+      const appAPI = window.electronAPI?.app
+      if (!appAPI?.checkForUpdates) {
+        toast.error('Update feature not available')
+        return
+      }
+      setUpdateStatus('checking')
+      setUpdateMessage('Checking for updates...')
+      const result = await appAPI.checkForUpdates()
+      if (result && !result.success) {
+        setUpdateStatus('error')
+        setUpdateMessage(result.error || 'Failed to check for updates')
+        if (result.error && !result.error.includes('development')) {
+          toast.error(result.error)
+        }
+      }
+    } catch (error: any) {
+      setUpdateStatus('error')
+      setUpdateMessage(error?.message || 'Failed to check for updates')
+      toast.error('Failed to check for updates')
+    }
+  }
+
+  const handleDownloadUpdate = async () => {
+    try {
+      const appAPI = window.electronAPI?.app
+      if (!appAPI?.downloadUpdate) {
+        toast.error('Update feature not available')
+        return
+      }
+      setUpdateStatus('downloading')
+      setUpdateMessage('Downloading update...')
+      const result = await appAPI.downloadUpdate()
+      if (result && !result.success) {
+        setUpdateStatus('error')
+        setUpdateMessage(result.error || 'Failed to download update')
+        toast.error(result.error || 'Failed to download update')
+      }
+    } catch (error: any) {
+      setUpdateStatus('error')
+      setUpdateMessage(error?.message || 'Failed to download update')
+      toast.error('Failed to download update')
+    }
+  }
+
+  const handleInstallUpdate = async () => {
+    try {
+      const appAPI = window.electronAPI?.app
+      if (!appAPI?.quitAndInstall) {
+        toast.error('Update feature not available')
+        return
+      }
+      setUpdateStatus('downloaded')
+      setUpdateMessage('Installing update...')
+      await appAPI.quitAndInstall()
+    } catch (error: any) {
+      setUpdateStatus('error')
+      setUpdateMessage(error?.message || 'Failed to install update')
+      toast.error('Failed to install update')
+    }
   }
 
   return (
@@ -85,11 +272,18 @@ const LoginPage: React.FC = () => {
         {/* Login Card */}
         <div className="glass-effect rounded-3xl modern-shadow w-full max-w-md p-8 z-10 relative">
           <div className="text-center mb-8">
-            <div className="w-20 h-20 bg-gradient-to-r from-[#334155] to-[#0f172a] rounded-2xl mx-auto mb-4 flex items-center justify-center modern-shadow">
-              <i className="fas fa-cash-register text-white text-2xl"></i>
+            <div className="w-32 h-32 mx-auto mb-4 flex items-center justify-center">
+              <img
+                src={centroerpLogo}
+                alt="Centroerp Logo"
+                className="w-full h-full object-contain"
+              />
             </div>
             <h1 className="text-3xl font-bold text-primary mb-2">CentroERP POS</h1>
             <p className="text-gray-600 text-sm">Point of Sale for Traders</p>
+            {appVersion && (
+              <div className="text-xs text-gray-500 mt-3">Version {appVersion}</div>
+            )}
           </div>
 
           {/* Login Form */}
@@ -100,25 +294,25 @@ const LoginPage: React.FC = () => {
               </div>
             )}
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-2">
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 <ControlledTextField
                   name="email"
                   leftIcon={<UserIcon />}
-                  label={'Email or Username'}
-                  className='block text-sm font-semibold text-gray-700'
+                  label={"Email or Username"}
+                  className="block text-sm font-semibold text-gray-700"
                   required
                   control={form.control}
-                  placeholder='Enter your username'
+                  placeholder="Enter your username"
                 />
                 <ControlledTextField
                   type="password"
                   name="password"
-                  label={'Password'}
-                  className='block text-sm font-semibold text-gray-700'
+                  label={"Password"}
+                  className="block text-sm font-semibold text-gray-700"
                   required
                   control={form.control}
                   leftIcon={<Lock />}
-                  placeholder='Enter your password'
+                  placeholder="Enter your password"
                 />
 
                 <Button
@@ -132,11 +326,56 @@ const LoginPage: React.FC = () => {
                       Signing in...
                     </>
                   ) : (
-                    "Sign In"
+                    'Sign In'
                   )}
                 </Button>
               </form>
             </Form>
+          </div>
+
+          <div className="mt-6 space-y-3">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={handleCheckForUpdates}
+              disabled={updateStatus === 'checking' || updateStatus === 'downloading'}
+            >
+              {updateStatus === 'checking' ? 'Checking for updates…' : 'Check for Updates'}
+            </Button>
+            {updateMessage && (
+              <div className="text-xs text-gray-600 text-center px-2">
+                {updateMessage}
+              </div>
+            )}
+            {updateStatus === 'available' && (
+              <Button
+                type="button"
+                className="w-full bg-blue-500 hover:bg-blue-600"
+                onClick={handleDownloadUpdate}
+              >
+                Download Update {availableVersion ? `(${availableVersion})` : ''}
+              </Button>
+            )}
+            {updateStatus === 'downloading' && (
+              <div className="space-y-1">
+                <div className="w-full bg-gray-200 rounded-full h-1.5">
+                  <div
+                    className="bg-blue-500 h-1.5 rounded-full transition-all"
+                    style={{ width: `${Math.round(downloadProgress)}%` }}
+                  />
+                </div>
+              </div>
+            )}
+            {updateStatus === 'downloaded' && (
+              <Button
+                type="button"
+                className="w-full bg-green-500 hover:bg-green-600"
+                onClick={handleInstallUpdate}
+              >
+                Install Update & Restart
+              </Button>
+            )}
           </div>
 
           <div className="flex items-center my-6">
@@ -149,7 +388,7 @@ const LoginPage: React.FC = () => {
 
           <div className="text-center mt-8 space-y-3">
             <p className="text-sm text-gray-600">
-              Don't have an account?
+              Don&apos;t have an account?
               <span className="text-accent hover:text-accent/80 font-medium transition-all"> Sign up here</span>
             </p>
             <div className="flex justify-center space-x-6 text-xs text-gray-500">
@@ -160,12 +399,72 @@ const LoginPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="hidden md:block fixed right-60 top-1/2 transform -translate-y-1/2 z-20">
+        {/* Floating Action Button and Popup */}
+        <div className="fixed bottom-8 right-8 z-50 flex flex-col items-end">
+          {showBaseUrlPopup && (
+            <div className="mb-4 w-80 p-6 rounded-2xl glass-effect modern-shadow animate-in fade-in slide-in-from-bottom-4 duration-300 border border-white/20">
+              <Form {...form}>
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <AlertCircle className="text-primary w-5 h-5" />
+                    </div>
+                    <h3 className="font-bold text-gray-800">Connection Settings</h3>
+                  </div>
+                  <ControlledTextField
+                    name="baseUrl"
+                    label={"Base URL"}
+                    className="block text-sm font-semibold text-gray-700"
+                    required
+                    control={form.control}
+                    placeholder="https://your-instance.erpnext.com"
+                  />
+                  <p className="text-[11px] text-gray-500 leading-relaxed">
+                    Enter the full URL of your ERPNext server instance to establish a connection.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-xs h-8"
+                    onClick={() => setShowBaseUrlPopup(false)}
+                  >
+                    Done
+                  </Button>
+                </div>
+              </Form>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setShowBaseUrlPopup(!showBaseUrlPopup)}
+            className={`flex items-center justify-center w-14 h-14 rounded-full shadow-2xl transition-all duration-500 hover:scale-110 active:scale-95 group relative ${showBaseUrlPopup
+              ? 'bg-red-500 text-white rotate-90'
+              : 'bg-[#0f172a] text-white hover:bg-primary'
+              }`}
+            title="Configure Connection"
+          >
+            <AlertCircle size={28} className={showBaseUrlPopup ? '' : 'group-hover:animate-bounce'} />
+            {!showBaseUrlPopup && (
+              <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-4 w-4 bg-accent"></span>
+              </span>
+            )}
+          </button>
+        </div>
+
+        <div className="hidden md:block fixed right-60 top-1/2 transform -translate-y-1/2 z-20 opacity-60">
           <div className="glass-effect rounded-2xl p-8 w-80 modern-shadow">
             <div className="space-y-6">
               <div className="text-center">
-                <div className="w-16 h-16 bg-gradient-to-r from-accent to-blue-600 rounded-2xl mx-auto mb-4 flex items-center justify-center">
-                  <i className="fas fa-shopping-cart text-white text-xl"></i>
+                <div className="w-20 h-20 mx-auto mb-4 flex items-center justify-center">
+                  <img
+                    src={centroerpLogo}
+                    alt="Centroerp Logo"
+                    className="w-full h-full object-contain"
+                  />
                 </div>
                 <h3 className="text-xl font-bold text-primary mb-2">CentroERP POS</h3>
                 <p className="text-gray-600 text-sm">Simple Point of Sale for Traders</p>

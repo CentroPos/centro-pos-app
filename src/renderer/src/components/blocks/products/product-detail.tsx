@@ -1,12 +1,34 @@
 import { Card, CardContent } from '@renderer/components/ui/card'
-
 import { Separator } from '@renderer/components/ui/separator'
+import { useState, useEffect } from 'react'
 
 type Props = {
   selectedProduct: string
 }
 
-const ProductDetail: React.FC<Props> = () => (
+const ProductDetail: React.FC<Props> = () => {
+  const [currencySymbol, setCurrencySymbol] = useState('$')
+
+  // Load POS profile data
+  useEffect(() => {
+    const loadPOSProfile = async () => {
+      try {
+        const response = await window.electronAPI?.proxy?.request({
+          url: '/api/method/centro_pos_apis.api.profile.get_pos_profile'
+        })
+        
+        if (response?.data?.data?.custom_currency_symbol) {
+          setCurrencySymbol(response.data.data.custom_currency_symbol)
+        }
+      } catch (error) {
+        console.error('Error loading POS profile in ProductDetail:', error)
+      }
+    }
+
+    loadPOSProfile()
+  }, [])
+
+  return (
   <Card className="h-full">
     <CardContent className="p-4 space-y-4">
       <div className="text-center">
@@ -29,7 +51,7 @@ const ProductDetail: React.FC<Props> = () => (
             <span className="text-sm">On Hand</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-blue-600 font-medium">$799.00</span>
+            <span className="text-blue-600 font-medium">{currencySymbol} 799.00</span>
             <span className="text-red-500 font-medium">3 units</span>
           </div>
 
@@ -38,7 +60,7 @@ const ProductDetail: React.FC<Props> = () => (
             <span className="text-sm">Margin</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-orange-600 font-medium">$650.00</span>
+            <span className="text-orange-600 font-medium">{currencySymbol} 650.00</span>
             <span className="text-purple-600 font-medium">18.6%</span>
           </div>
         </div>
@@ -67,7 +89,7 @@ const ProductDetail: React.FC<Props> = () => (
             </div>
             <div className="text-right">
               <div className="font-medium">15 units</div>
-              <div className="text-xs text-gray-500">$13,485</div>
+              <div className="text-xs text-gray-500">{currencySymbol} 13,485</div>
             </div>
           </div>
           <div className="flex justify-between items-center text-sm">
@@ -77,13 +99,14 @@ const ProductDetail: React.FC<Props> = () => (
             </div>
             <div className="text-right">
               <div className="font-medium">12 units</div>
-              <div className="text-xs text-gray-500">$9,588</div>
+              <div className="text-xs text-gray-500">{currencySymbol} 9,588</div>
             </div>
           </div>
         </div>
       </div>
     </CardContent>
   </Card>
-)
+  )
+}
 
 export default ProductDetail
