@@ -1,6 +1,5 @@
 
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
 import { authAPI, LoginCredentials, FrappeLoginResponse } from '../api/auth'
 
 interface User {
@@ -27,18 +26,54 @@ interface AuthStore {
 }
 
 export const useAuthStore = create<AuthStore>()(
-  persist(
-    (set, get) => ({
-      // Initial state
-      user: null,
-      token: null,
-      isAuthenticated: false,
-      isLoading: false,
-      error: null,
+  // Remove persist wrapper completely - no persistence at all
+  (set) => {
+    // Initialize from localStorage if available
+    const initializeFromStorage = () => {
+      try {
+        const storedUserData = localStorage.getItem('userData')
+        if (storedUserData) {
+          const userData = JSON.parse(storedUserData)
+          console.log('Initializing auth store from localStorage:', userData)
+          return {
+            user: userData,
+            token: null,
+            isAuthenticated: true,
+            isLoading: false,
+            error: null
+          }
+        }
+      } catch (error) {
+        console.error('Error initializing from localStorage:', error)
+      }
+      return {
+        user: null,
+        token: null,
+        isAuthenticated: false,
+        isLoading: false,
+        error: null
+      }
+    }
+
+    return {
+      ...initializeFromStorage(),
 
       validateSession: async () => {
         try {
-          // Try to get current user info
+          // First check if we have stored user data
+          const storedUserData = localStorage.getItem('userData')
+          if (storedUserData) {
+            console.log('Found stored user data, session is valid')
+            const userData = JSON.parse(storedUserData)
+            set({
+              user: userData,
+              isAuthenticated: true,
+              error: null
+            })
+            return true
+          }
+
+          // If no stored data, try to validate with server
           const response = await authAPI.getCurrentUser()
 
           if (response && response.message === 'Logged In') {
@@ -50,6 +85,9 @@ export const useAuthStore = create<AuthStore>()(
               role: 'Administrator'
             }
 
+            // Store the user data for future use
+            localStorage.setItem('userData', JSON.stringify(userData))
+
             set({
               user: userData,
               isAuthenticated: true,
@@ -59,22 +97,24 @@ export const useAuthStore = create<AuthStore>()(
             return true
           } else {
             // Session invalid
-            get().logout()
+            console.log('Session validation failed - invalid response')
             return false
           }
         } catch (error) {
           // Session expired or invalid
           console.log('Session validation failed:', error)
-          get().logout()
           return false
         }
       },
 
       login: async (credentials: LoginCredentials) => {
+        console.log('=== useAuthStore.login() called ===')
         set({ isLoading: true, error: null })
 
         try {
+          console.log('1. Calling authAPI.login...')
           const response: FrappeLoginResponse = await authAPI.login(credentials)
+          console.log('2. AuthAPI response:', response)
 
           if (response.message === 'Logged In') {
             const userData = {
@@ -84,6 +124,7 @@ export const useAuthStore = create<AuthStore>()(
               role: 'Administrator'
             }
 
+            console.log('3. Setting userData:', userData)
             localStorage.setItem('userData', JSON.stringify(userData))
 
             set({
@@ -93,7 +134,9 @@ export const useAuthStore = create<AuthStore>()(
               isLoading: false,
               error: null
             })
+            console.log('4. Store updated, isAuthenticated set to true')
           } else {
+            console.log('5. Login failed - invalid response')
             throw new Error('Login failed')
           }
         } catch (error: any) {
@@ -120,8 +163,10 @@ export const useAuthStore = create<AuthStore>()(
 
       // Logout action
       logout: () => {
+        console.log('=== useAuthStore.logout() called ===')
         // Clear stored data
         localStorage.removeItem('userData')
+        console.log('localStorage cleared')
 
         set({
           user: null,
@@ -130,6 +175,7 @@ export const useAuthStore = create<AuthStore>()(
           isLoading: false,
           error: null
         })
+        console.log('Store state cleared, isAuthenticated set to false')
       },
 
       // Clear error
@@ -137,14 +183,8 @@ export const useAuthStore = create<AuthStore>()(
 
       // Set loading state
       setLoading: (loading: boolean) => set({ isLoading: loading })
-    }),
-    {
-      name: 'auth-storage', // localStorage key
-      partialize: (state) => ({
-        user: state.user
-      })
     }
-  )
+  }
 )
 
 export default useAuthStore

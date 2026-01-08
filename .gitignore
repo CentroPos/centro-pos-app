@@ -4,3 +4,14 @@ out
 .DS_Store
 .eslintcache
 *.log*
+build-publish.ps1
+github-token.txt
+GITHUB_ACTIONS_SETUP.md
+AUTO_UPDATE_EXPLANATION.md
+GITHUB_UPDATE_SETUP.md
+UPDATE_SETUP.md
+build-publish-secure.ps1
+GITHUB_ACTIONS_PUBLISH_SETUP.md
+
+pnpm-lock.yaml
+.agent

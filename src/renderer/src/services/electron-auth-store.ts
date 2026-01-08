@@ -134,9 +134,9 @@ class ElectronAuthStore {
   // Frappe-specific methods
   async setFrappeAuth(userData: any): Promise<void> {
     await this.setAuthData({
-      user: userData.name || userData.email,
+      user: userData.full_name || userData.user || userData.name,
       userData: userData,
-      isAuthenticated: true
+      isAuthenticated: userData?.message === 'Logged In' || true
     })
   }
 
@@ -158,7 +158,7 @@ class ElectronAuthStore {
       }
 
       // Get the API URL from environment or use fallback
-      const apiUrl = import.meta.env?.VITE_API_URL || process.env?.VITE_API_URL || ''
+      const apiUrl = import.meta.env?.VITE_API_URL || ''
       let domain = 'localhost' // fallback domain
 
       if (apiUrl) {

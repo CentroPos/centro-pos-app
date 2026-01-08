@@ -8,13 +8,24 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={theme as ToasterProps['theme']}
       className="toaster group"
+      closeButton
       style={
         {
           '--normal-bg': 'var(--popover)',
           '--normal-text': 'var(--popover-foreground)',
-          '--normal-border': 'var(--border)'
+          '--normal-border': 'var(--border)',
+          '--error-bg': 'white',
+          '--error-text': 'black',
+          '--error-border': '#dc2626'
         } as React.CSSProperties
       }
+      toastOptions={{
+        style: {
+          background: 'var(--popover)',
+          color: 'var(--popover-foreground)',
+          border: '1px solid var(--border)',
+        },
+      }}
       {...props}
     />
   )

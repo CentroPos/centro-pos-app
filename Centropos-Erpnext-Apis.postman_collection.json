@@ -1,0 +1,820 @@
+{
+	"info": {
+		"_postman_id": "cd26bb13-d817-4c7c-87bf-74dbe5187796",
+		"name": "Centropos-Erpnext-Apis",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "47061797",
+		"_collection_link": "https://arshad-centrric-201483.postman.co/workspace/centroerp-pos~1f2af9a5-c8ad-4512-a33e-fb65d3cd2ad3/collection/47067643-cd26bb13-d817-4c7c-87bf-74dbe5187796?action=share&source=collection_link&creator=47061797"
+	},
+	"item": [
+		{
+			"name": "01 - AUTHENTICATION",
+			"item": [
+				{
+					"name": "1.1 - Login",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"usr\":\"testuser@test.com\",\n    \"pwd\":\"Test@123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"login"
+							],
+							"query": [
+								{
+									"key": "usr",
+									"value": "administrator",
+									"disabled": true
+								},
+								{
+									"key": "pwd",
+									"value": "Arshad@123",
+									"disabled": true
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "02 - PROFILE",
+			"item": [
+				{
+					"name": "2.1 - Profile details",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/method/centro_pos_apis.api.profile.profile_details",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"centro_pos_apis.api.profile.profile_details"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "2.2 - Get pos profile",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/method/centro_pos_apis.api.profile.get_pos_profile",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"centro_pos_apis.api.profile.get_pos_profile"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "03 - CUSTOMER",
+			"item": [
+				{
+					"name": "3.1 - Customer list",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/method/centro_pos_apis.api.customer.customer_list?search_term=&limit_start=1&limit_page_length=4",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"centro_pos_apis.api.customer.customer_list"
+							],
+							"query": [
+								{
+									"key": "search_term",
+									"value": ""
+								},
+								{
+									"key": "limit_start",
+									"value": "1"
+								},
+								{
+									"key": "limit_page_length",
+									"value": "4"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "3.2 - create customer",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"customer_name\": \"Saudi Business Corp\",\n  \"customer_name_arabic\": \"شركة الأعمال السعودية\",\n  \"email\": \"b2b.customer@example.com\",\n  \"mobile\": \"+966509876543\",\n  \"customer_type\": \"Company\", // [ Company, Individual ]\n  \"tax_id\": \"310123456700003\",\n  \"customer_id_type_for_zatca\": \"CRN\",\n  \"customer_id_number_for_zatca\": \"1010123456\",\n  \"address_line1\": \"789 King Abdullah Road\",\n  \"address_line2\": \"Building 8221\",\n  \"city\": \"Riyadh\",\n  \"state\": \"Riyadh Province\",\n  \"pincode\": \"11564\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/centro_pos_apis.api.customer.create_customer",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"centro_pos_apis.api.customer.create_customer"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "3.3 - edit customer",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"customer_id\": \"CUS-00001\",\n  \"customer_name\": \"Saudi Business Corp\",\n  \"customer_name_arabic\": \"شركة الأعمال السعودية\",\n  \"email\": \"b2b.customer@example.com\",\n  \"mobile\": \"+966509876543\",\n  \"customer_type\": \"Company\", // [ Company, Individual ]\n  \"tax_id\": \"310123456700003\",\n  \"customer_id_type_for_zatca\": \"CRN\",\n  \"customer_id_number_for_zatca\": \"1010123456\",\n  \"address_line1\": \"789 King Abdullah Road\",\n  \"address_line2\": \"Building 8221\",\n  \"city\": \"Riyadh\",\n  \"state\": \"Riyadh Province\",\n  \"pincode\": \"11564\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/centro_pos_apis.api.customer.edit_customer",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"centro_pos_apis.api.customer.edit_customer"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "3.4 -  Customer details",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/resource/Customer/CUS-00001",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"resource",
+								"Customer",
+								"CUS-00001"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "3.5 - Customer amount insights",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"method": "GET",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": ""
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/centro_pos_apis.api.customer.customer_amount_insights?customer=CUS-00001&limit_start=1&limit_page_length=4",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"centro_pos_apis.api.customer.customer_amount_insights"
+							],
+							"query": [
+								{
+									"key": "customer",
+									"value": "CUS-00001"
+								},
+								{
+									"key": "limit_start",
+									"value": "1"
+								},
+								{
+									"key": "limit_page_length",
+									"value": "4"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "3.6 - Customer recent order",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/method/centro_pos_apis.api.customer.get_customer_recent_orders?customer=CUS-00001&limit_start=1&limit_page_length=3",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"centro_pos_apis.api.customer.get_customer_recent_orders"
+							],
+							"query": [
+								{
+									"key": "customer",
+									"value": "CUS-00001"
+								},
+								{
+									"key": "limit_start",
+									"value": "1"
+								},
+								{
+									"key": "limit_page_length",
+									"value": "3"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "3.7 - Customer most ordered Products",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/method/centro_pos_apis.api.customer.get_customer_most_ordered_products?customer=CUS-00001&limit_start=1&limit_page_length=4",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"centro_pos_apis.api.customer.get_customer_most_ordered_products"
+							],
+							"query": [
+								{
+									"key": "customer",
+									"value": "CUS-00001"
+								},
+								{
+									"key": "limit_start",
+									"value": "1"
+								},
+								{
+									"key": "limit_page_length",
+									"value": "4"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "04 - PRODUCT",
+			"item": [
+				{
+					"name": "4.1 - Product list",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"method": "GET",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/centro_pos_apis.api.product.product_list?price_list=Standard Selling&search_text=&limit_start=1&limit_page_length=4",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"centro_pos_apis.api.product.product_list"
+							],
+							"query": [
+								{
+									"key": "price_list",
+									"value": "Standard Selling"
+								},
+								{
+									"key": "search_text",
+									"value": ""
+								},
+								{
+									"key": "limit_start",
+									"value": "1"
+								},
+								{
+									"key": "limit_page_length",
+									"value": "4"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "4.2 - Product details",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/resource/Item/ITEM-00001",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"resource",
+								"Item",
+								"ITEM-00001"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "4.3 - Item stock warehouse list",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"method": "GET",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": ""
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/centro_pos_apis.api.product.item_stock_warehouse_list?item_code=ITEM-00001&search_text=Stores - NAB&limit_start=0&limit_page_length=5",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"centro_pos_apis.api.product.item_stock_warehouse_list"
+							],
+							"query": [
+								{
+									"key": "item_code",
+									"value": "ITEM-00001"
+								},
+								{
+									"key": "search_text",
+									"value": "Stores - NAB"
+								},
+								{
+									"key": "limit_start",
+									"value": "0"
+								},
+								{
+									"key": "limit_page_length",
+									"value": "5"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "4.4 - Product customer history",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/method/centro_pos_apis.api.product.get_product_customer_history?customer=CUS-00001&item_code=ITEM-00001&limit=2&start=0",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"centro_pos_apis.api.product.get_product_customer_history"
+							],
+							"query": [
+								{
+									"key": "customer",
+									"value": "CUS-00001"
+								},
+								{
+									"key": "item_code",
+									"value": "ITEM-00001"
+								},
+								{
+									"key": "limit",
+									"value": "2"
+								},
+								{
+									"key": "start",
+									"value": "0"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "4.5 - Product Sales history",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"method": "GET",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": ""
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/centro_pos_apis.api.product.get_product_sales_history?product_id=ITEM-00001&limit_start=0&limit_page_length=3",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"centro_pos_apis.api.product.get_product_sales_history"
+							],
+							"query": [
+								{
+									"key": "product_id",
+									"value": "ITEM-00001"
+								},
+								{
+									"key": "limit_start",
+									"value": "0"
+								},
+								{
+									"key": "limit_page_length",
+									"value": "3"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "4.6 - Product Purchase history",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"method": "GET",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": ""
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/centro_pos_apis.api.product.get_product_purchase_history?product_id=ITEM-00001&limit_start=0&limit_page_length=3",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"centro_pos_apis.api.product.get_product_purchase_history"
+							],
+							"query": [
+								{
+									"key": "product_id",
+									"value": "ITEM-00001"
+								},
+								{
+									"key": "limit_start",
+									"value": "0"
+								},
+								{
+									"key": "limit_page_length",
+									"value": "3"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "05 - ORDER",
+			"item": [
+				{
+					"name": "5.1 - Sales price list",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/resource/Price List?filters=[[\"selling\",\"=\",\"1\"]]&limit_start=0&limit_page_length=2",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"resource",
+								"Price List"
+							],
+							"query": [
+								{
+									"key": "filters",
+									"value": "[[\"selling\",\"=\",\"1\"]]"
+								},
+								{
+									"key": "limit_start",
+									"value": "0"
+								},
+								{
+									"key": "limit_page_length",
+									"value": "2"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "5.3 - Create Order",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"customer\": \"CUS-00001\",\n    \"posting_date\": \"2025-10-12\",\n    \"selling_price_list\": \"Standard Selling\",\n    \"taxes_and_charges\": \"VAT 15 - NAB\",\n    \"items\": [\n        {\n            \"item_code\": \"ITEM-00001\",\n            \"qty\": 5,\n            \"uom\": \"Nos\",\n            \"rate\": 1600.00,\n            \"warehouse\": \"Stores - NAB\"\n        }\n    ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/centro_pos_apis.api.order.create_order",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"centro_pos_apis.api.order.create_order"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "5.4 - order details",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/resource/Sales Order/SAL-ORD-2025-00001",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"resource",
+								"Sales Order",
+								"SAL-ORD-2025-00001"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "5.5 - Edit Order",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"sales_order_id\": \"SAL-ORD-2025-00001\",\n    \"customer\": \"CUS-00001\",\n    \"posting_date\": \"2025-10-12\",\n    \"selling_price_list\": \"Standard Selling\",\n    \"taxes_and_charges\": \"VAT 15 - NAB\",\n    \"items\": [\n        {\n            \"item_code\": \"ITEM-00001\",\n            \"qty\": 5,\n            \"uom\": \"Nos\",\n            \"rate\": 1600.00,\n            \"warehouse\": \"Stores - NAB\"\n        }\n    ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/centro_pos_apis.api.order.edit_order",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"centro_pos_apis.api.order.edit_order"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "5.6 - Order Confirmation",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"sales_order_id\": \"SAL-ORD-2025-00001\",\n    \"pos_profile\": \"Sales Counter - 1\",\n    \"payments\": [\n        {\n            \"mode_of_payment\": \"Cash\",\n            \"amount\": 5000.00\n        }\n    ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/centro_pos_apis.api.order.order_confirmation",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"centro_pos_apis.api.order.order_confirmation"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "5.7 - Due Invoice List",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/method/centro_pos_apis.api.order.due_invoice_list?customer_id=CUS-00001&limit_start=0&limit_page_length=4",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"centro_pos_apis.api.order.due_invoice_list"
+							],
+							"query": [
+								{
+									"key": "customer_id",
+									"value": "CUS-00001"
+								},
+								{
+									"key": "limit_start",
+									"value": "0"
+								},
+								{
+									"key": "limit_page_length",
+									"value": "4"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "5.8 - Create Payment Voucher",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"sales_invoice_id\": \"ACC-SINV-2025-00001\",\n    \"amount\": 45.00,\n    \"mode_of_payment\": \"Cash\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/centro_pos_apis.api.order.create_payment_entry",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"centro_pos_apis.api.order.create_payment_entry"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "5.9 - List payment vouchers",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": ""
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/centro_pos_apis.api.order.search_payment_entries?search_term",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"centro_pos_apis.api.order.search_payment_entries"
+							],
+							"query": [
+								{
+									"key": "search_term",
+									"value": null
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "06 - PRINT",
+			"item": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"requests": {},
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"requests": {},
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://172.104.140.136"
+		}
+	]
+}

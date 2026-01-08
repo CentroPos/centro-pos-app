@@ -1,20 +1,153 @@
-import { Fragment, useState } from 'react'
+import React, { Fragment, useState } from 'react'
 import ActionButtons from '../blocks/common/action-buttons'
-import OrderDetails from '../blocks/order/order-details'
+// import OrderDetails from '../blocks/order/order-details' // Removing unused import
 import ItemsTable from '../blocks/common/items-table'
-import PaymentAlert from '../blocks/payment/payment-alert'
 import RightPanel from '../blocks/right-panel/right-panel'
 import Header from '../blocks/common/header'
 import DiscountSection from '../blocks/products/discount-section'
 import ProductSearchModal from '../blocks/products/product-modal'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
+import { usePosProfile } from '@renderer/hooks/useProfile'
+import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
+import { useAuthStore } from '@renderer/store/useAuthStore'
 import { toast } from 'sonner'
 
 const POSInterface: React.FC = () => {
   const [open, setOpen] = useState(false)
   const [selectedItemId, setSelectedItemId] = useState<string | undefined>()
   const [shouldStartEditing, setShouldStartEditing] = useState(false)
+  const [rightPanelTab, setRightPanelTab] = useState<'product' | 'customer' | 'prints' | 'payments' | 'orders'>('product')
+  // const [selectedPriceList, setSelectedPriceList] = useState<string>('Standard Selling') // State removed, store used instead
+  const [saveCompleted, setSaveCompleted] = useState(0)
+  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false)
+  const [isItemTableEditing, setIsItemTableEditing] = useState(false)
+  const [insufficientStockErrors, setInsufficientStockErrors] = useState<Array<{ message: string, title: string, indicator: string, itemCode: string }>>([])
+  const [isErrorBoxFocused, setIsErrorBoxFocused] = useState(false)
+  const [zatcaResponses, setZatcaResponses] = useState<Array<{
+    invoice_no?: string
+    status?: string
+    status_code?: string
+    response?: {
+      type?: string
+      code?: string
+      category?: string
+      message?: string
+      status?: string
+      [key: string]: any
+    }
+    [key: string]: any
+  }>>([])
+  const [_isZatcaBoxFocused, setIsZatcaBoxFocused] = useState(false)
+
+  // Handle item selection - switch to product tab
+  const handleItemSelect = (itemId: string) => {
+    setSelectedItemId(itemId)
+    setRightPanelTab('product')
+  }
+
+  // Handle customer selection - switch to customer tab and unselect all items
+  const handleCustomerSelect = (_customer: any) => {
+    setSelectedItemId(undefined) // Unselect all items
+    setRightPanelTab('customer')
+  }
+
+  // Handle closing insufficient stock errors
+  const handleCloseInsufficientStockErrors = () => {
+    setInsufficientStockErrors([])
+  }
+
+  // Handle closing ZATCA responses
+  const handleCloseZatcaResponses = () => {
+    setZatcaResponses([])
+  }
+
+  // Handle focusing on a specific item from error box
+  const handleFocusItem = (itemCode: string, idx?: number) => {
+    console.log('🎯 Focusing on item:', itemCode, 'idx:', idx)
+    const items = getCurrentTabItems()
+
+    // Use idx (Sno) if available, otherwise fallback to item_code search
+    // Note: idx from backend is 1-based (S.No), convert to 0-based array index
+    let item
+    let arrayIndex: number | undefined
+    if (idx !== undefined && idx >= 1 && idx <= items.length) {
+      // Convert 1-based S.No to 0-based array index
+      arrayIndex = idx - 1
+      item = items[arrayIndex]
+      console.log('🔍 Found item by idx (S.No):', idx, 'arrayIndex:', arrayIndex, item)
+    } else {
+      // Fallback to item_code search
+      item = items.find(item => item.item_code === itemCode || item.code === itemCode)
+      if (item) {
+        arrayIndex = items.findIndex(i => i === item)
+      }
+      console.log('🔍 Found item by code:', item, 'arrayIndex:', arrayIndex)
+    }
+
+    if (item) {
+      setSelectedItemId(item.item_code) // Use item_code for consistency
+      setRightPanelTab('product')
+      console.log('✅ Selected item and switched to product tab')
+
+      // Find and scroll to the correct row using data-item-index
+      setTimeout(() => {
+        // First, find the table row using data-item-index (actual items array index)
+        const rowSelector = arrayIndex !== undefined && arrayIndex >= 0
+          ? `tr[data-item-index="${arrayIndex}"]`
+          : `tr[data-item-code="${item.item_code}"]`
+        const tableRow = document.querySelector(rowSelector) as HTMLElement
+        console.log('🔍 Found table row:', tableRow, 'selector:', rowSelector)
+
+        if (tableRow) {
+          // Scroll the row into view
+          tableRow.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          console.log('📜 Scrolled to row')
+
+          // Click the row to select it (this will trigger setSelectedRowIndex internally)
+          tableRow.click()
+          console.log('🖱️ Clicked table row to select')
+        }
+
+        // Then find and click the quantity cell
+        setTimeout(() => {
+          const quantityCellSelector = arrayIndex !== undefined && arrayIndex >= 0
+            ? `[data-item-index="${arrayIndex}"][data-field="quantity"]`
+            : `[data-item-code="${item.item_code}"][data-field="quantity"]`
+          const quantityCell = document.querySelector(quantityCellSelector) as HTMLElement
+          console.log('🔍 Found quantity cell:', quantityCell, 'selector:', quantityCellSelector)
+          if (quantityCell) {
+            quantityCell.click()
+            console.log('🖱️ Clicked quantity cell')
+
+            // Wait a bit more for the input to appear, then focus it
+            setTimeout(() => {
+              // Look for the specific input with data attributes - use arrayIndex if available
+              const inputSelector = arrayIndex !== undefined && arrayIndex >= 0
+                ? `input[data-item-index="${arrayIndex}"][data-field="quantity"]`
+                : `input[data-item-code="${item.item_code}"][data-field="quantity"]`
+              const quantityInput = document.querySelector(inputSelector) as HTMLInputElement
+              console.log('🔍 Found quantity input:', quantityInput)
+              if (quantityInput) {
+                quantityInput.focus()
+                quantityInput.select()
+                console.log('✅ Focused and selected quantity input')
+              } else {
+                // Fallback: find any number input in the quantity cell
+                const fallbackInput = quantityCell.querySelector(`input[type="number"]`) as HTMLInputElement
+                console.log('🔍 Found fallback input:', fallbackInput)
+                if (fallbackInput) {
+                  fallbackInput.focus()
+                  fallbackInput.select()
+                  console.log('✅ Focused and selected fallback input')
+                }
+              }
+            }, 150)
+          }
+        }, 200)
+      }, 100)
+    }
+  }
 
   const {
     getCurrentTabItems,
@@ -22,11 +155,131 @@ const POSInterface: React.FC = () => {
     removeItemFromTab,
     activeTabId,
     itemExistsInTab,
-    getCurrentTab
+    getCurrentTab,
+    getCurrentTabCustomer,
+    createNewTab,
+    lastAction,
+    setLastAction,
+    updateItemInTabByIndex
   } = usePOSTabStore();
 
+  // Get selected customer from store
+  const selectedCustomer = getCurrentTabCustomer()
+
   const items = getCurrentTabItems();
+  console.log('SHD ==> [POSInterface = items]', items)
   const currentTab = getCurrentTab();
+  const selectedPriceList = currentTab?.orderData?.price_list || 'Standard Selling'
+
+  // Clear selected item when no active tab
+  React.useEffect(() => {
+    if (!activeTabId && selectedItemId) {
+      setSelectedItemId(undefined)
+    }
+  }, [activeTabId, selectedItemId])
+
+  // When a duplicate or open-existing action switches to a new tab, switch right panel to Customer
+  React.useEffect(() => {
+    if (lastAction === 'duplicated' || lastAction === 'opened') {
+      setRightPanelTab('customer')
+      setLastAction(null)
+    }
+  }, [activeTabId, lastAction, setLastAction])
+
+  // Clear error box when switching tabs or when a new order tab is opened
+  const prevActiveTabIdRef = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    // Clear errors whenever activeTabId changes (tab switch or new tab opened)
+    if (activeTabId !== prevActiveTabIdRef.current) {
+      setInsufficientStockErrors([])
+      setIsErrorBoxFocused(false)
+      prevActiveTabIdRef.current = activeTabId
+    }
+  }, [activeTabId])
+
+  // Load POS profile and user profile details once POS loads
+  // const { data: profileDetails } = useProfileDetails() // Unused
+  const { data: posProfile } = usePosProfile()
+  const { user, isAuthenticated } = useAuthStore()
+  const { setProfile, setCurrentUserPrivileges } = usePOSProfileStore()
+  const { profile } = usePOSProfileStore()
+
+  // Test direct API call and set profile data
+  React.useEffect(() => {
+    const loadPOSProfile = async () => {
+      try {
+        console.log('🧪 Testing direct POS profile API call...')
+        const response = await window.electronAPI?.proxy?.request({
+          url: '/api/method/centro_pos_apis.api.profile.get_pos_profile',
+          params: {}
+        })
+        console.log('🧪 Direct API response:', response)
+
+        // If direct API call succeeds, use that data
+        if (response?.data?.data) {
+          console.log('✅ Using direct API data:', response.data.data)
+          console.log('✅ Applicable users:', response.data.data.applicable_for_users)
+          setProfile(response.data.data)
+
+          // Try to get user email from auth store or use the first user from API
+          let userEmail = user?.email
+
+          // If no user email from auth store, or if we can't find a match, use the first user from API
+          if (!userEmail || !response.data.data.applicable_for_users?.find(u => u.user === userEmail)) {
+            if (response.data.data.applicable_for_users?.length > 0) {
+              userEmail = response.data.data.applicable_for_users[0].user
+              console.log('⚠️ Using email from API response (no match found):', userEmail)
+            }
+          } else {
+            console.log('✅ Found matching user email in auth store:', userEmail)
+          }
+
+          if (userEmail) {
+            console.log('✅ Setting privileges for user:', userEmail)
+            console.log('✅ User object:', user)
+            setCurrentUserPrivileges(userEmail)
+          } else {
+            console.log('❌ No user email found anywhere')
+            console.log('❌ User object:', user)
+          }
+        }
+      } catch (error) {
+        console.error('🧪 Direct API error:', error)
+      }
+    }
+
+    loadPOSProfile()
+  }, [user?.email, setProfile, setCurrentUserPrivileges])
+
+  // Set POS profile data when loaded
+  React.useEffect(() => {
+    console.log('🔍 POS Profile Debug:', {
+      posProfile,
+      posProfileData: posProfile?.data,
+      userEmail: user?.email,
+      hasData: !!posProfile?.data
+    })
+
+    // usePosProfile now returns data directly (not nested in data.data.data)
+    if (posProfile?.data) {
+      console.log('✅ Setting POS profile data:', posProfile.data)
+      setProfile(posProfile.data)
+      // Set current user privileges
+      if (user?.email) {
+        console.log('✅ Setting user privileges for:', user.email)
+        setCurrentUserPrivileges(user.email)
+      }
+    } else {
+      console.log('❌ No POS profile data found')
+    }
+  }, [posProfile, user?.email, setProfile, setCurrentUserPrivileges])
+
+  // After login/session validation, default right panel to Orders
+  React.useEffect(() => {
+    if (isAuthenticated) {
+      setRightPanelTab('orders')
+    }
+  }, [isAuthenticated])
 
   const itemExists = (itemCode: string) => {
     if (!activeTabId) return false;
@@ -40,13 +293,48 @@ const POSInterface: React.FC = () => {
       return;
     }
 
+    // Check if item already exists and show notification (but still allow adding)
     if (itemExists(item.item_code)) {
-      toast.error('Item already in cart');
+      toast.info('You are selecting an item already in the table', {
+        position: 'bottom-right',
+        duration: 3000
+      });
+    }
+
+    const allowDuplicate = profile?.custom_allow_duplicate_items_in_cart === 1
+    if (!allowDuplicate && itemExists(item.item_code)) {
+      // If duplicates are not allowed, don't add the item
       return;
     }
 
-    addItemToTab(activeTabId, item);
+    // Always set quantity to 1 when adding an item, regardless of existing items
+    const itemToAdd = {
+      ...item,
+      quantity: 1
+    }
+
+    console.log('🛒 Adding item to cart:', {
+      item_code: itemToAdd.item_code,
+      item_name: itemToAdd.item_name,
+      standard_rate: itemToAdd.standard_rate,
+      uom: itemToAdd.uom,
+      quantity: itemToAdd.quantity,
+      fullItem: itemToAdd
+    });
+
+    addItemToTab(activeTabId, itemToAdd);
+    // Explicitly ensure quantity is 1 for the newly added item only (last item in array)
+    // Use setTimeout to ensure the item is added to the store first
+    setTimeout(() => {
+      const currentItems = getCurrentTabItems()
+      if (currentItems.length > 0) {
+        const lastItemIndex = currentItems.length - 1
+        // Only update the last item (newly added), not any existing duplicates
+        updateItemInTabByIndex(activeTabId, lastItemIndex, { quantity: 1 })
+      }
+    }, 0)
     setSelectedItemId(item.item_code);
+    setRightPanelTab('product'); // Switch to product tab when item is added
 
     // Trigger auto-editing
     setShouldStartEditing(true);
@@ -64,75 +352,199 @@ const POSInterface: React.FC = () => {
   };
 
   // Select item
-  const selectItem = (itemCode: string) => {
-    setSelectedItemId(itemCode);
-  };
+  // const selectItem = (itemCode: string) => { // Unused
+  //   setSelectedItemId(itemCode);
+  // };
 
-  // Navigate items (up/down)
-  const navigateItem = (direction: 'up' | 'down') => {
-    if (items.length === 0) return;
+  // Navigate items (up/down) - Unused
+  // const navigateItem = (direction: 'up' | 'down') => {
+  //   if (items.length === 0) return;
 
-    const currentIndex = selectedItemId
-      ? items.findIndex(item => item.item_code === selectedItemId)
-      : -1;
+  //   const currentIndex = selectedItemId
+  //     ? items.findIndex(item => item.item_code === selectedItemId)
+  //     : -1;
 
-    let newIndex;
-    if (direction === 'down') {
-      newIndex = currentIndex < items.length - 1 ? currentIndex + 1 : 0;
-    } else {
-      newIndex = currentIndex > 0 ? currentIndex - 1 : items.length - 1;
-    }
+  //   let newIndex;
+  //   if (direction === 'down') {
+  //     newIndex = currentIndex < items.length - 1 ? currentIndex + 1 : 0;
+  //   } else {
+  //     newIndex = currentIndex > 0 ? currentIndex - 1 : items.length - 1;
+  //   }
 
-    setSelectedItemId(items[newIndex].item_code);
-  };
+  //   console.log('🔄 Navigation:', { 
+  //     direction, 
+  //     currentIndex, 
+  //     newIndex, 
+  //     totalItems: items.length, 
+  //     selectedItemId, 
+  //     newItemCode: items[newIndex]?.item_code,
+  //     items: items.map(item => item.item_code)
+  //   });
 
-  useHotkeys('shift', () => setOpen(true))
+  //   // Ensure we have a valid item at the new index
+  //   if (items[newIndex]) {
+  //     setSelectedItemId(items[newIndex].item_code);
+  //   } else {
+  //     console.error('❌ Invalid navigation index:', newIndex, 'items length:', items.length);
+  //   }
+  // };
+
   useHotkeys('backspace', () => {
     if (selectedItemId) {
       removeItem(selectedItemId);
     }
   }, { enableOnFormTags: false })
-  useHotkeys('down', () => navigateItem('down'), { enableOnFormTags: false })
-  useHotkeys('up', () => navigateItem('up'), { enableOnFormTags: false })
-  useHotkeys('space', () => {
-    if (selectedItemId) {
-      toast.info('Press Space on a selected item to edit');
+
+  // Ctrl+S for save/update order
+  useHotkeys('ctrl+s', (event) => {
+    event.preventDefault()
+    if (!isItemTableEditing && getCurrentTab()?.isEdited) {
+      // Trigger save by clicking the save button
+      const saveButton = document.querySelector('[data-testid="save-button"]') as HTMLButtonElement
+      if (saveButton && !saveButton.disabled) {
+        saveButton.click()
+      }
     }
-  }, { enableOnFormTags: false, preventDefault: true })
+  }, { enableOnFormTags: false })
+
+  // Ctrl+N for new order
+  useHotkeys('ctrl+n', (event) => {
+    event.preventDefault()
+    const created = createNewTab()
+    if (created) {
+      // Open customer selection automatically when new order is created
+      setIsCustomerModalOpen(true)
+    }
+  }, { enableOnFormTags: false })
+
+  // Ctrl+R for return
+  useHotkeys('ctrl+r', (event) => {
+    event.preventDefault()
+    // Trigger return by clicking the return button
+    const returnButton = document.querySelector('[data-testid="return-button"]') as HTMLButtonElement
+    if (returnButton && !returnButton.disabled) {
+      returnButton.click()
+    }
+  }, { enableOnFormTags: false })
+
+  // Arrow keys are handled by the items table component, so we don't need global handlers here
+  // Enter key is handled by the items table component, so we don't need a global handler here
+  // Spacebar is handled by items-table component for UOM cycling
+  // No global handler needed here
+
+  // React effects to handle custom events
+  React.useEffect(() => {
+    const handleOpenCustomerModal = () => {
+      setIsCustomerModalOpen(true);
+      setOpen(false); // only customer select
+    };
+    window.addEventListener('openCustomerModal', handleOpenCustomerModal);
+    return () => window.removeEventListener('openCustomerModal', handleOpenCustomerModal);
+  }, []);
+
+  React.useEffect(() => {
+    const handleOpenPrintsTab = () => {
+      setRightPanelTab('prints');
+    };
+    window.addEventListener('openPrintsTab', handleOpenPrintsTab);
+    return () => window.removeEventListener('openPrintsTab', handleOpenPrintsTab);
+  }, []);
+
+  React.useEffect(() => {
+    const handleGlobalRefresh = () => {
+      console.log('🔁 POSInterface refreshing main page data')
+      // Trigger a re-fetch by toggling the saveCompleted counter
+      setSaveCompleted(prev => prev + 1)
+    }
+
+    window.addEventListener('pos-refresh', handleGlobalRefresh)
+    return () => window.removeEventListener('pos-refresh', handleGlobalRefresh)
+  }, [])
+
+  // Hotkeys
+  useHotkeys('ctrl+shift+p', () => setRightPanelTab('prints'), { enableOnFormTags: true });
+  useHotkeys('ctrl+shift+c', () => setIsCustomerModalOpen(true), { enableOnFormTags: true });
 
   return (
     <Fragment>
-      <div className="h-screen bg-gray-50 flex w-screen">
+      <div className="h-full bg-gray-50 flex w-full overflow-hidden scrollbar-hide">
         <div className="flex-1 flex flex-col">
-          <Header />
-          {/* <button onClick={() => setOpen(true)} className="m-4 p-2 bg-blue-500 text-white rounded">
-            Open
-          </button> */}
-          <ActionButtons />
-          {/* Fixed top: Order details */}
-          <OrderDetails />
+          {/* Top Section: Header + ActionButtons */}
+          <div className="flex w-full items-center bg-slate-50 border-b border-gray-200">
+            <div className="w-[55%]">
+              <Header onNewOrder={() => {
+                // Open customer selection immediately when a new order is created
+                setIsCustomerModalOpen(true)
+              }} />
+            </div>
+            <div className="w-[45%] flex justify-end">
+              <ActionButtons
+                onNavigateToPrints={() => setRightPanelTab('prints')}
+                // selectedPriceList={selectedPriceList} // Removed
+                onSaveCompleted={() => setSaveCompleted(prev => prev + 1)}
+                isItemTableEditing={isItemTableEditing}
+                onInsufficientStockErrors={setInsufficientStockErrors}
+                onFocusItem={handleFocusItem}
+                onZatcaResponses={setZatcaResponses}
+              />
+            </div>
+          </div>
+          {/* Fixed top: Order details (Commented out as requested - Moved to ItemsTable/DiscountSection) */}
+          {/* <OrderDetails
+            onPriceListChange={setSelectedPriceList}
+            onCustomerModalChange={setIsCustomerModalOpen}
+            onCustomerSelect={(customer) => {
+              handleCustomerSelect(customer)
+            }}
+            forceOpenCustomerModal={isCustomerModalOpen}
+          /> */}
 
-          {/* Scroll only the items table */}
-          <div className="flex-1 overflow-auto">
+          {/* Items area takes remaining space; inner table handles its own scroll */}
+          <div className="flex-1 flex flex-col">
             <ItemsTable
               onRemoveItem={removeItem}
               selectedItemId={selectedItemId}
-              selectItem={selectItem}
+              selectItem={handleItemSelect}
               shouldStartEditing={shouldStartEditing}
               onEditingStarted={() => setShouldStartEditing(false)}
+              onAddItemClick={() => setOpen(true)}
+              onSaveCompleted={saveCompleted}
+              isProductModalOpen={open}
+              isCustomerModalOpen={isCustomerModalOpen}
+              isErrorBoxFocused={isErrorBoxFocused}
+              onEditingStateChange={setIsItemTableEditing}
+              errorItems={insufficientStockErrors.map(error => error.itemCode).filter(Boolean)}
+            />
+
+            {/* Fixed bottom: Discount/Summary section */}
+            <DiscountSection
+              errors={insufficientStockErrors}
+              onCloseErrors={handleCloseInsufficientStockErrors}
+              onErrorBoxFocusChange={setIsErrorBoxFocused}
+              onFocusItem={handleFocusItem}
+              zatcaResponses={zatcaResponses}
+              onCloseZatcaResponses={handleCloseZatcaResponses}
+              onZatcaBoxFocusChange={setIsZatcaBoxFocused}
+              forceOpenCustomerModal={isCustomerModalOpen}
+              onCustomerModalChange={setIsCustomerModalOpen}
+              onCustomerSelect={handleCustomerSelect}
             />
           </div>
-
-          {/* Fixed bottom: Discount/Summary section */}
-          <DiscountSection />
-          <PaymentAlert orderNumber={currentTab?.orderId || ''} />
         </div>
-        <RightPanel />
+        <RightPanel
+          key={`${selectedCustomer?.name || 'no-customer'}-${selectedItemId || 'no-item'}`}
+          selectedItemId={selectedItemId}
+          items={items}
+          selectedCustomer={selectedCustomer}
+          activeTab={rightPanelTab}
+          onTabChange={(tab) => setRightPanelTab(tab as typeof rightPanelTab)}
+        />
       </div>
       <ProductSearchModal
         open={open}
         onOpenChange={setOpen}
         onSelect={addItem}
+        selectedPriceList={selectedPriceList}
       />
     </Fragment>
   )
