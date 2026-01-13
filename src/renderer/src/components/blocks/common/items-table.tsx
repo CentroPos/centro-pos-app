@@ -2324,7 +2324,20 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                 ref={inputRef}
                                 type="number"
                                 value={editValue}
-                                onChange={(e) => setEditValue(e.target.value)}
+                                onChange={(e) => {
+                                  const newValue = e.target.value
+                                  setEditValue(newValue)
+                                  // Real-time update for discount (like quantity)
+                                  if (activeTabId) {
+                                    const numValue = parseFloat(newValue)
+                                    const valToSave = isNaN(numValue) ? 0 : numValue
+                                    if (valToSave >= 0 && valToSave <= 100) {
+                                      // Use index directly to handle duplicates correctly
+                                      updateItemInTabByIndex(activeTabId, index, { discount_percentage: valToSave })
+                                      setTabEdited(activeTabId, true)
+                                    }
+                                  }
+                                }}
                                 onKeyDown={(e) => {
                                   handleArrowNavigation(e, 'discount_percentage', item.item_code)
                                   handleVerticalNavigation(e, 'discount_percentage', item.item_code)
@@ -2332,6 +2345,15 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                     e.preventDefault()
                                     e.stopPropagation()
                                     handleSaveEdit()
+                                    // Save discount value directly using index
+                                    const numValue = parseFloat(editValue)
+                                    const valToSave = isNaN(numValue) ? 0 : numValue
+                                    if (valToSave >= 0 && valToSave <= 100 && activeTabId) {
+                                      updateItemInTabByIndex(activeTabId, index, { discount_percentage: valToSave })
+                                      setTabEdited(activeTabId, true)
+                                    }
+                                    // Navigate to unit price
+                                    moveToField(item.item_code, 'standard_rate')
                                   } else if (e.key === 'Escape') {
                                     e.preventDefault()
                                     e.stopPropagation()
@@ -2341,6 +2363,14 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                 onBlur={() => {
                                   if (navigatingRef.current) return
                                   handleSaveEdit()
+                                  // Save discount value directly using index
+                                  const numValue = parseFloat(editValue)
+                                  const valToSave = isNaN(numValue) ? 0 : numValue
+                                  if (valToSave >= 0 && valToSave <= 100 && activeTabId) {
+                                    updateItemInTabByIndex(activeTabId, index, { discount_percentage: valToSave })
+                                    setTabEdited(activeTabId, true)
+                                  }
+                                  setIsEditing(false)
                                 }}
                                 className="w-[60px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
                                 min="0"
