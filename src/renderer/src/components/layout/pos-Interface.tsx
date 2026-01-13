@@ -160,7 +160,8 @@ const POSInterface: React.FC = () => {
     createNewTab,
     lastAction,
     setLastAction,
-    updateItemInTabByIndex
+    updateItemInTabByIndex,
+    updateItemInTab
   } = usePOSTabStore();
 
   // Get selected customer from store
@@ -329,8 +330,13 @@ const POSInterface: React.FC = () => {
       const currentItems = getCurrentTabItems()
       if (currentItems.length > 0) {
         const lastItemIndex = currentItems.length - 1
-        // Only update the last item (newly added), not any existing duplicates
-        updateItemInTabByIndex(activeTabId, lastItemIndex, { quantity: 1 })
+        const lastItem = currentItems[lastItemIndex]
+
+        // Only update if the last item is indeed the one we just tried to add
+        if (lastItem.item_code === itemToAdd.item_code) {
+          // Only update the last item (newly added), not any existing duplicates
+          updateItemInTabByIndex(activeTabId, lastItemIndex, { quantity: 1 })
+        }
       }
     }, 0)
     setSelectedItemId(item.item_code);
@@ -338,6 +344,39 @@ const POSInterface: React.FC = () => {
 
     // Trigger auto-editing
     setShouldStartEditing(true);
+  };
+
+  // Replace item with alternate
+  const handleReplaceItem = (item: any) => {
+    if (!activeTabId || !selectedItemId) return;
+
+    console.log('🔄 Replacing item:', selectedItemId, 'with:', item.item_code);
+
+    // Get current item index/details
+    const currentItems = getCurrentTabItems();
+
+    // Find quantities/discounts from existing item
+    const existingItem = currentItems.find(i => i.item_code === selectedItemId);
+    if (!existingItem) return;
+
+    const updates = {
+      item_code: item.item_code,
+      item_name: item.item_name,
+      // description: item.description, // item_description?
+      item_description: item.item_description || item.description,
+      uom: item.uom,
+      standard_rate: item.standard_rate,
+      // Preserve original quantity
+      quantity: existingItem.quantity || 1,
+      // Preserve original discount? User said "inherit the original product's quantity"
+      discount_percentage: existingItem.discount_percentage || 0
+    };
+
+    updateItemInTab(activeTabId, selectedItemId, updates);
+    setSelectedItemId(item.item_code);
+    setRightPanelTab('product');
+    // Maybe trigger edit?
+    // setShouldStartEditing(true); // User didn't ask for edit mode on replace, just replace.
   };
 
   // Remove item from current tab
@@ -538,6 +577,8 @@ const POSInterface: React.FC = () => {
           selectedCustomer={selectedCustomer}
           activeTab={rightPanelTab}
           onTabChange={(tab) => setRightPanelTab(tab as typeof rightPanelTab)}
+          onAddItem={addItem}
+          onReplaceItem={handleReplaceItem}
         />
       </div>
       <ProductSearchModal
