@@ -11,6 +11,7 @@ import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 import { useHotkeys } from 'react-hotkeys-hook'
 import PaymentTab from '../payment/payment-tab'
 import MultiWarehousePopup from '../common/multi-warehouse-popup'
+import AlternateProducts from './alternate-products'
 
 // A right-side panel for the POS screen, adapted from pos.html
 // Contains tabs for Product, Customer, Prints, Payments, Orders
@@ -791,6 +792,8 @@ type RightPanelProps = {
   selectedCustomer?: any
   onTabChange?: (tab: string) => void
   activeTab?: 'product' | 'customer' | 'prints' | 'payments' | 'orders'
+  onAddItem?: (item: any) => void
+  onReplaceItem?: (item: any) => void
 }
 
 const RightPanel: React.FC<RightPanelProps> = ({
@@ -798,7 +801,9 @@ const RightPanel: React.FC<RightPanelProps> = ({
   items,
   selectedCustomer,
   onTabChange,
-  activeTab: externalActiveTab
+  activeTab: externalActiveTab,
+  onAddItem,
+  onReplaceItem
 }) => {
   const [internalActiveTab, setInternalActiveTab] = useState<
     'product' | 'customer' | 'prints' | 'payments' | 'orders'
@@ -3217,6 +3222,13 @@ const RightPanel: React.FC<RightPanelProps> = ({
                   )}
                 </div>
               </div>
+
+              {/* Alternate Products */}
+              <AlternateProducts
+                itemCode={selectedItemId}
+                onAddItem={(item) => onAddItem && onAddItem(item)}
+                onReplaceItem={(item) => onReplaceItem && onReplaceItem(item)}
+              />
 
               {/* Product History Section */}
               <div className="bg-white/90 mt-2">
