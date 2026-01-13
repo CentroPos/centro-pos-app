@@ -383,12 +383,28 @@ const DiscountSection: React.FC<Props> = ({
   }
 
   const handleGlobalDiscountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setGlobalDiscountValue(e.target.value)
+    const inputValue = e.target.value
+    // Allow empty string for clearing the field
+    if (inputValue === '') {
+      setGlobalDiscountValue('')
+      return
+    }
+    const numValue = parseFloat(inputValue)
+    // Only accept values in range 0-100
+    if (!isNaN(numValue) && numValue >= 0 && numValue <= 100) {
+      setGlobalDiscountValue(inputValue)
+    } else if (!isNaN(numValue) && numValue > 100) {
+      // Cap at 100 if user tries to enter more
+      setGlobalDiscountValue('100')
+    }
   }
 
   const handleGlobalDiscountBlur = () => {
     if (currentTab) {
-      const newValue = parseFloat(globalDiscountValue) || 0
+      let newValue = parseFloat(globalDiscountValue) || 0
+      // Clamp value to 0-100 range
+      newValue = Math.max(0, Math.min(100, newValue))
+
       updateTabGlobalDiscount(currentTab.id, newValue)
       setTabEdited(currentTab.id, true) // Mark tab as edited when global discount changes
       setIsEditingGlobalDiscount(false)
@@ -404,9 +420,7 @@ const DiscountSection: React.FC<Props> = ({
     }
   }
 
-  const handleGlobalDiscountSave = () => {
-    handleGlobalDiscountBlur()
-  }
+
 
   // Hotkey for global discount editing
   useHotkeys(
@@ -602,32 +616,7 @@ const DiscountSection: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Global Discount Dialog */}
-      <Dialog open={isEditingGlobalDiscount} onOpenChange={setIsEditingGlobalDiscount}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Global Discount</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="flex items-center gap-4">
-              <Input
-                ref={globalDiscountRef}
-                id="discount"
-                value={globalDiscountValue}
-                onChange={(e) => setGlobalDiscountValue(e.target.value)}
-                placeholder="Enter discount amount or percentage (e.g. 10 or 10%)"
-                className="col-span-3 text-lg font-bold"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleGlobalDiscountSave()
-                }}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button type="submit" onClick={handleGlobalDiscountSave}>Save changes</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Global Discount editing is now inline - no dialog needed */}
 
       {/* Duplicate Confirmation Dialog */}
       <Dialog open={showDuplicateConfirm} onOpenChange={setShowDuplicateConfirm}>
