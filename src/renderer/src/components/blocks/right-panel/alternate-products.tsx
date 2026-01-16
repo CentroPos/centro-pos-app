@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
-import { Plus, RefreshCw, ArrowRight, ArrowLeft } from 'lucide-react'
+import { Plus, RefreshCw } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@renderer/components/ui/dialog'
 import { Button } from '@renderer/components/ui/button'
 import { cn } from '@renderer/lib/utils'
@@ -202,11 +202,7 @@ const AlternateProducts: React.FC<AlternateProductsProps> = ({ itemCode, onAddIt
                         </div>
                     </div>
 
-                    <DialogFooter className="sm:justify-between items-center">
-                        <div className="text-xs text-gray-400 flex items-center gap-2">
-                            <span className="bg-gray-100 px-1.5 py-0.5 rounded border">Wait, arrow keys?</span>
-                            <span>Use <ArrowLeft size={10} className="inline" /> <ArrowRight size={10} className="inline" /> to select, <b>Enter</b> to confirm</span>
-                        </div>
+                    <DialogFooter className="sm:justify-center items-center">
                         <div className="flex gap-2">
                             <Button variant="outline" onClick={() => setIsWizardOpen(false)}>Cancel</Button>
                             <Button onClick={handleWizardConfirm}>Confirm</Button>

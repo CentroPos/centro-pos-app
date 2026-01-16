@@ -69,43 +69,43 @@ interface POSTabStore {
   updateTabTaxAmount: (tabId: string, taxAmount: number) => void
   setTabEdited: (tabId: string, isEdited: boolean) => void
   updateTabInvoiceData: (tabId: string, invoiceData: any) => void
-  
+
   // Global discount methods
   updateTabGlobalDiscount: (tabId: string, globalDiscountPercent: number) => void
   getCurrentTabGlobalDiscount: () => number
-  
+
   // Customer management methods
   updateTabCustomer: (tabId: string, customer: { name: string; gst: string; customer_id?: string; mobile_no?: string; email?: string; tax_id?: string }) => void
-  
+
   // Other Details methods
   updateTabOtherDetails: (tabId: string, details: { po_no?: string | null; po_date?: string | null; internal_note?: string | null }) => void
-  
+
   // Posting Date methods
   updateTabPostingDate: (tabId: string, postingDate: string | null) => void
   getCurrentTabPostingDate: () => string | null
-  
+
   // Instant Print methods
   updateTabInstantPrintUrl: (tabId: string, url: string | null) => void
-  
+
   // Rounding methods
   updateTabRoundingEnabled: (tabId: string, enabled: boolean) => void
   getCurrentTabRoundingEnabled: () => boolean
-  
+
   // Invoice number methods
   updateTabInvoiceNumber: (tabId: string, invoiceNumber: string | null, invoiceStatus?: string | null, invoiceCustomReverseStatus?: string | null) => void
   getCurrentTabInvoiceNumber: () => string | null
   getCurrentTabInvoiceStatus: () => string | null
   getCurrentTabInvoiceCustomReverseStatus: () => string | null
-  
+
   // Reservation methods
   updateTabReservation: (tabId: string, is_reserved: number) => void
   getCurrentTabReservation: () => number
-  
+
   // Helper methods
   getCurrentTab: () => Tab | undefined
   getCurrentTabItems: () => any[]
   getCurrentTabCustomer: () => { name?: string; gst?: string; customer_id?: string; mobile_no?: string; email?: string; tax_id?: string } | null
-  
+
   // Clear all tabs (use with caution)
   clearAllTabs: () => void
   itemExistsInTab: (tabId: string, itemCode: string) => boolean
@@ -121,13 +121,13 @@ export const usePOSTabStore = create<POSTabStore>()(
       // Tab management methods
       openTab: (orderId: string, orderData?: any, status?: 'draft' | 'confirmed' | 'paid') => {
         const state = get()
-        
+
         console.log('📋 [openTab] ===== OPENING TAB =====')
         console.log('📋 [openTab] Order ID:', orderId)
         console.log('📋 [openTab] Order Data received:', orderData ? 'Present' : 'Missing')
         console.log('📋 [openTab] Order Data full:', JSON.stringify(orderData, null, 2))
         console.log('📋 [openTab] Linked invoices in orderData:', JSON.stringify(orderData?.linked_invoices, null, 2))
-        
+
         // Enforce total tab limit (max 6)
         if (state.tabs.length >= 6) {
           toast.error('You can keep only up to 6 orders open at a time')
@@ -136,7 +136,7 @@ export const usePOSTabStore = create<POSTabStore>()(
         // Map API order items (if provided) to cart item structure used by POS
         // Also convert custom_stock_adjustment_sources to warehouseAllocations format
         const customStockAdjustmentSources = orderData?.custom_stock_adjustment_sources || []
-        
+
         // Group custom_stock_adjustment_sources by item_code
         const allocationsByItem: Record<string, Array<{ name: string; allocated: number; available?: number; selected: boolean }>> = {}
         if (Array.isArray(customStockAdjustmentSources)) {
@@ -154,38 +154,38 @@ export const usePOSTabStore = create<POSTabStore>()(
             }
           })
         }
-        
+
         const mappedItems = Array.isArray(orderData?.items)
           ? orderData.items.map((it: any) => {
-              const itemCode = it.item_code
-              const baseItem = {
-                item_code: itemCode,
-                item_name: it.item_name,
-                item_part_no: it.item_part_no,
-                label: it.description || it.item_name,
-                quantity: Number(it.qty || it.quantity || 0),
-                uom: it.uom || it.stock_uom,
-                discount_percentage: Number(it.discount_percentage || 0),
-                standard_rate: Number(it.rate || it.price_list_rate || 0)
+            const itemCode = it.item_code
+            const baseItem = {
+              item_code: itemCode,
+              item_name: it.item_name,
+              item_part_no: it.item_part_no,
+              label: it.description || it.item_name,
+              quantity: Number(it.qty || it.quantity || 0),
+              uom: it.uom || it.stock_uom,
+              discount_percentage: Number(it.discount_percentage || 0),
+              standard_rate: Number(it.rate || it.price_list_rate || 0)
+            }
+
+            // Preserve warehouseAllocations if present, or convert from custom_stock_adjustment_sources
+            if (it.warehouseAllocations && Array.isArray(it.warehouseAllocations) && it.warehouseAllocations.length > 0) {
+              // Use existing warehouseAllocations from item
+              return {
+                ...baseItem,
+                warehouseAllocations: it.warehouseAllocations
               }
-              
-              // Preserve warehouseAllocations if present, or convert from custom_stock_adjustment_sources
-              if (it.warehouseAllocations && Array.isArray(it.warehouseAllocations) && it.warehouseAllocations.length > 0) {
-                // Use existing warehouseAllocations from item
-                return {
-                  ...baseItem,
-                  warehouseAllocations: it.warehouseAllocations
-                }
-              } else if (allocationsByItem[itemCode] && allocationsByItem[itemCode].length > 0) {
-                // Convert from custom_stock_adjustment_sources
-                return {
-                  ...baseItem,
-                  warehouseAllocations: allocationsByItem[itemCode]
-                }
+            } else if (allocationsByItem[itemCode] && allocationsByItem[itemCode].length > 0) {
+              // Convert from custom_stock_adjustment_sources
+              return {
+                ...baseItem,
+                warehouseAllocations: allocationsByItem[itemCode]
               }
-              
-              return baseItem
-            })
+            }
+
+            return baseItem
+          })
           : []
 
         // Determine status: use provided status, or check docstatus, or default to draft
@@ -225,7 +225,7 @@ export const usePOSTabStore = create<POSTabStore>()(
             console.log('📋 [openTab] linked_invoices raw:', JSON.stringify(linkedInvoices, null, 2))
             console.log('📋 [openTab] linked_invoices type:', typeof linkedInvoices)
             console.log('📋 [openTab] Is array:', Array.isArray(linkedInvoices))
-            
+
             if (linkedInvoices) {
               if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
                 const firstInvoice = linkedInvoices[0]
@@ -292,49 +292,49 @@ export const usePOSTabStore = create<POSTabStore>()(
           })
           return updatedState
         })
-        
+
         console.log('📋 [openTab] ===== TAB OPENED =====')
       },
 
       createNewTab: () => {
-        
+
         const state = get()
         // Helper to find and close a safe-to-close tab when limit is reached
         const autoCloseSafeOrderTab = (): boolean => {
-           const currentState = get()
-           // Check FIFO (first found match starting from index 0)
-           const tabToClose = currentState.tabs.find(t => {
-             // 1. Status is NOT 'draft' (e.g. confirmed/paid) => Safe to close
-             if (t.status !== 'draft') return true
-             
-             // 2. OR isEdited is false => Safe to close
-             if (t.isEdited === false) return true
-             
-             return false
-           })
+          const currentState = get()
+          // Check FIFO (first found match starting from index 0)
+          const tabToClose = currentState.tabs.find(t => {
+            // 1. Status is NOT 'draft' (e.g. confirmed/paid) => Safe to close
+            if (t.status !== 'draft') return true
 
-           if (tabToClose) {
-             console.log('📋 [autoClose] Closing safe tab:', tabToClose.id, tabToClose.orderId)
-             // Use the stores closeTab action
-             get().closeTab(tabToClose.id)
-             return true
-           }
-           return false
+            // 2. OR isEdited is false => Safe to close
+            if (t.isEdited === false) return true
+
+            return false
+          })
+
+          if (tabToClose) {
+            console.log('📋 [autoClose] Closing safe tab:', tabToClose.id, tabToClose.orderId)
+            // Use the stores closeTab action
+            get().closeTab(tabToClose.id)
+            return true
+          }
+          return false
         }
 
         // Enforce limits: max 6 total
         if (state.tabs.length >= 6) {
           // Attempt to auto-close a safe tab
           const closed = autoCloseSafeOrderTab()
-          
+
           if (!closed) {
-             // If we couldn't close any tab, then we strictly enforce the limit
-             toast.error('You can keep only up to 6 orders open at a time')
-             return false
+            // If we couldn't close any tab, then we strictly enforce the limit
+            toast.error('You can keep only up to 6 orders open at a time')
+            return false
           }
           // If closed is true, one tab was removed, so length is now 5. Proceed.
         }
-        
+
         // Re-fetch state after potential close operation to ensure accurate counts
         const updatedState = get()
         const existingNewCount = updatedState.tabs.filter(t => t.type === 'new' && !t.orderId).length
@@ -344,7 +344,14 @@ export const usePOSTabStore = create<POSTabStore>()(
           toast.error('You can open only up to 4 New orders')
           return false
         }
-        const newCount = existingNewCount + 1
+        // Calculate next number based on max existing number to avoid duplicates
+        const existingNumbers = updatedState.tabs
+          .filter(t => t.type === 'new' && t.displayName?.startsWith('New '))
+          .map(t => parseInt(t.displayName!.replace('New ', ''), 10))
+          .filter(n => !isNaN(n))
+
+        const maxNum = existingNumbers.length > 0 ? Math.max(...existingNumbers) : 0
+        const newCount = maxNum + 1
         // Get current date in YYYY-MM-DD format
         const getCurrentDate = () => {
           const now = new Date()
@@ -399,7 +406,7 @@ export const usePOSTabStore = create<POSTabStore>()(
       setActiveTab: (tabId: string) => {
         set({ activeTabId: tabId })
       },
-      
+
       // Track last high-level action to allow UI reactions
       setLastAction: (action: 'duplicated' | 'opened' | null) => {
         set({ lastAction: action })
@@ -431,7 +438,14 @@ export const usePOSTabStore = create<POSTabStore>()(
         }
         const source = state.tabs.find(t => t.id === state.activeTabId)
         if (!source) return false
-        const newCount = existingNewCount + 1
+        // Calculate next number based on max existing number
+        const existingNumbers = state.tabs
+          .filter(t => t.type === 'new' && t.displayName?.startsWith('New '))
+          .map(t => parseInt(t.displayName!.replace('New ', ''), 10))
+          .filter(n => !isNaN(n))
+
+        const maxNum = existingNumbers.length > 0 ? Math.max(...existingNumbers) : 0
+        const newCount = maxNum + 1
         const clone: Tab = {
           id: `tab-${Date.now()}`,
           orderId: null,
@@ -455,8 +469,8 @@ export const usePOSTabStore = create<POSTabStore>()(
       addItemToTab: (tabId: string, item: any) => {
         set((state) => ({
           tabs: state.tabs.map((tab) =>
-            tab.id === tabId 
-              ? { ...tab, items: [...tab.items, item], isEdited: true } 
+            tab.id === tabId
+              ? { ...tab, items: [...tab.items, item], isEdited: true }
               : tab
           )
         }))
@@ -465,12 +479,12 @@ export const usePOSTabStore = create<POSTabStore>()(
       removeItemFromTab: (tabId: string, itemCode: string) => {
         set((state) => ({
           tabs: state.tabs.map((tab) =>
-            tab.id === tabId 
-              ? { 
-                  ...tab, 
-                  items: tab.items.filter(item => item.item_code !== itemCode),
-                  isEdited: true 
-                } 
+            tab.id === tabId
+              ? {
+                ...tab,
+                items: tab.items.filter(item => item.item_code !== itemCode),
+                isEdited: true
+              }
               : tab
           )
         }))
@@ -479,12 +493,12 @@ export const usePOSTabStore = create<POSTabStore>()(
       removeItemFromTabByIndex: (tabId: string, index: number) => {
         set((state) => ({
           tabs: state.tabs.map((tab) =>
-            tab.id === tabId 
-              ? { 
-                  ...tab, 
-                  items: tab.items.filter((_, i) => i !== index),
-                  isEdited: true 
-                } 
+            tab.id === tabId
+              ? {
+                ...tab,
+                items: tab.items.filter((_, i) => i !== index),
+                isEdited: true
+              }
               : tab
           )
         }))
@@ -596,7 +610,7 @@ export const usePOSTabStore = create<POSTabStore>()(
         return currentTab?.items || []
       },
 
-      getCurrentTabCustomer: () => { 
+      getCurrentTabCustomer: () => {
         const state = get()
         const currentTab = state.tabs.find(tab => tab.id === state.activeTabId)
         return currentTab?.customer || null
@@ -607,12 +621,12 @@ export const usePOSTabStore = create<POSTabStore>()(
           tabs: state.tabs.map((tab) =>
             tab.id === tabId
               ? {
-                  ...tab,
-                  po_no: details.po_no !== undefined ? details.po_no : tab.po_no,
-                  po_date: details.po_date !== undefined ? details.po_date : tab.po_date,
-                  internal_note: details.internal_note !== undefined ? details.internal_note : tab.internal_note,
-                  isEdited: true
-                }
+                ...tab,
+                po_no: details.po_no !== undefined ? details.po_no : tab.po_no,
+                po_date: details.po_date !== undefined ? details.po_date : tab.po_date,
+                internal_note: details.internal_note !== undefined ? details.internal_note : tab.internal_note,
+                isEdited: true
+              }
               : tab
           )
         }))
@@ -623,10 +637,10 @@ export const usePOSTabStore = create<POSTabStore>()(
           tabs: state.tabs.map((tab) =>
             tab.id === tabId
               ? {
-                  ...tab,
-                  posting_date: postingDate,
-                  isEdited: true
-                }
+                ...tab,
+                posting_date: postingDate,
+                isEdited: true
+              }
               : tab
           )
         }))
@@ -643,9 +657,9 @@ export const usePOSTabStore = create<POSTabStore>()(
           tabs: state.tabs.map((tab) =>
             tab.id === tabId
               ? {
-                  ...tab,
-                  instantPrintUrl: url
-                }
+                ...tab,
+                instantPrintUrl: url
+              }
               : tab
           )
         }))
@@ -656,9 +670,9 @@ export const usePOSTabStore = create<POSTabStore>()(
           tabs: state.tabs.map((tab) =>
             tab.id === tabId
               ? {
-                  ...tab,
-                  isRoundingEnabled: enabled
-                }
+                ...tab,
+                isRoundingEnabled: enabled
+              }
               : tab
           )
         }))
@@ -671,21 +685,21 @@ export const usePOSTabStore = create<POSTabStore>()(
       },
 
       updateTabInvoiceNumber: (tabId: string, invoiceNumber: string | null, invoiceStatus?: string | null, invoiceCustomReverseStatus?: string | null) => {
-        console.log('📋 [updateTabInvoiceNumber] Called with:', { 
-          tabId, 
-          invoiceNumber, 
-          invoiceStatus, 
-          invoiceCustomReverseStatus 
+        console.log('📋 [updateTabInvoiceNumber] Called with:', {
+          tabId,
+          invoiceNumber,
+          invoiceStatus,
+          invoiceCustomReverseStatus
         })
         set((state) => {
           const updatedTabs = state.tabs.map((tab) =>
             tab.id === tabId
               ? {
-                  ...tab,
-                  invoiceNumber: invoiceNumber,
-                  invoiceStatus: invoiceStatus !== undefined ? invoiceStatus : tab.invoiceStatus,
-                  invoiceCustomReverseStatus: invoiceCustomReverseStatus !== undefined ? invoiceCustomReverseStatus : tab.invoiceCustomReverseStatus
-                }
+                ...tab,
+                invoiceNumber: invoiceNumber,
+                invoiceStatus: invoiceStatus !== undefined ? invoiceStatus : tab.invoiceStatus,
+                invoiceCustomReverseStatus: invoiceCustomReverseStatus !== undefined ? invoiceCustomReverseStatus : tab.invoiceCustomReverseStatus
+              }
               : tab
           )
           const updatedTab = updatedTabs.find(tab => tab.id === tabId)
@@ -710,9 +724,9 @@ export const usePOSTabStore = create<POSTabStore>()(
           invoiceNumber: invoiceNumber,
           invoiceStatus: currentTab?.invoiceStatus,
           invoiceCustomReverseStatus: currentTab?.invoiceCustomReverseStatus,
-          fullTab: currentTab ? { 
-            id: currentTab.id, 
-            orderId: currentTab.orderId, 
+          fullTab: currentTab ? {
+            id: currentTab.id,
+            orderId: currentTab.orderId,
             invoiceNumber: currentTab.invoiceNumber,
             invoiceStatus: currentTab.invoiceStatus,
             invoiceCustomReverseStatus: currentTab.invoiceCustomReverseStatus
@@ -738,10 +752,10 @@ export const usePOSTabStore = create<POSTabStore>()(
           tabs: state.tabs.map((tab) =>
             tab.id === tabId
               ? {
-                  ...tab,
-                  is_reserved: is_reserved,
-                  isEdited: true
-                }
+                ...tab,
+                is_reserved: is_reserved,
+                isEdited: true
+              }
               : tab
           )
         }))
@@ -767,9 +781,9 @@ export const usePOSTabStore = create<POSTabStore>()(
     }),
     {
       name: 'pos-tab-store',
-      partialize: (state) => ({ 
-        tabs: state.tabs, 
-        activeTabId: state.activeTabId 
+      partialize: (state) => ({
+        tabs: state.tabs,
+        activeTabId: state.activeTabId
       }),
       // Ensure the store persists across browser sessions
       storage: {
