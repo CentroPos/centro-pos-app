@@ -2195,6 +2195,33 @@ const ActionButtons: React.FC<Props> = ({
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [handleConfirm, handlePay])
 
+  // Spacebar shortcut to cycle payment modes when modal is open
+  useEffect(() => {
+    if (!open) return // Only listen when modal is open
+
+    const handleSpaceKey = (e: KeyboardEvent) => {
+      // Only handle spacebar if not typing in an input field
+      const target = e.target as HTMLElement
+      const isInputField = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
+      
+      if (e.key === ' ' && !isInputField) {
+        e.preventDefault()
+        e.stopPropagation()
+        
+        // Cycle through payment modes
+        const currentIndex = paymentModes.indexOf(mode)
+        const nextIndex = (currentIndex + 1) % paymentModes.length
+        const nextMode = paymentModes[nextIndex]
+        
+        console.log('⌨️ Spacebar pressed - cycling payment mode from', mode, 'to', nextMode)
+        setMode(nextMode)
+      }
+    }
+
+    document.addEventListener('keydown', handleSpaceKey)
+    return () => document.removeEventListener('keydown', handleSpaceKey)
+  }, [open, mode, paymentModes])
+
   // const handlePaymentSubmit = async (paymentAmount: number): Promise<void> => {
   //   try {
   //     // Step 1: Update payment
