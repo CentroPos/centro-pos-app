@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@renderer/components/ui/button';
 import { InvoiceItem, PickSlip, Warehouse } from '@renderer/types/picking';
 import { cn } from '@renderer/lib/utils';
-import { Printer, Play, Check } from 'lucide-react';
+import { Printer, Play, Check, X } from 'lucide-react';
 import {
     Table,
     TableBody,
@@ -24,6 +24,7 @@ interface AssignPickSlipModalProps {
     invoiceNo: string;
     existingPickSlip?: PickSlip | null;
     onSuccess?: () => void;
+    onRemoveItem?: (itemId: string) => void;
 }
 
 export function AssignPickSlipModal({
@@ -33,7 +34,8 @@ export function AssignPickSlipModal({
     warehouses,
     invoiceNo,
     existingPickSlip,
-    onSuccess
+    onSuccess,
+    onRemoveItem
 }: AssignPickSlipModalProps) {
     const [selectedWarehouse, setSelectedWarehouse] = useState<string | null>(null);
     const [selectedPicker, setSelectedPicker] = useState<string | null>(null);
@@ -43,8 +45,21 @@ export function AssignPickSlipModal({
     const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
     const [createdSlip, setCreatedSlip] = useState<PickSlip | null>(null);
     const [isCreating, setIsCreating] = useState(false);
+    const [localItems, setLocalItems] = useState<InvoiceItem[]>(selectedItems);
 
-    const categories = [...new Set(selectedItems.map((item) => item.category))];
+    const categories = [...new Set(localItems.map((item) => item.category))];
+
+    // Sync localItems with selectedItems prop
+    useEffect(() => {
+        setLocalItems(selectedItems);
+    }, [selectedItems]);
+
+    const handleRemoveItem = (itemId: string) => {
+        const updatedItems = localItems.filter(item => item.id !== itemId);
+        setLocalItems(updatedItems);
+        onRemoveItem?.(itemId);
+        toast.success('Item removed from pick slip');
+    };
 
 
     // Filter pickers based on selected warehouse
@@ -122,13 +137,13 @@ export function AssignPickSlipModal({
 
     useEffect(() => {
         const fetchAvailability = async () => {
-            if (!isOpen || !selectedWarehouse || selectedItems.length === 0) return;
+            if (!isOpen || !selectedWarehouse || localItems.length === 0) return;
 
             setIsLoadingAvailability(true);
             try {
                 // Get unique items for payload
                 const uniqueItemsMap = new Map();
-                selectedItems.forEach(item => {
+                localItems.forEach(item => {
                     if (!item.itemCode) return;
                     const key = `${item.itemCode}_${item.uom || ''}`;
                     if (!uniqueItemsMap.has(key)) {
@@ -176,7 +191,7 @@ export function AssignPickSlipModal({
         };
 
         fetchAvailability();
-    }, [isOpen, selectedWarehouse, selectedItems]);
+    }, [isOpen, selectedWarehouse, localItems]);
 
 
     const formatApiDate = (d: Date) => {
@@ -192,7 +207,7 @@ export function AssignPickSlipModal({
         const warehouse = warehouses.find(w => w.id === selectedWarehouse);
         const picker = availablePickers.find(p => p.id === selectedPicker);
 
-        const payloadItems = selectedItems.map(item => ({
+        const payloadItems = localItems.map(item => ({
             serial_no: item.slNo,
             item_code: item.itemCode,
             quantity: item.quantity,
@@ -517,10 +532,10 @@ export function AssignPickSlipModal({
                             <div className="text-sm font-medium flex items-center gap-2">
                                 Items Selected:
                                 <span className="bg-primary/10 text-primary px-2 py-0.5 rounded text-xs font-bold">
-                                    {selectedItems.length}
+                                    {localItems.length}
                                 </span>
                             </div>
-                            {selectedItems.length > 0 && (
+                            {localItems.length > 0 && (
                                 <div className="flex gap-2 text-xs text-muted-foreground">
                                     {categories.map(cat => (
                                         <span key={cat} className="px-2 py-0.5 bg-background border rounded">
@@ -542,10 +557,11 @@ export function AssignPickSlipModal({
                                         <TableHead className="w-[80px] font-bold text-center text-slate-700">UOM</TableHead>
                                         <TableHead className="w-[80px] font-bold text-center text-slate-700">QUANTITY</TableHead>
                                         <TableHead className="w-[100px] font-bold text-center text-slate-700">ON-HAND QTY</TableHead>
+                                        <TableHead className="w-[60px] font-bold text-center text-slate-700">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {selectedItems.map((item, index) => {
+                                    {localItems.map((item, index) => {
                                         const availKey = `${item.itemCode}_${item.uom}`;
                                         const availability = availabilityMap[availKey];
                                         const stockQty = availability ? availability.onhand_qty : null;
@@ -572,6 +588,17 @@ export function AssignPickSlipModal({
                                                     ) : (
                                                         stockQty !== null ? stockQty : '-'
                                                     )}
+                                                </TableCell>
+                                                <TableCell className="text-center">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-7 w-7 p-0 hover:bg-red-100 hover:text-red-600"
+                                                        onClick={() => handleRemoveItem(item.id)}
+                                                        title="Remove item"
+                                                    >
+                                                        <X className="h-4 w-4" />
+                                                    </Button>
                                                 </TableCell>
                                             </TableRow>
                                         );
