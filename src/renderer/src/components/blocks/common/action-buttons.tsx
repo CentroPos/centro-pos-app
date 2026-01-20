@@ -2195,16 +2195,54 @@ const ActionButtons: React.FC<Props> = ({
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [handleConfirm, handlePay])
 
-  // Spacebar shortcut to cycle payment modes when modal is open
+  // Handler for Confirm/Pay button click
+  const handleConfirmPayClick = useCallback(async () => {
+    // Wrap in try-catch to prevent errors from propagating to React error boundary
+    try {
+      console.log('💳 Confirm/Pay clicked in dialog')
+
+      // Get payment amount from dialog
+      const paymentAmount = parseFloat(amount) || 0
+
+      // Call order confirmation API with payment amount from dialog
+      // Pass isConfirming flag to distinguish between Confirm window and Payment window
+      await handleOrderConfirmation(paymentAmount, isConfirming)
+
+      // Reset form and close dialogs (only if no error occurred)
+      setOpen(false)
+      setAmount('')
+      setMode('Cash')
+      setDate(getCurrentDate())
+      setIsConfirming(false)
+    } catch (error) {
+      // Errors are already handled in handleOrderConfirmation
+      // Just ensure state is reset
+      console.error('Error in Confirm/Pay onClick:', error)
+      setIsProcessingPayment(false)
+    }
+  }, [amount, isConfirming, handleOrderConfirmation])
+
+  // Spacebar shortcut to cycle payment modes and Shift+Enter to confirm when modal is open
   useEffect(() => {
     if (!open) return // Only listen when modal is open
 
-    const handleSpaceKey = (e: KeyboardEvent) => {
-      // Only handle spacebar if not typing in an input field
+    const handleModalKeys = (e: KeyboardEvent) => {
+      // Only handle shortcuts if not typing in an input field (except for Shift+Enter which can work in inputs)
       const target = e.target as HTMLElement
       const isInputField = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
       
-      if (e.key === ' ' && !isInputField) {
+      // Shift+Enter: Trigger Confirm button
+      if (e.key === 'Enter' && e.shiftKey) {
+        // Allow Shift+Enter even in input fields (common pattern for submitting forms)
+        if (!isProcessingPayment) {
+          e.preventDefault()
+          e.stopPropagation()
+          console.log('⌨️ Shift+Enter pressed - triggering Confirm/Pay')
+          handleConfirmPayClick()
+        }
+      }
+      // Spacebar: Cycle payment modes (only if not in input field)
+      else if (e.key === ' ' && !isInputField) {
         e.preventDefault()
         e.stopPropagation()
         
@@ -2218,9 +2256,9 @@ const ActionButtons: React.FC<Props> = ({
       }
     }
 
-    document.addEventListener('keydown', handleSpaceKey)
-    return () => document.removeEventListener('keydown', handleSpaceKey)
-  }, [open, mode, paymentModes])
+    document.addEventListener('keydown', handleModalKeys)
+    return () => document.removeEventListener('keydown', handleModalKeys)
+  }, [open, mode, paymentModes, isProcessingPayment, handleConfirmPayClick])
 
   // const handlePaymentSubmit = async (paymentAmount: number): Promise<void> => {
   //   try {
@@ -2464,6 +2502,32 @@ const ActionButtons: React.FC<Props> = ({
                 type="number"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
+                onKeyDown={(e) => {
+                  // When arrow keys are pressed, move focus out of the input
+                  if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                    // Only blur if cursor is at the edge (beginning for left/up, end for right/down)
+                    const input = e.currentTarget as HTMLInputElement
+                    const cursorPosition = input.selectionStart || 0
+                    const valueLength = input.value.length
+                    
+                    if (
+                      (e.key === 'ArrowRight' && cursorPosition === valueLength) ||
+                      (e.key === 'ArrowLeft' && cursorPosition === 0) ||
+                      e.key === 'ArrowDown' ||
+                      e.key === 'ArrowUp'
+                    ) {
+                      e.preventDefault()
+                      input.blur()
+                      // Focus the Confirm button or next logical element
+                      setTimeout(() => {
+                        const confirmButton = document.querySelector('[data-confirm-button]') as HTMLButtonElement
+                        if (confirmButton && !confirmButton.disabled) {
+                          confirmButton.focus()
+                        }
+                      }, 0)
+                    }
+                  }
+                }}
                 className="text-lg py-3"
                 placeholder="Enter amount"
                 min="0"
@@ -2482,31 +2546,7 @@ const ActionButtons: React.FC<Props> = ({
 
           <DialogFooter className="pt-6">
             <Button
-              onClick={async () => {
-                // Wrap in try-catch to prevent errors from propagating to React error boundary
-                try {
-                  console.log('💳 Confirm/Pay clicked in dialog')
-
-                  // Get payment amount from dialog
-                  const paymentAmount = parseFloat(amount) || 0
-
-                  // Call order confirmation API with payment amount from dialog
-                  // Pass isConfirming flag to distinguish between Confirm window and Payment window
-                  await handleOrderConfirmation(paymentAmount, isConfirming)
-
-                  // Reset form and close dialogs (only if no error occurred)
-                  setOpen(false)
-                  setAmount('')
-                  setMode('Cash')
-                  setDate(getCurrentDate())
-                  setIsConfirming(false)
-                } catch (error) {
-                  // Errors are already handled in handleOrderConfirmation
-                  // Just ensure state is reset
-                  console.error('Error in Confirm/Pay onClick:', error)
-                  setIsProcessingPayment(false)
-                }
-              }}
+              onClick={handleConfirmPayClick}
               disabled={isProcessingPayment}
               className={`px-8 py-3 text-lg font-semibold flex items-center gap-2 ${isProcessingPayment ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'} text-white`}
             >
