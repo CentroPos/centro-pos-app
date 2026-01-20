@@ -375,14 +375,20 @@ const DynamicPickupInterface: React.FC = () => {
         setIsAssignModalOpen(true);
     };
 
-    const handleAssignWarehouses = (deliveryWarehouseId: string, operations: WarehouseOperation[]) => {
+    const handleAssignWarehouses = async (deliveryWarehouseId: string, operations: WarehouseOperation[]) => {
         // Logic to save/assign warehouses
-        // Since no API was provided, we'll log and show a success message
         console.log("Assigning Warehouses:", { deliveryWarehouseId, operations });
-        // In a real scenario, we would call an API here to finalize the invoice picking state
-        toast.success("Warehouses assigned successfully");
-        // Maybe close tab or refresh?
-        // if (activeTab) closeInvoiceTab(activeTab.invoice.id);
+        
+        // Automatically refresh invoice details to update status
+        if (activeTab) {
+            try {
+                await fetchInvoiceDetails(activeTab.invoice);
+                toast.success("Warehouses assigned successfully. Status updated.");
+            } catch (error) {
+                console.error("Failed to refresh invoice details after assignment", error);
+                toast.error("Warehouses assigned but failed to refresh status. Please refresh manually.");
+            }
+        }
     };
 
 

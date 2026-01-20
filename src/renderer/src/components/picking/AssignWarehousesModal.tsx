@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 interface AssignWarehousesModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onAssign: (deliveryWarehouseId: string, operations: WarehouseOperation[]) => void;
+    onAssign: (deliveryWarehouseId: string, operations: WarehouseOperation[]) => void | Promise<void>;
     warehouses: Warehouse[];
     currentOperations: WarehouseOperation[];
     invoiceNo: string;
@@ -121,7 +121,8 @@ export function AssignWarehousesModal({
 
                 if (res && (res.status === 200 || res.status === 201)) { // Accept 201 as strictly success too if needed, usually 200 for RPC
                     toast.success("Successfully assigned warehouses");
-                    onAssign(deliveryId, operationsList);
+                    // Wait for refresh to complete before closing
+                    await onAssign(deliveryId, operationsList);
                     onClose();
                 } else {
                     console.error("Assign Warehouse Error:", res);
