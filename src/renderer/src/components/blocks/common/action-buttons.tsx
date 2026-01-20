@@ -2149,7 +2149,7 @@ const ActionButtons: React.FC<Props> = ({
   const handleConfirm = useCallback(() => {
     if (!currentTab) return
     console.log('🔘 Confirm button clicked - opening payment dialog')
-    setAmount('0') // Set amount to 0 for confirm mode
+    setAmount('') // Set amount to empty for confirm mode - user must enter it
     setIsConfirming(true) // Set confirming state
     setOpen('confirm')
   }, [currentTab])
