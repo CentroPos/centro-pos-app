@@ -862,12 +862,27 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       // Handle item_name field - no validation needed, just use the string value
       finalValue = editValue
     } else if (activeField !== 'uom') {
-      const numValue = parseFloat(editValue)
-      if (isNaN(numValue) || numValue < 0) {
-        setIsEditing(false)
-        return
+      // For quantity and other numeric fields, handle empty string and decimal point
+      if (editValue === '' || editValue === '.') {
+        // If empty or just decimal point, use the current item value or default to 1 for quantity
+        if (activeField === 'quantity') {
+          finalValue = item.quantity ?? 1
+        } else {
+          finalValue = item[activeField] ?? 0
+        }
+      } else {
+        const numValue = parseFloat(editValue)
+        if (isNaN(numValue) || numValue < 0) {
+          // Invalid number, revert to current value
+          if (activeField === 'quantity') {
+            finalValue = item.quantity ?? 1
+          } else {
+            finalValue = item[activeField] ?? 0
+          }
+        } else {
+          finalValue = numValue
+        }
       }
-      finalValue = numValue
     } else {
       // Handle UOM validation
       try {
@@ -2027,9 +2042,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
                                   // For last item: use store value if it exists and is not 1 (user has edited)
                                   // Otherwise use '1' for first time
+                                  // But allow it to be set to empty string if user wants to clear it
                                   const initialValue = isLastItem
                                     ? (storeQty !== undefined && storeQty !== null && storeQty !== 1 ? String(storeQty) : '1')
                                     : String(item.quantity ?? '1')
+                                  // Set editValue - this allows user to then delete/backspace to make it empty
                                   setEditValue(initialValue)
 
                                   // Only reset the edited ref if this is truly a new item (first time editing)
@@ -2059,89 +2076,109 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                               <input
                                 key={`qty-${item.item_code}-${isEditingQuantity}-${forceFocus}`}
                                 ref={inputRef}
-                                type="number"
+                                type="text"
                                 data-item-code={item.item_code}
                                 data-item-index={actualItemIndex >= 0 ? actualItemIndex : undefined}
                                 data-field="quantity"
                                 value={(() => {
-                                  // For the last item (newly added), check store value first
-                                  // Once user has set a value, always use that value (from store or editValue)
-                                  const isLastItem = index === items.length - 1
-                                  if (isLastItem) {
-                                    const storeQty = item.quantity
-
-                                    // Check if user has already edited this item (ref matches index)
-                                    const hasBeenEdited = lastItemQtyEditedRef.current === index
-
-                                    // If user has edited in this session, use editValue
-                                    if (hasBeenEdited) {
-                                      return editValue || String(storeQty ?? '1')
-                                    }
-
-                                    // If store has a custom value (not 1, undefined, or null), user has edited before
-                                    // Use the store value instead of forcing '1'
-                                    if (storeQty !== undefined && storeQty !== null && storeQty !== 1) {
-                                      // Store has a custom value, user has edited before, use it
-                                      // Also set editValue to match so it displays correctly
-                                      if (editValue === '' || editValue === '1') {
-                                        return String(storeQty)
-                                      }
-                                      return editValue
-                                    }
-
-                                    // First time focus and store is 1 or empty, show '1'
-                                    return editValue || '1'
+                                  // When editing, always use editValue directly (including empty string)
+                                  // This allows the field to be completely empty when user deletes everything
+                                  if (isEditingQuantity && activeField === 'quantity' && selectedItemId === item.item_code) {
+                                    // If editValue is explicitly set (even if empty), use it
+                                    // This allows user to backspace/delete to make field empty
+                                    return editValue === undefined || editValue === null ? String(item.quantity ?? '1') : editValue
                                   }
-                                  return editValue
+                                  // Not editing this field, show the stored value
+                                  return String(item.quantity ?? '1')
                                 })()}
+                                onFocus={(e) => {
+                                  // Select all text when focused for easy deletion/replacement
+                                  e.target.select()
+                                }}
                                 onChange={(e) => {
-                                  const newValue = e.target.value
-                                  setEditValue(newValue)
-                                  // Mark that user has edited the last item's quantity
-                                  const isLastItem = index === items.length - 1
-                                  if (isLastItem) {
-                                    lastItemQtyEditedRef.current = index
-                                  }
-                                  // Real-time update for quantity
-                                  // Use index directly to handle duplicates correctly
-                                  if (activeTabId) {
-                                    const numValue = parseFloat(newValue)
-                                    if (!isNaN(numValue) && numValue >= 0) {
-                                      // Use updateItemInTabByIndex with the actual index to handle duplicates
-                                      updateItemInTabByIndex(activeTabId, index, { quantity: numValue })
-                                      setTabEdited(activeTabId, true)
+                                  let newValue = e.target.value
+                                  
+                                  // Allow empty string, decimal point, and valid number patterns
+                                  // Allow: empty, ".", ".5", "0.5", "5", "5.", etc.
+                                  // Pattern: empty, or starts with . and digits, or digits with optional decimal and digits
+                                  const isValidPattern = newValue === '' || 
+                                    newValue === '.' || 
+                                    /^\.\d*$/.test(newValue) || 
+                                    /^\d+\.?\d*$/.test(newValue)
+                                  
+                                  if (isValidPattern) {
+                                    // Always set editValue, even if empty - this allows the field to be empty
+                                    setEditValue(newValue)
+                                    // Mark that user has edited the last item's quantity
+                                    const isLastItem = index === items.length - 1
+                                    if (isLastItem) {
+                                      lastItemQtyEditedRef.current = index
+                                    }
+                                    // Real-time update for quantity - only update store if valid number
+                                    // Don't update store if empty or just decimal point - let user finish typing
+                                    if (activeTabId && newValue !== '' && newValue !== '.') {
+                                      const numValue = parseFloat(newValue)
+                                      if (!isNaN(numValue) && numValue >= 0) {
+                                        // Use updateItemInTabByIndex with the actual index to handle duplicates
+                                        updateItemInTabByIndex(activeTabId, index, { quantity: numValue })
+                                        setTabEdited(activeTabId, true)
 
-                                      // Clear warehouse-allocated status when quantity changes
-                                      if (selectedItemId && warehouseAllocatedItems.has(selectedItemId)) {
-                                        console.log('🔄 Quantity changed for warehouse-allocated item, clearing allocation status:', selectedItemId)
-                                        setWarehouseAllocatedItems(prev => {
-                                          const newSet = new Set(prev)
-                                          newSet.delete(selectedItemId)
-                                          return newSet
-                                        })
+                                        // Clear warehouse-allocated status when quantity changes
+                                        if (selectedItemId && warehouseAllocatedItems.has(selectedItemId)) {
+                                          console.log('🔄 Quantity changed for warehouse-allocated item, clearing allocation status:', selectedItemId)
+                                          setWarehouseAllocatedItems(prev => {
+                                            const newSet = new Set(prev)
+                                            newSet.delete(selectedItemId)
+                                            return newSet
+                                          })
 
-                                        // Clear warehouse allocation data from the item
-                                        // Use index directly to handle duplicates correctly
-                                        updateItemInTabByIndex(activeTabId, index, {
-                                          warehouseAllocations: [] // Clear previous warehouse allocations
-                                        })
-                                        console.log('🧹 Cleared warehouse allocation data for item:', selectedItemId)
+                                          // Clear warehouse allocation data from the item
+                                          // Use index directly to handle duplicates correctly
+                                          updateItemInTabByIndex(activeTabId, index, {
+                                            warehouseAllocations: [] // Clear previous warehouse allocations
+                                          })
+                                          console.log('🧹 Cleared warehouse allocation data for item:', selectedItemId)
+                                        }
                                       }
                                     }
                                   }
                                 }}
                                 onKeyDown={async (e) => {
+                                  // Handle decimal point keypress - if current value is "1", clear it to "."
+                                  if (e.key === '.' || e.key === 'Decimal') {
+                                    const currentValue = editValue || String(item.quantity ?? '1')
+                                    // If the value is "1" or starts with "1" and user types ".", clear and start with "."
+                                    if (currentValue === '1' || currentValue.trim() === '1') {
+                                      e.preventDefault()
+                                      setEditValue('.')
+                                      // Mark as edited
+                                      const isLastItem = index === items.length - 1
+                                      if (isLastItem) {
+                                        lastItemQtyEditedRef.current = index
+                                      }
+                                      return
+                                    }
+                                    // If already has a decimal point, prevent adding another
+                                    if (editValue.includes('.')) {
+                                      e.preventDefault()
+                                      return
+                                    }
+                                  }
+                                  
                                   handleArrowNavigation(e, 'quantity', item.item_code)
                                   handleVerticalNavigation(e, 'quantity', item.item_code)
+                                  
                                   if (e.key === 'Enter') {
                                     e.preventDefault()
                                     e.stopPropagation()
                                     // Save qty value directly without ending editing
                                     // Use index directly to handle duplicates correctly
-                                    const numValue = parseFloat(editValue)
+                                    const finalValue = editValue === '' || editValue === '.' ? '1' : editValue
+                                    const numValue = parseFloat(finalValue)
                                     if (!isNaN(numValue) && numValue >= 0 && activeTabId) {
                                       updateItemInTabByIndex(activeTabId, index, { quantity: numValue })
                                       setTabEdited(activeTabId, true)
+                                      setEditValue(String(numValue))
 
                                       // Warehouse popup is now only triggered manually via Ctrl+Shift+W
                                       // Removed automatic popup trigger on quantity change
@@ -2156,13 +2193,18 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                 }}
                                 onBlur={() => {
                                   if (navigatingRef.current) return
+                                  // If empty or just ".", set to default value before saving
+                                  if (editValue === '' || editValue === '.') {
+                                    const defaultValue = item.quantity ?? 1
+                                    setEditValue(String(defaultValue))
+                                    if (activeTabId) {
+                                      updateItemInTabByIndex(activeTabId, index, { quantity: defaultValue })
+                                    }
+                                  }
                                   handleSaveEdit()
                                 }}
-                                inputMode="numeric"
-                                pattern="[0-9]*"
+                                inputMode="decimal"
                                 className="w-[50px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
-                                min="0"
-                                step="0.01"
                               />
                             ) : (
                               <div className={`px-2 py-1 ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>
@@ -2179,7 +2221,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                               <input
                                 key={`uom-${item.item_code}-${isEditingUom}-${forceFocus}`}
                                 ref={inputRef}
-                                type="text"
+                                type="text" 
                                 value={editValue}
                                 onChange={() => { /* disabled manual edit */ }}
                                 onKeyDown={async (e) => {
