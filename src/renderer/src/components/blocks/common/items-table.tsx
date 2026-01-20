@@ -2131,6 +2131,32 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                   }
                                 }}
                                 onKeyDown={async (e) => {
+                                  // If value is a single digit and user hits Backspace, set it to 0 (instead of empty)
+                                  // This keeps the field numeric and matches POS expectation.
+                                  if (e.key === 'Backspace') {
+                                    const inputEl = e.currentTarget as HTMLInputElement
+                                    const current = inputEl.value ?? ''
+                                    const selStart = inputEl.selectionStart ?? current.length
+                                    const selEnd = inputEl.selectionEnd ?? current.length
+
+                                    // If the whole single-digit value is selected (common because we auto-select on focus),
+                                    // or caret is at end of a single digit, force to "0".
+                                    const isSingleDigit = /^\d$/.test(current)
+                                    const isFullySelected = current.length === 1 && selStart === 0 && selEnd === 1
+                                    const isCaretAtEnd = current.length === 1 && selStart === 1 && selEnd === 1
+
+                                    if (isSingleDigit && (isFullySelected || isCaretAtEnd)) {
+                                      e.preventDefault()
+                                      e.stopPropagation()
+                                      setEditValue('0')
+                                      if (activeTabId) {
+                                        updateItemInTabByIndex(activeTabId, index, { quantity: 0 })
+                                        setTabEdited(activeTabId, true)
+                                      }
+                                      return
+                                    }
+                                  }
+
                                   handleArrowNavigation(e, 'quantity', item.item_code)
                                   handleVerticalNavigation(e, 'quantity', item.item_code)
                                   if (e.key === 'Enter') {
