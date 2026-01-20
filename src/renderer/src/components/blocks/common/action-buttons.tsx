@@ -2546,6 +2546,7 @@ const ActionButtons: React.FC<Props> = ({
 
           <DialogFooter className="pt-6">
             <Button
+              data-confirm-button
               onClick={handleConfirmPayClick}
               disabled={isProcessingPayment}
               className={`px-8 py-3 text-lg font-semibold flex items-center gap-2 ${isProcessingPayment ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'} text-white`}
