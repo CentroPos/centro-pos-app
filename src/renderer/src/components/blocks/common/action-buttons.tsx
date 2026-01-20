@@ -751,13 +751,23 @@ const ActionButtons: React.FC<Props> = ({
 
         console.log('SHD ==>[item]', item)
 
+        // IMPORTANT:
+        // Do NOT hardcode warehouses like "Main WH - NB". That can fail on other deployments and causes:
+        // "Could not find Row #1: Delivery Warehouse: <warehouse>"
+        // Prefer item-provided warehouse, then POS profile warehouse, otherwise omit and let backend default.
+        const resolvedWarehouse =
+          item.default_warehouse ||
+          (profile as any)?.warehouse ||
+          (profile as any)?.default_warehouse ||
+          null
+
         return {
           item_code: item.item_code || item.code,
           qty,
           uom: item.uom || 'Nos',
           rate,
           discount_percentage: discount,
-          warehouse: item.default_warehouse || 'Main WH - NB' // 'Stores - NAB'
+          ...(resolvedWarehouse ? { warehouse: resolvedWarehouse } : {})
         }
       })
 
