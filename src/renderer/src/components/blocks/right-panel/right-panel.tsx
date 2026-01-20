@@ -12,6 +12,7 @@ import { useHotkeys } from 'react-hotkeys-hook'
 import PaymentTab from '../payment/payment-tab'
 import MultiWarehousePopup from '../common/multi-warehouse-popup'
 import AlternateProducts from './alternate-products'
+import ItemOffers from './item-offers'
 
 // A right-side panel for the POS screen, adapted from pos.html
 // Contains tabs for Product, Customer, Prints, Payments, Orders
@@ -816,6 +817,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [productSubTab, setProductSubTab] = useState<'sales-history' | 'customer-history' | 'purchase-history'>(
     'sales-history'
   )
+  const [altOffersSubTab, setAltOffersSubTab] = useState<'alternate' | 'offers'>('alternate')
   const [refreshTokens, setRefreshTokens] = useState({
     product: 0,
     customer: 0,
@@ -3223,12 +3225,41 @@ const RightPanel: React.FC<RightPanelProps> = ({
                 </div>
               </div>
 
-              {/* Alternate Products */}
-              <AlternateProducts
-                itemCode={selectedItemId}
-                onAddItem={(item) => onAddItem && onAddItem(item)}
-                onReplaceItem={(item) => onReplaceItem && onReplaceItem(item)}
-              />
+              {/* Alternate Products / Item Offers Tabs */}
+              <div className="bg-white/90 mt-2">
+                <div className="flex border-b border-gray-200/60">
+                  <button
+                    className={`px-4 py-2 text-xs font-semibold border-b-2 flex-1 ${altOffersSubTab === 'alternate'
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-transparent text-gray-500 hover:text-black hover:bg-white/40'
+                      }`}
+                    onClick={() => setAltOffersSubTab('alternate')}
+                  >
+                    Alternate Products
+                  </button>
+                  <button
+                    className={`px-4 py-2 text-xs font-semibold border-b-2 flex-1 ${altOffersSubTab === 'offers'
+                      ? 'border-amber-500 bg-amber-50 text-amber-700'
+                      : 'border-transparent text-gray-500 hover:text-black hover:bg-white/40'
+                      }`}
+                    onClick={() => setAltOffersSubTab('offers')}
+                  >
+                    Item Offers
+                  </button>
+                </div>
+
+                {altOffersSubTab === 'alternate' && (
+                  <AlternateProducts
+                    itemCode={selectedItemId}
+                    onAddItem={(item) => onAddItem && onAddItem(item)}
+                    onReplaceItem={(item) => onReplaceItem && onReplaceItem(item)}
+                  />
+                )}
+
+                {altOffersSubTab === 'offers' && (
+                  <ItemOffers itemCode={selectedItemId} selectedItem={selectedItem} />
+                )}
+              </div>
 
               {/* Product History Section */}
               <div className="bg-white/90 mt-2">

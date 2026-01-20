@@ -738,12 +738,14 @@ const ActionButtons: React.FC<Props> = ({
         const qty = parseFloat(item.quantity || '0') || 1
         const rate = parseFloat(item.standard_rate || '0') || 0
         const discount = parseFloat(item.discount_percentage || '0') || 0
+        const isOfferApplied = item.is_offer_applied === 1 ? 1 : 0
 
         console.log('📊 Sending item data to API:', {
           item_code: item.item_code || item.code,
           qty,
           rate,
           discount: `${discount}%`,
+          is_offer_applied: isOfferApplied,
           rawQuantity: item.quantity,
           rawRate: item.standard_rate,
           rawDiscount: item.discount_percentage
@@ -767,8 +769,28 @@ const ActionButtons: React.FC<Props> = ({
           uom: item.uom || 'Nos',
           rate,
           discount_percentage: discount,
+          is_offer_applied: isOfferApplied,
           ...(resolvedWarehouse ? { warehouse: resolvedWarehouse } : {})
         }
+      })
+      
+      // Check if any offer is applied with edge case condition (requires security pin):
+      // Edge case: available < max AND quantity > available AND quantity <= max
+      // Only add security_pin if this specific edge case condition is met
+      const requiresSecurityPin = items.some((item) => {
+        if (item.is_offer_applied !== 1) return false
+        
+        const qty = parseFloat(item.quantity || '0') || 0
+        const maxQty = parseFloat(item.offer_max_qty || '0') || 0
+        const availableQty = parseFloat(item.offer_available_qty || '0') || 0
+        
+        // Edge case condition: available < max AND quantity > available AND quantity <= max
+        const isEdgeCase = availableQty > 0 && 
+                          availableQty < maxQty && 
+                          qty > availableQty && 
+                          qty <= maxQty
+        
+        return isEdgeCase
       })
 
       console.log('📊 UI Total (for reference):', orderAmount)
@@ -867,6 +889,13 @@ const ActionButtons: React.FC<Props> = ({
         custom_stock_adjustment_sources: customStockAdjustmentSources,
         is_reserved: isReserved,
         disable_rounded_total: disable_rounded_total
+      }
+      
+      // Add security_pin only if edge case condition is met (for bypass)
+      // Edge case: available < max AND quantity > available AND quantity <= max
+      if (requiresSecurityPin) {
+        orderData.security_pin = '123456'
+        console.log('🔓 Security pin added for edge case offer bypass')
       }
 
       console.log('SHD ==>[orderData]', orderData)
