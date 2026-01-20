@@ -95,9 +95,44 @@ const DiscountSection: React.FC<Props> = ({
   const duplicateCancelBtnRef = useRef<HTMLButtonElement>(null)
   const [showCustomerModal, setShowCustomerModal] = useState(false)
 
+  // Extract paid_amount and outstanding_amount from linked_invoices
+  // Check both confirmed orders (docstatus === 1) and orders with linked invoices
+  const { paidAmount, outstandingAmount } = useMemo(() => {
+    const linkedInvoices = currentTab?.orderData?.linked_invoices
+
+    if (linkedInvoices) {
+      let paid = null
+      let outstanding = null
+
+      // Handle linked_invoices as array or object
+      if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
+        paid = linkedInvoices[0]?.paid_amount
+        outstanding = linkedInvoices[0]?.outstanding_amount
+      } else if (linkedInvoices && typeof linkedInvoices === 'object') {
+        paid = linkedInvoices.paid_amount
+        outstanding = (linkedInvoices as any)?.outstanding_amount
+      }
+
+      return {
+        paidAmount: paid !== null && paid !== undefined ? Number(paid) : null,
+        outstandingAmount: outstanding !== null && outstanding !== undefined ? Number(outstanding) : null
+      }
+    }
+
+    return { paidAmount: null, outstandingAmount: null }
+  }, [currentTab?.orderData])
+
   // Check if order is confirmed/paid/read-only
-  const isReadOnly = currentTab?.status === 'confirmed' || currentTab?.status === 'paid' ||
-    (currentTab?.orderData && Number(currentTab.orderData.docstatus) === 1)
+  // Order is read-only if:
+  // 1. Status is 'confirmed' or 'paid'
+  // 2. docstatus === 1 (confirmed)
+  // 3. Order has been saved (has orderId) and outstanding amount is 0 or very close to 0 (fully paid)
+  // 4. Order has linked invoices and outstanding amount is 0 (fully paid, even if not confirmed)
+  const isReadOnly = currentTab?.status === 'confirmed' || 
+    currentTab?.status === 'paid' ||
+    (currentTab?.orderData && Number(currentTab.orderData.docstatus) === 1) ||
+    (currentTab?.orderId && outstandingAmount !== null && Math.abs(outstandingAmount) < 0.01) ||
+    (outstandingAmount !== null && Math.abs(outstandingAmount) < 0.01 && currentTab?.orderData?.linked_invoices)
 
   const handleCustomerSelect = async (customer: any) => {
     if (!activeTabId) {
@@ -150,6 +185,7 @@ const DiscountSection: React.FC<Props> = ({
 
   // Update store when rounding changes
   const handleRoundingChange = (enabled: boolean) => {
+    if (isReadOnly) return // Disable rounding changes when order is confirmed
     setIsRoundingEnabled(enabled)
     if (currentTab) {
       updateTabRoundingEnabled(currentTab.id, enabled)
@@ -215,33 +251,6 @@ const DiscountSection: React.FC<Props> = ({
   useEffect(() => {
     setGlobalDiscountValue(globalDiscountPercent.toString())
   }, [globalDiscountPercent])
-
-  // Extract paid_amount and outstanding_amount from linked_invoices when docstatus is 1
-  const { paidAmount, outstandingAmount } = useMemo(() => {
-    const isConfirmed = currentTab?.orderData && Number(currentTab.orderData.docstatus) === 1
-    const linkedInvoices = currentTab?.orderData?.linked_invoices
-
-    if (isConfirmed && linkedInvoices) {
-      let paid = null
-      let outstanding = null
-
-      // Handle linked_invoices as array or object
-      if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
-        paid = linkedInvoices[0]?.paid_amount
-        outstanding = linkedInvoices[0]?.outstanding_amount
-      } else if (linkedInvoices && typeof linkedInvoices === 'object') {
-        paid = linkedInvoices.paid_amount
-        outstanding = (linkedInvoices as any)?.outstanding_amount
-      }
-
-      return {
-        paidAmount: paid !== null && paid !== undefined ? Number(paid) : null,
-        outstandingAmount: outstanding !== null && outstanding !== undefined ? Number(outstanding) : null
-      }
-    }
-
-    return { paidAmount: null, outstandingAmount: null }
-  }, [currentTab?.orderData])
 
   // Status Ribbon Logic
   // const ribbonClipPath = 'polygon(12% 0%, 88% 0%, 100% 50%, 88% 100%, 12% 100%, 0% 50%)' // Removed as requested
@@ -377,6 +386,7 @@ const DiscountSection: React.FC<Props> = ({
   ])
 
   const handleGlobalDiscountClick = () => {
+    if (isReadOnly) return // Disable editing when order is confirmed
     if (currentTab) {
       setIsEditingGlobalDiscount(true)
     }
@@ -426,6 +436,7 @@ const DiscountSection: React.FC<Props> = ({
   useHotkeys(
     'ctrl+d',
     () => {
+      if (isReadOnly) return // Disable hotkey when order is confirmed
       if (currentTab) {
         handleGlobalDiscountClick()
       }
@@ -574,7 +585,8 @@ const DiscountSection: React.FC<Props> = ({
               onChange={handleGlobalDiscountChange}
               onBlur={handleGlobalDiscountBlur}
               onKeyDown={handleGlobalDiscountKeyDown}
-              className="text-center text-base font-semibold w-16 h-8 mx-auto"
+              disabled={isReadOnly}
+              className={`text-center text-base font-semibold w-16 h-8 mx-auto ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
               placeholder="0"
               min="0"
               max="100"
@@ -582,9 +594,11 @@ const DiscountSection: React.FC<Props> = ({
             />
           ) : (
             <div
-              className="text-base font-semibold text-blue-600 cursor-pointer hover:bg-gray-100 px-1 rounded flex flex-col items-center justify-center"
+              className={`text-base font-semibold text-blue-600 px-1 rounded flex flex-col items-center justify-center ${
+                isReadOnly ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-gray-100'
+              }`}
               onClick={handleGlobalDiscountClick}
-              title="Click to edit global discount percentage"
+              title={isReadOnly ? 'Discount cannot be edited for confirmed orders' : 'Click to edit global discount percentage'}
             >
               <div>{currencySymbol} {globalDiscount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
               {globalDiscountPercent > 0 && (
@@ -599,7 +613,13 @@ const DiscountSection: React.FC<Props> = ({
             {currencySymbol} {vat.toLocaleString(undefined, { minimumFractionDigits: 2 })}
           </div>
         </div>
-        <div className="text-center cursor-pointer hover:bg-gray-50 rounded p-1" onClick={() => handleRoundingChange(!isRoundingEnabled)}>
+        <div 
+          className={`text-center rounded p-1 ${
+            isReadOnly ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-gray-50'
+          }`}
+          onClick={() => handleRoundingChange(!isRoundingEnabled)}
+          title={isReadOnly ? 'Rounding cannot be changed for confirmed orders' : 'Click to toggle rounding'}
+        >
           <div className="text-xs text-gray-600 flex items-center justify-center gap-1">
             Rounding
             <div className={`w-2 h-2 rounded-full ${isRoundingEnabled ? 'bg-green-500' : 'bg-gray-300'}`} />
