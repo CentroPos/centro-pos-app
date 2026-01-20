@@ -692,11 +692,11 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                                   onCheckedChange={(checked) => handleSelectAll(checked as boolean)}
                                 />
                               </TableHead>
-                              <TableHead className="font-sans font-semibold text-gray-700 w-[180px]">Item Code</TableHead>
-                        <TableHead className="font-sans font-semibold text-gray-700 min-w-[300px]">Item Name</TableHead>
-                        <TableHead className="font-sans font-semibold text-gray-700 w-[100px]">UOM</TableHead>
-                        <TableHead className="text-right font-sans font-semibold text-gray-700 w-[130px]">Rate</TableHead>
-                        <TableHead className="text-right font-sans font-semibold text-gray-700 w-[150px]">Returnable Qty</TableHead>
+                              <TableHead className="font-sans font-semibold text-gray-700">Item Code</TableHead>
+                        <TableHead className="font-sans font-semibold text-gray-700">Item Name</TableHead>
+                        <TableHead className="font-sans font-semibold text-gray-700">UOM</TableHead>
+                        <TableHead className="text-right font-sans font-semibold text-gray-700">Rate</TableHead>
+                        <TableHead className="text-right font-sans font-semibold text-gray-700">Returnable Qty</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -728,13 +728,13 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                                 }
                               />
                             </TableCell>
-                            <TableCell className="font-medium font-sans text-gray-800 text-xs" style={{ fontSize: '0.75rem' }}>{itemCode}</TableCell>
-                                  <TableCell className="font-sans text-gray-700 text-xs" style={{ fontSize: '0.75rem' }} title={itemName}>
-                                    {itemName}
+                            <TableCell className="font-medium font-sans text-gray-800 text-xs whitespace-nowrap" style={{ fontSize: '0.75rem' }}>{itemCode}</TableCell>
+                                  <TableCell className="font-sans text-gray-700 text-xs max-w-[300px]" style={{ fontSize: '0.75rem', wordBreak: 'break-word', overflowWrap: 'break-word', lineHeight: '1.4' }} title={itemName}>
+                                    <div className="line-clamp-2">{itemName}</div>
                                   </TableCell>
-                                  <TableCell className="font-sans text-gray-700 text-left">{uom}</TableCell>
-                                  <TableCell className="text-right font-sans text-gray-700">{rate.toFixed(2)}</TableCell>
-                                  <TableCell className="text-right font-sans text-gray-700">{returnableQty}</TableCell>
+                                  <TableCell className="font-sans text-gray-700 text-left whitespace-nowrap">{uom}</TableCell>
+                                  <TableCell className="text-right font-sans text-gray-700 whitespace-nowrap">{rate.toFixed(2)}</TableCell>
+                                  <TableCell className="text-right font-sans text-gray-700 whitespace-nowrap">{returnableQty}</TableCell>
                                 </TableRow>
                               )
                             })}
@@ -751,12 +751,12 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                         <Table className="w-full">
                           <TableHeader className="sticky top-0 bg-gray-100 z-10">
                             <TableRow className="bg-gray-100 border-b-2 border-gray-200">
-                              <TableHead className="font-sans font-semibold text-gray-700 w-[180px]">Item Code</TableHead>
-                              <TableHead className="font-sans font-semibold text-gray-700 min-w-[300px]">Item Name</TableHead>
-                              <TableHead className="font-sans font-semibold text-gray-700 w-[100px]">UOM</TableHead>
-                              <TableHead className="text-right font-sans font-semibold text-gray-700 w-[130px]">Rate</TableHead>
-                              <TableHead className="text-right font-sans font-semibold text-gray-700 w-[150px]">Returnable Qty</TableHead>
-                              <TableHead className="text-right font-sans font-semibold text-gray-700 w-[150px]">Qty</TableHead>
+                              <TableHead className="font-sans font-semibold text-gray-700">Item Code</TableHead>
+                              <TableHead className="font-sans font-semibold text-gray-700">Item Name</TableHead>
+                              <TableHead className="font-sans font-semibold text-gray-700">UOM</TableHead>
+                              <TableHead className="text-right font-sans font-semibold text-gray-700">Rate</TableHead>
+                              <TableHead className="text-right font-sans font-semibold text-gray-700">Returnable Qty</TableHead>
+                              <TableHead className="text-right font-sans font-semibold text-gray-700">Qty</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -786,13 +786,13 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                                 
                                 return (
                                   <TableRow key={index} className="hover:bg-gray-50 border-b border-gray-100">
-                                    <TableCell className="font-medium font-sans text-gray-800 text-xs" style={{ fontSize: '0.75rem' }}>{itemCode}</TableCell>
-                                    <TableCell className="font-sans text-gray-700 text-xs" style={{ fontSize: '0.75rem' }} title={itemName}>
-                                      {itemName}
+                                    <TableCell className="font-medium font-sans text-gray-800 text-xs whitespace-nowrap" style={{ fontSize: '0.75rem' }}>{itemCode}</TableCell>
+                                    <TableCell className="font-sans text-gray-700 text-xs max-w-[300px]" style={{ fontSize: '0.75rem', wordBreak: 'break-word', overflowWrap: 'break-word', lineHeight: '1.4' }} title={itemName}>
+                                      <div className="line-clamp-2">{itemName}</div>
                                     </TableCell>
-                                    <TableCell className="font-sans text-gray-700 text-left">{uom}</TableCell>
-                                    <TableCell className="text-right font-sans text-gray-700">{rate.toFixed(2)}</TableCell>
-                                    <TableCell className="text-right font-sans text-gray-700">{returnableQty}</TableCell>
+                                    <TableCell className="font-sans text-gray-700 text-left whitespace-nowrap">{uom}</TableCell>
+                                    <TableCell className="text-right font-sans text-gray-700 whitespace-nowrap">{rate.toFixed(2)}</TableCell>
+                                    <TableCell className="text-right font-sans text-gray-700 whitespace-nowrap">{returnableQty}</TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end">
                                 <Input
