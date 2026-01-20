@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
+import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 import { toast } from 'sonner'
 import { Sparkles, CheckCircle2, AlertCircle, X } from 'lucide-react'
 
@@ -28,6 +29,7 @@ const ItemOffers: React.FC<ItemOffersProps> = ({ itemCode, selectedItem }) => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { activeTabId, updateItemInTabByIndex, getCurrentTab } = usePOSTabStore()
+  const { profile } = usePOSProfileStore()
 
   useEffect(() => {
     if (!itemCode) {
@@ -133,17 +135,13 @@ const ItemOffers: React.FC<ItemOffersProps> = ({ itemCode, selectedItem }) => {
               }
               
               // Apply offer to all items with this item_code
-              // Store original rate before changing it (only if not already stored)
+              // Store original rate before changing it
               itemsToUpdate.forEach((index) => {
                 const currentItem = tabItems[index]
                 const currentRate = Number(currentItem?.standard_rate || 0)
                 
-                // Preserve existing original_rate if it exists (from previous offer application)
-                // Otherwise, store the current rate as original
-                const originalRateToStore = currentItem?.original_rate || currentRate
-                
                 updateItemInTabByIndex(activeTabId, index, {
-                  original_rate: originalRateToStore, // Store original rate (preserve if exists)
+                  original_rate: currentRate, // Store original rate before applying offer
                   standard_rate: offerRate,
                   is_offer_applied: 1,
                   offer_uom: offer.uom,
@@ -181,15 +179,20 @@ const ItemOffers: React.FC<ItemOffersProps> = ({ itemCode, selectedItem }) => {
                 return
               }
               
-              // Try to fetch original price from product API if not stored
+              // Try to get original rate from stored value or fetch from API
               let fallbackOriginalRate: number | null = null
-              if (!itemsToUpdate[0].item?.original_rate) {
+              const firstItem = itemsToUpdate[0].item
+              
+              // If original_rate is not stored or is 0, fetch from product API
+              if (!firstItem?.original_rate || Number(firstItem.original_rate) === 0) {
                 try {
+                  const priceList = profile?.selling_price_list || 'Standard Selling'
+                  
                   const productRes = await window.electronAPI?.proxy.request({
                     url: '/api/method/centro_pos_apis.api.product.product_list',
                     method: 'GET',
                     params: {
-                      price_list: 'Standard Selling',
+                      price_list: priceList,
                       search_text: itemCode,
                       limit_start: 0,
                       limit_page_length: 1
@@ -199,8 +202,9 @@ const ItemOffers: React.FC<ItemOffersProps> = ({ itemCode, selectedItem }) => {
                   const productData = productRes?.data?.data?.[0]
                   if (productData) {
                     const uomDetails = Array.isArray(productData.uom_details) ? productData.uom_details : []
+                    const itemUom = firstItem?.uom || 'Nos'
                     const matchingUom = uomDetails.find((detail: any) => 
-                      String(detail?.uom || '').toLowerCase() === String(itemsToUpdate[0].item?.uom || 'Nos').toLowerCase()
+                      String(detail?.uom || '').toLowerCase() === String(itemUom).toLowerCase()
                     )
                     fallbackOriginalRate = matchingUom ? Number(matchingUom.rate || 0) : Number(productData.standard_rate || 0)
                   }
@@ -212,14 +216,11 @@ const ItemOffers: React.FC<ItemOffersProps> = ({ itemCode, selectedItem }) => {
               // Unapply offer - restore original rate
               itemsToUpdate.forEach(({ index, item }) => {
                 // Use stored original_rate, or fallback from API, or current rate as last resort
-                const originalRate = Number(
-                  item?.original_rate || 
-                  fallbackOriginalRate || 
-                  item?.standard_rate || 
-                  0
-                )
+                const storedOriginalRate = Number(item?.original_rate || 0)
+                const originalRate = storedOriginalRate > 0 
+                  ? storedOriginalRate 
+                  : (fallbackOriginalRate || Number(item?.standard_rate || 0))
                 
-                // Only restore if we have a valid original rate
                 if (originalRate > 0) {
                   updateItemInTabByIndex(activeTabId, index, {
                     standard_rate: originalRate,
@@ -234,7 +235,9 @@ const ItemOffers: React.FC<ItemOffersProps> = ({ itemCode, selectedItem }) => {
                 }
               })
               
-              toast.success(`Offer removed! Price restored to original for ${itemCode}`)
+              if (fallbackOriginalRate || itemsToUpdate[0].item?.original_rate) {
+                toast.success(`Offer removed! Price restored to original for ${itemCode}`)
+              }
             }
             
             return (
