@@ -219,6 +219,30 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
     }
   }, [selectedIndex, lastInteraction])
 
+  // Ensure left/right arrow keys work in search input using native event listener
+  useEffect(() => {
+    const inputElement = searchInputRef.current
+    if (!inputElement || !open || view !== 'search') return
+
+    // Add native event listener in capture phase to ensure left/right arrows work
+    const handleNativeKeyDown = (e: KeyboardEvent) => {
+      // For left/right arrows, explicitly allow default behavior
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        // Don't prevent default - let browser handle cursor movement
+        // Don't stop propagation - let it reach the input element
+        // This runs BEFORE React's synthetic handler
+        return
+      }
+    }
+
+    // Use capture phase so this runs before any other handlers
+    inputElement.addEventListener('keydown', handleNativeKeyDown, { capture: true, passive: true })
+    
+    return () => {
+      inputElement.removeEventListener('keydown', handleNativeKeyDown, { capture: true })
+    }
+  }, [open, view])
+
   // Auto-focus search input when modal opens
   useEffect(() => {
     if (open && view === 'search') {
@@ -496,8 +520,9 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
             {/* Search Bar with New button (Refresh removed) */}
             <div className="relative mb-4 flex-shrink-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
-              <Input
+              <input
                 ref={searchInputRef}
+                type="text"
                 placeholder="Search customers..."
                 value={search}
                 onChange={(e) => {
@@ -505,6 +530,14 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                   setSelectedIndex(-1)
                 }}
                 onKeyDown={(e) => {
+                  // CRITICAL: For left/right arrows, do NOTHING - let browser handle it
+                  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                    // Completely ignore - don't prevent, don't stop, don't handle
+                    // The browser will move the cursor naturally
+                    return
+                  }
+                  
+                  // Only handle up/down arrows for list navigation
                   if (e.key === 'ArrowDown') {
                     e.preventDefault()
                     e.stopPropagation()
@@ -527,7 +560,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     resetAndClose()
                   }
                 }}
-                className="pl-10 pr-28"
+                className="pl-10 pr-28 file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 border-input flex h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive"
                 autoFocus
               />
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
@@ -549,7 +582,14 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
               className="flex-1 overflow-y-auto min-h-0"
               tabIndex={0}
               onKeyDown={(e) => {
-                // Handle arrow keys when list container has focus
+                // CRITICAL: Never handle left/right arrows - they're for text editing in inputs
+                if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                  // Completely ignore - let the input field handle it
+                  // Don't prevent, don't stop, don't do anything
+                  return
+                }
+                
+                // Handle arrow keys when list container has focus (only up/down)
                 if (e.key === 'ArrowDown') {
                   e.preventDefault()
                   e.stopPropagation()
