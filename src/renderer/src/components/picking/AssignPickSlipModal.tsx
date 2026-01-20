@@ -264,16 +264,26 @@ export function AssignPickSlipModal({
     const handleUpdate = async (st: Date | null, et: Date | null) => {
         if (!createdSlip) return;
 
+        // Don't allow updates if already picked
+        const isPicked = createdSlip.status === 'picked' || createdSlip.status === 'Picked' || createdSlip.status === 'Completed';
+        if (isPicked) {
+            toast.error('Cannot update pick slip that is already picked');
+            return;
+        }
+
         // We set isCreating to true just to show spinner on the button if needed, 
         // or we can handle loading separately. Reusing isCreating for simplicity.
         setIsCreating(true);
 
         try {
+            // Use existing picker if already picked, otherwise use selected picker
+            const pickerToUse = selectedPicker || createdSlip.pickerId || '';
+            
             const payload = {
                 pick_list_id: createdSlip.id,
-                assigned_to: selectedPicker || '',
-                start_time: selectedPicker ? (st ? formatApiDate(st) : "") : "",
-                end_time: selectedPicker ? (et ? formatApiDate(et) : "") : ""
+                assigned_to: pickerToUse,
+                start_time: pickerToUse ? (st ? formatApiDate(st) : "") : "",
+                end_time: pickerToUse ? (et ? formatApiDate(et) : "") : ""
             };
 
             const res = await window.electronAPI?.proxy?.request({
@@ -474,7 +484,8 @@ export function AssignPickSlipModal({
                                     .filter(w => !w.is_delivery_warehouse)
                                     .map((warehouse) => {
                                         const isSelected = selectedWarehouse === warehouse.id;
-                                        const isDisabled = !!existingPickSlip || !!createdSlip;
+                                        const isPicked = existingPickSlip?.status === 'Picked' || existingPickSlip?.status === 'picked' || existingPickSlip?.status === 'Completed' || createdSlip?.status === 'picked' || createdSlip?.status === 'Picked' || createdSlip?.status === 'Completed';
+                                        const isDisabled = !!existingPickSlip || !!createdSlip || isPicked;
 
                                         return (
                                             <Button
@@ -503,16 +514,19 @@ export function AssignPickSlipModal({
                                 <div className="flex flex-wrap gap-2">
                                     {availablePickers.length > 0 ? availablePickers.map((picker) => {
                                         const isSelected = selectedPicker === picker.id;
+                                        const isPicked = existingPickSlip?.status === 'Picked' || existingPickSlip?.status === 'picked' || existingPickSlip?.status === 'Completed' || createdSlip?.status === 'picked' || createdSlip?.status === 'Picked' || createdSlip?.status === 'Completed';
                                         return (
                                             <Button
                                                 key={picker.id}
                                                 variant="outline"
-                                                onClick={() => setSelectedPicker(prev => prev === picker.id ? null : picker.id)}
+                                                onClick={() => !isPicked && setSelectedPicker(prev => prev === picker.id ? null : picker.id)}
+                                                disabled={isPicked}
                                                 className={cn(
                                                     "h-8 rounded-full px-4 text-xs font-medium border transition-all",
                                                     isSelected
                                                         ? "bg-green-700 hover:bg-green-800 text-white border-green-700 shadow-sm"
-                                                        : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
+                                                        : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200",
+                                                    isPicked && "opacity-50 cursor-not-allowed"
                                                 )}
                                             >
                                                 <span className="mr-1">{picker.name}</span>
