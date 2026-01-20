@@ -500,7 +500,25 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
 
   return createPortal(
     <Dialog open={open} onOpenChange={(isOpen) => (isOpen ? undefined : resetAndClose())}>
-      <DialogContent className="max-w-5xl max-h-[75vh] bg-white m-4 flex flex-col">
+      <DialogContent 
+        className="max-w-5xl max-h-[75vh] bg-white m-4 flex flex-col"
+        onKeyDown={(e) => {
+          // Prevent arrow keys from propagating to background when modal is open
+          // Only prevent if the event is NOT from an input field (where we want cursor movement)
+          const target = e.target as HTMLElement
+          const isInputField = target.tagName === 'INPUT' || 
+                               target.tagName === 'TEXTAREA' ||
+                               target.closest('input') ||
+                               target.closest('textarea')
+          
+          // For arrow keys, stop propagation to prevent background handlers from firing
+          // But only if NOT in an input field (where we want normal cursor movement)
+          if ((e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !isInputField) {
+            e.stopPropagation()
+            // Don't prevent default - let the modal's own handlers work
+          }
+        }}
+      >
         <DialogHeader className="flex-shrink-0">
           <div className="flex items-center justify-between">
             <DialogTitle className="flex items-center gap-2">
@@ -582,10 +600,24 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
               className="flex-1 overflow-y-auto min-h-0"
               tabIndex={0}
               onKeyDown={(e) => {
-                // CRITICAL: Never handle left/right arrows - they're for text editing in inputs
+                // CRITICAL: Allow left/right arrows to pass through - they're for text editing in inputs
+                // Check if the event is coming from an input field
+                const target = e.target as HTMLElement
+                const isInputField = target.tagName === 'INPUT' || 
+                                     target.tagName === 'TEXTAREA' ||
+                                     target.closest('input') ||
+                                     target.closest('textarea')
+                
+                // If left/right arrows are pressed, let them pass through to the input field
                 if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-                  // Completely ignore - let the input field handle it
-                  // Don't prevent, don't stop, don't do anything
+                  // Don't prevent default - let the browser handle cursor movement
+                  // Don't stop propagation - let it reach the input element
+                  // This allows the input field to handle cursor movement naturally
+                  if (isInputField) {
+                    // If it's already in an input field, don't interfere at all
+                    return
+                  }
+                  // Even if not in input, don't prevent - might be navigating
                   return
                 }
                 
