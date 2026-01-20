@@ -668,30 +668,101 @@ const PaymentTab: React.FC = () => {
     return amount - totalAllocatedAmount
   }, [paymentAmount, totalAllocatedAmount])
 
+  // Re-auto-allocate when main payment amount changes
+  useEffect(() => {
+    const totalPayment = parseFloat(paymentAmount) || 0
+
+    setDueInvoices((prev) => {
+      let remaining = totalPayment
+      let changed = false
+
+      const next = prev.map((invoice) => {
+        if (!invoice.is_selected) {
+          // Ensure unselected rows have zero allocation
+          if (invoice.allocated_amount && invoice.allocated_amount !== 0) {
+            changed = true
+            return { ...invoice, allocated_amount: 0 }
+          }
+          return invoice
+        }
+
+        const due = Number(invoice.due_amount || 0)
+        const alloc = Math.min(due, Math.max(remaining, 0))
+        remaining -= alloc
+
+        if ((invoice.allocated_amount || 0) !== alloc) {
+          changed = true
+          return { ...invoice, allocated_amount: alloc }
+        }
+
+        return invoice
+      })
+
+      return changed ? next : prev
+    })
+  }, [paymentAmount])
+
   // Handle invoice selection toggle
   const handleInvoiceToggle = (index: number) => {
-    setDueInvoices((prev) =>
-      prev.map((invoice, i) =>
-        i === index
-          ? {
-              ...invoice,
-              is_selected: !invoice.is_selected,
-              allocated_amount: !invoice.is_selected ? invoice.due_amount : 0 // Auto-fill with due amount when selected
-            }
-          : invoice
-      )
-    )
+    setDueInvoices((prev) => {
+      const amount = parseFloat(paymentAmount) || 0
+
+      // Sum already allocated on other selected invoices
+      const allocatedOnOthers = prev.reduce((sum, invoice, i) => {
+        if (i === index || !invoice.is_selected) return sum
+        return sum + (invoice.allocated_amount || 0)
+      }, 0)
+
+      const remaining = Math.max(amount - allocatedOnOthers, 0)
+
+      return prev.map((invoice, i) => {
+        if (i !== index) return invoice
+
+        const nextSelected = !invoice.is_selected
+        if (!nextSelected) {
+          // Unselect → clear allocation
+          return { ...invoice, is_selected: false, allocated_amount: 0 }
+        }
+
+        // Select → allocate min(remaining amount, due)
+        const due = Number(invoice.due_amount || 0)
+        const alloc = Math.min(due, remaining)
+        return {
+          ...invoice,
+          is_selected: true,
+          allocated_amount: alloc
+        }
+      })
+    })
   }
 
   // Handle select all
   const handleSelectAll = (checked: boolean) => {
-    setDueInvoices((prev) =>
-      prev.map((invoice) => ({
-        ...invoice,
-        is_selected: checked,
-        allocated_amount: checked ? invoice.due_amount : 0 // Auto-fill with due amount when selected
-      }))
-    )
+    setDueInvoices((prev) => {
+      if (!checked) {
+        // Unselect all → clear all allocations
+        return prev.map((invoice) => ({
+          ...invoice,
+          is_selected: false,
+          allocated_amount: 0
+        }))
+      }
+
+      // Select all → distribute payment amount across invoices
+      let remaining = parseFloat(paymentAmount) || 0
+
+      return prev.map((invoice) => {
+        const due = Number(invoice.due_amount || 0)
+        const alloc = Math.min(due, Math.max(remaining, 0))
+        remaining -= alloc
+
+        return {
+          ...invoice,
+          is_selected: true,
+          allocated_amount: alloc
+        }
+      })
+    })
   }
 
   // Check if all invoices are selected
@@ -699,10 +770,35 @@ const PaymentTab: React.FC = () => {
 
   // Handle allocated amount change
   const handleAllocatedAmountChange = (index: number, value: string) => {
-    const amount = parseFloat(value) || 0
-    setDueInvoices((prev) =>
-      prev.map((invoice, i) => (i === index ? { ...invoice, allocated_amount: amount } : invoice))
-    )
+    const requested = parseFloat(value) || 0
+
+    setDueInvoices((prev) => {
+      const totalPayment = parseFloat(paymentAmount) || 0
+
+      // Sum allocations on all other selected invoices
+      const allocatedOnOthers = prev.reduce((sum, invoice, i) => {
+        if (i === index || !invoice.is_selected) return sum
+        return sum + (invoice.allocated_amount || 0)
+      }, 0)
+
+      // Max we are allowed to put on this row so totalAllocated <= totalPayment
+      const remainingForThis = Math.max(totalPayment - allocatedOnOthers, 0)
+
+      return prev.map((invoice, i) => {
+        if (i !== index) return invoice
+
+        // If row not selected, selecting via typing
+        const due = Number(invoice.due_amount || 0)
+        const maxForThis = Math.min(due, remainingForThis)
+        const allocated = Math.min(requested, maxForThis)
+
+        return {
+          ...invoice,
+          is_selected: allocated > 0,
+          allocated_amount: allocated
+        }
+      })
+    })
   }
 
   // Handle make payment

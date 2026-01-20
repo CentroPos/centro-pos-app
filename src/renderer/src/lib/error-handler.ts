@@ -192,6 +192,31 @@ export function showStackedErrorPopups(errors: ParsedError[]) {
 }
 
 /**
+ * Transform common ERPNext errors into user-friendly messages
+ */
+function makeErrorUserFriendly(message: string): string {
+  // Payment Terms Due Date error
+  if (message.includes('Due Date') && message.includes('Payment Terms') && message.includes('cannot be before Posting Date')) {
+    return 'Payment Terms Error: The payment terms due date cannot be before the posting date.\n\n' +
+           'What to do:\n' +
+           '• Check the payment terms template assigned to this customer\n' +
+           '• Ensure the due date is on or after the posting date\n' +
+           '• Contact your administrator to update the payment terms if needed'
+  }
+  
+  // Warehouse not found error
+  if (message.includes('Could not find Row') && message.includes('Delivery Warehouse')) {
+    return 'Warehouse Error: The warehouse specified for this item was not found.\n\n' +
+           'What to do:\n' +
+           '• The warehouse may have been deleted or renamed\n' +
+           '• Contact your administrator to check warehouse settings'
+  }
+  
+  // Return original message if no transformation needed
+  return message
+}
+
+/**
  * Handle server error messages - display in a single formatted toast in right bottom corner
  */
 export function handleServerErrorMessages(
@@ -235,21 +260,27 @@ export function handleServerErrorMessages(
           messageObj = messageItem
         }
         const message = messageObj.message || 'Unknown error'
-        formattedMessages.push(message)
+        // Transform to user-friendly message
+        const friendlyMessage = makeErrorUserFriendly(message)
+        formattedMessages.push(friendlyMessage)
       } catch (parseError) {
         // If parsing fails, try to use the item as a string or its string representation
+        let rawMessage: string
         if (typeof messageItem === 'string') {
-          formattedMessages.push(messageItem)
+          rawMessage = messageItem
         } else if (messageItem && typeof messageItem === 'object' && messageItem.message) {
-          formattedMessages.push(messageItem.message)
+          rawMessage = messageItem.message
         } else {
-          formattedMessages.push(String(messageItem))
+          rawMessage = String(messageItem)
         }
+        // Transform to user-friendly message
+        const friendlyMessage = makeErrorUserFriendly(rawMessage)
+        formattedMessages.push(friendlyMessage)
       }
     })
 
     // Combine all messages into a single formatted string
-    const combinedMessage = formattedMessages.join('\n')
+    const combinedMessage = formattedMessages.join('\n\n')
     
     // Get title from first message if available
     let title = 'Error'
@@ -269,9 +300,10 @@ export function handleServerErrorMessages(
     console.log('🔍 Formatted server message:', combinedMessage)
     console.log('🔍 Message title:', title)
 
-    // Display in a single toast popup
+    // Display in a single toast popup with longer duration for detailed messages
+    const isDetailedMessage = combinedMessage.includes('What to do:') || combinedMessage.split('\n').length > 3
     toast.error(combinedMessage, {
-      duration: 8000,
+      duration: isDetailedMessage ? 12000 : 8000, // Show longer for detailed messages
       description: title !== 'Error' ? title : undefined,
       position: 'bottom-right',
       style: {
@@ -281,12 +313,14 @@ export function handleServerErrorMessages(
         opacity: '1',
         visibility: 'visible',
         pointerEvents: 'auto',
-        maxWidth: '500px',
-        minWidth: '350px',
+        maxWidth: '550px',
+        minWidth: '400px',
         boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
         border: '1px solid #ef4444',
         borderRadius: '8px',
-        whiteSpace: 'pre-line' // Allow line breaks in the message
+        whiteSpace: 'pre-line', // Allow line breaks in the message
+        fontSize: '14px',
+        lineHeight: '1.5'
       }
     })
     
