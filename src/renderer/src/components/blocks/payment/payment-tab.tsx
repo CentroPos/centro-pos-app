@@ -728,10 +728,10 @@ const PaymentTab: React.FC = () => {
         const due = Number(invoice.due_amount || 0)
         const alloc = Math.min(due, remaining)
         return {
-          ...invoice,
+              ...invoice,
           is_selected: true,
           allocated_amount: alloc
-        }
+            }
       })
     })
   }
@@ -742,7 +742,7 @@ const PaymentTab: React.FC = () => {
       if (!checked) {
         // Unselect all → clear all allocations
         return prev.map((invoice) => ({
-          ...invoice,
+        ...invoice,
           is_selected: false,
           allocated_amount: 0
         }))
