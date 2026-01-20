@@ -2228,7 +2228,7 @@ const ActionButtons: React.FC<Props> = ({
             <Button
               data-testid="save-button"
               className="px-2 py-1 bg-gradient-to-r from-yellow-400 to-yellow-500 text-white font-medium rounded-lg hover:shadow-lg transition-all duration-300 flex items-center gap-1.5 text-[9px] disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={!currentUserPrivileges?.sales || currentTab?.status === 'confirmed' || currentTab?.status === 'paid' || !currentTab?.isEdited || isSaving || isItemTableEditing}
+              disabled={!currentUserPrivileges?.sales || currentTab?.status === 'confirmed' || currentTab?.status === 'paid' || !currentTab?.isEdited || isSaving || isConfirming || isItemTableEditing}
               onClick={async () => {
                 // Wrap in try-catch to prevent errors from propagating to React error boundary
                 try {
@@ -2257,10 +2257,19 @@ const ActionButtons: React.FC<Props> = ({
               )}
             </Button>
 
-            {/* Confirm Button - Only enable if order is created (has orderId) */}
+            {/* Confirm Button - Only enable if order is created (has orderId) and there are NO unsaved edits */}
             <Button
               className="px-2 py-1 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-medium rounded-lg hover:shadow-lg transition-all duration-300 flex items-center gap-1.5 text-[9px] disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={!currentUserPrivileges?.billing || !currentTab?.orderId || currentTab?.status === 'confirmed' || currentTab?.status === 'paid' || isItemTableEditing}
+              disabled={
+                !currentUserPrivileges?.billing ||
+                !currentTab?.orderId ||
+                currentTab?.status === 'confirmed' ||
+                currentTab?.status === 'paid' ||
+                // If there are unsaved edits (Update button active), block Confirm
+                currentTab?.isEdited ||
+                isItemTableEditing ||
+                isSaving
+              }
               onClick={handleConfirm}
             >
               <svg className="w-3 h-3" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="paper-plane" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="currentColor">
