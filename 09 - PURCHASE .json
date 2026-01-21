@@ -1,0 +1,293 @@
+{
+  "v": 11,
+  "id": "cmjwvwqwk1ku8fi1kc2kbclr8",
+  "name": "09 - PURCHASE ",
+  "folders": [],
+  "requests": [
+    {
+      "v": "17",
+      "id": "cmjtwsqtz013liy1kim4toq00",
+      "name": "9.1 - Purchase Price List",
+      "method": "GET",
+      "endpoint": "<<base_url>>/api/method/centro_pos_apis.api.purchase.purchase_price_list",
+      "params": [
+        {
+          "key": "limit_start",
+          "value": "1",
+          "active": true,
+          "description": ""
+        },
+        {
+          "key": "limit_page_length",
+          "value": "5",
+          "active": true,
+          "description": ""
+        }
+      ],
+      "headers": [
+        {
+          "key": "Cookie",
+          "value": "sid=b6e50db7fa7e639d5dbc0af9bbe1796277360f086d7052c9baee3ffb; Expires=Fri, 09 Jan 2026 15:13:21 GMT; Max-Age=612000; HttpOnly; Path=/; SameSite=Lax",
+          "active": true,
+          "description": ""
+        }
+      ],
+      "preRequestScript": "",
+      "testScript": "",
+      "auth": {
+        "authType": "inherit",
+        "authActive": true
+      },
+      "body": {
+        "contentType": null,
+        "body": null
+      },
+      "requestVariables": [],
+      "responses": {},
+      "description": null
+    },
+    {
+      "v": "17",
+      "id": "cmjwhb2a71ipofi1kbm75hacg",
+      "name": "9.2 - Create Purchase Order",
+      "method": "POST",
+      "endpoint": "<<base_url>>/api/method/centro_pos_apis.api.purchase.create_purchase_order",
+      "params": [],
+      "headers": [
+        {
+          "key": "Cookie",
+          "value": "sid=b6e50db7fa7e639d5dbc0af9bbe1796277360f086d7052c9baee3ffb; Expires=Fri, 09 Jan 2026 15:13:21 GMT; Max-Age=612000; HttpOnly; Path=/; SameSite=Lax",
+          "active": true,
+          "description": ""
+        }
+      ],
+      "preRequestScript": "",
+      "testScript": "",
+      "auth": {
+        "authType": "inherit",
+        "authActive": true
+      },
+      "body": {
+        "contentType": "application/json",
+        "body": "{\n    \"supplier\": \"Supplier 1\",\n    \"transaction_date\": \"2026-01-02\",\n    \"schedule_date\": \"\", \n    \"buying_price_list\": \"Standard Buying\",\n    \"taxes_and_charges\": \"VAT 15 % Purchase - NAB\",\n    \"internal_note\": \"Discount Test\",\n    \"disable_rounded_total\": 1,\n    \"additional_discount_percentage\": 10,\n    \"items\": [\n        {\n            \"item_code\": \"ITEM-00002\",\n            \"qty\": 10,\n            \"uom\": \"Nos\",\n            \"rate\": 100.00,\n            \"discount_percentage\": 5\n        }\n    ]\n}"
+      },
+      "requestVariables": [],
+      "responses": {},
+      "description": null
+    },
+    {
+      "v": "17",
+      "id": "cmju11hgq01d0iy1kdnegu4sc",
+      "name": "9.3 - Edit Purchase Order",
+      "method": "POST",
+      "endpoint": "<<base_url>>/api/method/centro_pos_apis.api.purchase.edit_purchase_order",
+      "params": [],
+      "headers": [
+        {
+          "key": "Cookie",
+          "value": "sid=b6e50db7fa7e639d5dbc0af9bbe1796277360f086d7052c9baee3ffb; Expires=Fri, 09 Jan 2026 15:13:21 GMT; Max-Age=612000; HttpOnly; Path=/; SameSite=Lax",
+          "active": true,
+          "description": ""
+        }
+      ],
+      "preRequestScript": "",
+      "testScript": "",
+      "auth": {
+        "authType": "inherit",
+        "authActive": true
+      },
+      "body": {
+        "contentType": "application/json",
+        "body": "{\n  \t\"purchase_order_id\": \"PUR-ORD-2026-00001\",\n    \"supplier\": \"Supplier 1\",\n    \"transaction_date\": \"2026-01-02\",\n    \"schedule_date\": \"\", \n    \"buying_price_list\": \"Standard Buying\",\n    \"taxes_and_charges\": \"VAT 15 % Purchase - NAB\",\n    \"internal_note\": \"Discount Test\",\n    \"disable_rounded_total\": 1,\n    \"additional_discount_percentage\": 10,\n    \"items\": [\n        {\n            \"item_code\": \"ITEM-00002\",\n            \"qty\": 10,\n            \"uom\": \"Nos\",\n            \"rate\": 100.00,\n            \"discount_percentage\": 5\n        }\n    ]\n}"
+      },
+      "requestVariables": [],
+      "responses": {},
+      "description": null
+    },
+    {
+      "v": "17",
+      "id": "cmjwi6jgj1iqafi1kflz5skn6",
+      "name": "9.5 - Purchase Order Confirmation",
+      "method": "POST",
+      "endpoint": "<<base_url>>/api/method/centro_pos_apis.api.purchase.purchase_order_confirmation",
+      "params": [],
+      "headers": [
+        {
+          "key": "Cookie",
+          "value": "sid=b6e50db7fa7e639d5dbc0af9bbe1796277360f086d7052c9baee3ffb; Expires=Fri, 09 Jan 2026 15:13:21 GMT; Max-Age=612000; HttpOnly; Path=/; SameSite=Lax",
+          "active": true,
+          "description": ""
+        }
+      ],
+      "preRequestScript": "",
+      "testScript": "",
+      "auth": {
+        "authType": "inherit",
+        "authActive": true
+      },
+      "body": {
+        "contentType": "application/json",
+        "body": "{\n    \"purchase_order_id\": \"PUR-ORD-2026-00001\",\n    \"mode_of_payment\": \"Cash\",\n    \"paid_amount\": 500.00\n}"
+      },
+      "requestVariables": [],
+      "responses": {},
+      "description": null
+    },
+    {
+      "v": "17",
+      "id": "cmjwqa2fb1jarfi1k2h9h5w46",
+      "name": "9.4 - Purchase Order Details",
+      "method": "GET",
+      "endpoint": "<<base_url>>/api/method/centro_pos_apis.api.purchase.get_purchase_order_details",
+      "params": [
+        {
+          "key": "purchase_order_id",
+          "value": "PUR-ORD-2026-00001",
+          "active": true,
+          "description": ""
+        }
+      ],
+      "headers": [
+        {
+          "key": "Cookie",
+          "value": "sid=b6e50db7fa7e639d5dbc0af9bbe1796277360f086d7052c9baee3ffb; Expires=Fri, 09 Jan 2026 15:13:21 GMT; Max-Age=612000; HttpOnly; Path=/; SameSite=Lax",
+          "active": true,
+          "description": ""
+        }
+      ],
+      "preRequestScript": "",
+      "testScript": "",
+      "auth": {
+        "authType": "inherit",
+        "authActive": true
+      },
+      "body": {
+        "contentType": null,
+        "body": null
+      },
+      "requestVariables": [],
+      "responses": {},
+      "description": null
+    },
+    {
+      "v": "17",
+      "id": "cmjwrw3m91jfqfi1k9l5x3zeo",
+      "name": "9.6 - Due Purchase Invoice List",
+      "method": "GET",
+      "endpoint": "<<base_url>>/api/method/centro_pos_apis.api.purchase.due_purchase_invoice_list",
+      "params": [
+        {
+          "key": "supplier_id",
+          "value": "Supplier 1",
+          "active": true,
+          "description": ""
+        },
+        {
+          "key": "limit_start",
+          "value": "1",
+          "active": true,
+          "description": ""
+        },
+        {
+          "key": "limit_page_length",
+          "value": "10",
+          "active": true,
+          "description": ""
+        }
+      ],
+      "headers": [
+        {
+          "key": "Cookie",
+          "value": "sid=b6e50db7fa7e639d5dbc0af9bbe1796277360f086d7052c9baee3ffb; Expires=Fri, 09 Jan 2026 15:13:21 GMT; Max-Age=612000; HttpOnly; Path=/; SameSite=Lax",
+          "active": true,
+          "description": ""
+        }
+      ],
+      "preRequestScript": "",
+      "testScript": "",
+      "auth": {
+        "authType": "inherit",
+        "authActive": true
+      },
+      "body": {
+        "contentType": null,
+        "body": null
+      },
+      "requestVariables": [],
+      "responses": {},
+      "description": null
+    },
+    {
+      "v": "17",
+      "id": "cmjwtpeiq07ssiy1k2mwuv8cu",
+      "name": "9.7 - Return Purchase Order",
+      "method": "POST",
+      "endpoint": "<<base_url>>/api/method/centro_pos_apis.api.purchase.return_purchase_order",
+      "params": [],
+      "headers": [
+        {
+          "key": "Cookie",
+          "value": "sid=b6e50db7fa7e639d5dbc0af9bbe1796277360f086d7052c9baee3ffb; Expires=Fri, 09 Jan 2026 15:13:21 GMT; Max-Age=612000; HttpOnly; Path=/; SameSite=Lax",
+          "active": true,
+          "description": ""
+        }
+      ],
+      "preRequestScript": "",
+      "testScript": "",
+      "auth": {
+        "authType": "inherit",
+        "authActive": true
+      },
+      "body": {
+        "contentType": "application/json",
+        "body": "{\n    \"original_invoice_id\": \"ACC-PINV-2026-00001\",\n    \"note\": \"Damaged goods return\",\n    \"items\": [\n        {\n            \"original_purchase_invoice_item\": \"e16pa2tg9u\", \n            \"qty\": 2\n        }\n    ]\n}"
+      },
+      "requestVariables": [],
+      "responses": {},
+      "description": null
+    },
+    {
+      "v": "17",
+      "id": "cmjwsccq207pmiy1klxrm3skg",
+      "name": "9.8 - Get Purchase Return Availability",
+      "method": "GET",
+      "endpoint": "<<base_url>>/api/method/centro_pos_apis.api.purchase.get_purchase_return_availability",
+      "params": [
+        {
+          "key": "purchase_order_id",
+          "value": "PUR-ORD-2026-00001",
+          "active": true,
+          "description": ""
+        }
+      ],
+      "headers": [
+        {
+          "key": "Cookie",
+          "value": "sid=b6e50db7fa7e639d5dbc0af9bbe1796277360f086d7052c9baee3ffb; Expires=Fri, 09 Jan 2026 15:13:21 GMT; Max-Age=612000; HttpOnly; Path=/; SameSite=Lax",
+          "active": true,
+          "description": ""
+        }
+      ],
+      "preRequestScript": "",
+      "testScript": "",
+      "auth": {
+        "authType": "inherit",
+        "authActive": true
+      },
+      "body": {
+        "contentType": null,
+        "body": null
+      },
+      "requestVariables": [],
+      "responses": {},
+      "description": null
+    }
+  ],
+  "auth": {
+    "authType": "inherit",
+    "authActive": true
+  },
+  "headers": [],
+  "variables": [],
+  "description": null
+}

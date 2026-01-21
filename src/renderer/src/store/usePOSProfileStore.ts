@@ -2,6 +2,8 @@ import { create } from 'zustand'
 
 interface POSProfileUser {
   user: string
+  custom_enable_sales?: number
+  custom_enable_purchase?: number
   custom_sales_counter: number
   custom_billing_counter: number
   custom_return_counter: number
@@ -27,6 +29,7 @@ interface POSProfileStore {
   profile: POSProfile | null
   currentUserPrivileges: {
     sales: boolean
+    purchase: boolean
     billing: boolean
     return: boolean
   } | null
@@ -83,13 +86,17 @@ export const usePOSProfileStore = create<POSProfileStore>((set, get) => ({
     if (currentUser) {
       console.log('✅ Current user found in profile:', currentUser)
       console.log('🔍 Raw privilege values:', {
+        custom_enable_sales: (currentUser as any).custom_enable_sales,
+        custom_enable_purchase: (currentUser as any).custom_enable_purchase,
         custom_sales_counter: currentUser.custom_sales_counter,
         custom_billing_counter: currentUser.custom_billing_counter,
         custom_return_counter: currentUser.custom_return_counter
       })
       
       const privileges = {
-        sales: currentUser.custom_sales_counter === 1,
+        // Feature enable flags (separate from counters)
+        sales: (currentUser as any).custom_enable_sales === 1 || currentUser.custom_sales_counter === 1,
+        purchase: (currentUser as any).custom_enable_purchase === 1,
         billing: currentUser.custom_billing_counter === 1,
         return: currentUser.custom_return_counter === 1
       }
@@ -105,6 +112,7 @@ export const usePOSProfileStore = create<POSProfileStore>((set, get) => ({
       set({
         currentUserPrivileges: {
           sales: false,
+          purchase: false,
           billing: false,
           return: false
         }
