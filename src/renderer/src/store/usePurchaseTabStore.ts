@@ -35,6 +35,8 @@ interface PurchaseTab {
   internal_note?: string | null
   is_reserved?: number
   buying_price_list?: string | null
+  globalDiscountPercent?: number
+  isRoundingEnabled?: boolean
 }
 
 interface PurchaseTabStore {
@@ -69,6 +71,17 @@ interface PurchaseTabStore {
   getCurrentTabPostingDate: () => string | null
   updateTabReservation: (tabId: string, is_reserved: number) => void
   getCurrentTabReservation: () => number
+
+  // Global discount methods
+  updateTabGlobalDiscount: (tabId: string, globalDiscountPercent: number) => void
+  getCurrentTabGlobalDiscount: () => number
+
+  // Rounding methods
+  updateTabRoundingEnabled: (tabId: string, enabled: boolean) => void
+  getCurrentTabRoundingEnabled: () => boolean
+
+  // Duplicate tab method
+  duplicateCurrentTab: () => boolean
 }
 
 export const usePurchaseTabStore = create<PurchaseTabStore>()(
@@ -382,6 +395,89 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
       getCurrentTabReservation: () => {
         const tab = get().getCurrentTab()
         return tab?.is_reserved !== undefined ? Number(tab.is_reserved) : 1
+      },
+
+      // Global discount methods
+      updateTabGlobalDiscount: (tabId: string, globalDiscountPercent: number) => {
+        set((state) => ({
+          tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, globalDiscountPercent, isEdited: true } : tab))
+        }))
+      },
+
+      getCurrentTabGlobalDiscount: () => {
+        const state = get()
+        const currentTab = state.tabs.find(tab => tab.id === state.activeTabId)
+        return currentTab?.globalDiscountPercent || 0
+      },
+
+      // Rounding methods
+      updateTabRoundingEnabled: (tabId: string, enabled: boolean) => {
+        set((state) => ({
+          tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, isRoundingEnabled: enabled, isEdited: true } : tab))
+        }))
+      },
+
+      getCurrentTabRoundingEnabled: () => {
+        const state = get()
+        const currentTab = state.tabs.find(tab => tab.id === state.activeTabId)
+        return currentTab?.isRoundingEnabled ?? true
+      },
+
+      // Duplicate current tab
+      duplicateCurrentTab: () => {
+        const state = get()
+        const currentTab = state.tabs.find(tab => tab.id === state.activeTabId)
+        if (!currentTab) {
+          toast.error('No active tab to duplicate')
+          return false
+        }
+
+        if (state.tabs.length >= 6) {
+          toast.error('You can keep only up to 6 purchase orders open at a time')
+          return false
+        }
+
+        const existingNewCount = state.tabs.filter(t => t.type === 'new' && !t.purchaseOrderId).length
+        if (existingNewCount >= 4) {
+          toast.error('You can open only up to 4 New purchase orders')
+          return false
+        }
+
+        const existingNumbers = state.tabs
+          .filter(t => t.type === 'new' && t.displayName?.startsWith('New '))
+          .map(t => parseInt(t.displayName!.replace('New ', ''), 10))
+          .filter(n => !isNaN(n))
+        const maxNum = existingNumbers.length > 0 ? Math.max(...existingNumbers) : 0
+        const newCount = maxNum + 1
+
+        const getCurrentDate = () => {
+          const now = new Date()
+          const year = now.getFullYear()
+          const month = String(now.getMonth() + 1).padStart(2, '0')
+          const day = String(now.getDate()).padStart(2, '0')
+          return `${year}-${month}-${day}`
+        }
+
+        const duplicatedTab: PurchaseTab = {
+          ...currentTab,
+          id: `purchase-tab-${Date.now()}`,
+          purchaseOrderId: null,
+          orderId: null,
+          orderData: null,
+          type: 'new',
+          displayName: `New ${newCount}`,
+          status: 'draft',
+          isEdited: false,
+          posting_date: getCurrentDate(),
+          po_no: null,
+          po_date: getCurrentDate()
+        }
+
+        set((s) => ({
+          tabs: [...s.tabs, duplicatedTab],
+          activeTabId: duplicatedTab.id
+        }))
+        return true
       }
     }),
     {

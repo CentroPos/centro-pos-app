@@ -8,6 +8,7 @@ import PurchaseActionButtons from '@renderer/components/blocks/purchase/purchase
 import PurchaseHeader from '@renderer/components/blocks/purchase/purchase-header'
 import SupplierModal from '@renderer/components/blocks/supplier/supplier-modal'
 import PurchaseRightPanel from '@renderer/components/blocks/purchase/right-panel/right-panel'
+import PurchaseDiscountSection from '@renderer/components/blocks/purchase/purchase-discount-section'
 
 import { usePurchaseTabStore } from '@renderer/store/usePurchaseTabStore'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
@@ -103,6 +104,23 @@ const PurchaseInterface: React.FC = () => {
               onSaveCompleted={saveCompleted}
               isProductModalOpen={productModalOpen}
               isCustomerModalOpen={supplierModalOpen}
+            />
+
+            {/* Fixed bottom: Discount/Summary section */}
+            <PurchaseDiscountSection
+              forceOpenSupplierModal={supplierModalOpen}
+              onSupplierModalChange={setSupplierModalOpen}
+              onSupplierSelect={(supplier) => {
+                if (!activeTabId) return
+                updateTabSupplier(activeTabId, {
+                  name: supplier.supplier_name || supplier.name,
+                  supplier_id: supplier.supplier_id || supplier.name,
+                  mobile_no: supplier.mobile_no,
+                  email: supplier.email,
+                  tax_id: supplier.tax_id
+                })
+                setRightPanelTab('customer')
+              }}
             />
           </div>
         </div>
