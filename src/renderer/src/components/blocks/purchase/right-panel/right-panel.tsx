@@ -1818,36 +1818,6 @@ const RightPanel: React.FC<RightPanelProps> = ({
   }, [showOpenOrderConfirm])
 
   // Debounced search effects for product history tabs
-  // Sales History search
-  const prevSalesSearchRef = useRef<string>('')
-  useEffect(() => {
-    if (productSubTab !== 'sales-history' || !selectedItemId) return
-    if (prevSalesSearchRef.current === salesHistorySearch) return
-
-    const handler = setTimeout(() => {
-      setSalesHistory([])
-      setSalesHistoryPage(1)
-      prevSalesSearchRef.current = salesHistorySearch
-      fetchSalesHistory(selectedItemId, 1, salesHistorySearch)
-    }, 300)
-    return () => clearTimeout(handler)
-  }, [salesHistorySearch, productSubTab, selectedItemId])
-
-  // Customer History search
-  const prevCustomerSearchRef = useRef<string>('')
-  useEffect(() => {
-    if (productSubTab !== 'customer-history' || !selectedItemId) return
-    if (prevCustomerSearchRef.current === customerHistorySearch) return
-
-    const handler = setTimeout(() => {
-      setCustomerHistory([])
-      setCustomerHistoryPage(1)
-      prevCustomerSearchRef.current = customerHistorySearch
-      fetchCustomerHistory(selectedItemId, 1, customerHistorySearch)
-    }, 300)
-    return () => clearTimeout(handler)
-  }, [customerHistorySearch, productSubTab, selectedItemId])
-
   // Purchase History search
   const prevPurchaseSearchRef = useRef<string>('')
   useEffect(() => {
@@ -1862,6 +1832,21 @@ const RightPanel: React.FC<RightPanelProps> = ({
     }, 300)
     return () => clearTimeout(handler)
   }, [purchaseHistorySearch, productSubTab, selectedItemId])
+
+  // Supplier History search
+  const prevSupplierSearchRef = useRef<string>('')
+  useEffect(() => {
+    if (productSubTab !== 'supplier-history' || !selectedItemId) return
+    if (prevSupplierSearchRef.current === customerHistorySearch) return
+
+    const handler = setTimeout(() => {
+      setCustomerHistory([])
+      setCustomerHistoryPage(1)
+      prevSupplierSearchRef.current = customerHistorySearch
+      fetchCustomerHistory(selectedItemId, 1, customerHistorySearch)
+    }, 300)
+    return () => clearTimeout(handler)
+  }, [customerHistorySearch, productSubTab, selectedItemId])
 
   // Debounced search effects for customer tab - matching Orders pattern
   // Recent Orders search
@@ -3216,7 +3201,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                         setProductSubTab('supplier-history')
                         if (selectedItemId) {
                           console.log('🔄 Triggering supplier history fetch from tab click')
-                          fetchSupplierHistory(selectedItemId)
+                          fetchCustomerHistory(selectedItemId, customerHistoryPage, customerHistorySearch)
                         }
                       }}
                     >
@@ -3531,132 +3516,6 @@ const RightPanel: React.FC<RightPanelProps> = ({
                           setCustomerHistoryPage(next)
                           fetchCustomerHistory(selectedItemId as string, next, customerHistorySearch)
                           customerHistoryScrollRef.current?.scrollTo({ top: 0 })
-                        }}
-                      >
-                        Next
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Purchase History Tab */}
-                {productSubTab === 'purchase-history' && (
-                  <div className="p-4">
-                    <div className="text-xs text-gray-500 mb-2">
-                      Purchase history for selected product
-                    </div>
-
-                    {/* Search Bar */}
-                    <div className="relative mb-4">
-                      <input
-                        type="text"
-                        placeholder="Search purchase history..."
-                        value={purchaseHistorySearch}
-                        onChange={(e) => setPurchaseHistorySearch(e.target.value)}
-                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                        <svg
-                          className="w-4 h-4 text-gray-400"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                          />
-                        </svg>
-                      </div>
-                    </div>
-
-                    {/* Purchase History Content */}
-                    <div ref={purchaseHistoryScrollRef} className="max-h-64 overflow-y-auto scrollbar-hide">
-                      {purchaseHistoryLoading ? (
-                        <div className="text-center py-4">
-                          <div className="text-sm text-gray-500">Loading purchase history...</div>
-                        </div>
-                      ) : filteredPurchaseHistory.length > 0 ? (
-                        <div className="space-y-2">
-                          {filteredPurchaseHistory.map((item, index) => {
-                            const formatDate = (dateString: string) => {
-                              if (!dateString) return '—'
-                              const date = new Date(dateString)
-                              const day = String(date.getDate()).padStart(2, '0')
-                              const month = String(date.getMonth() + 1).padStart(2, '0')
-                              const year = date.getFullYear()
-                              return `${day}/${month}/${year}`
-                            }
-                            const totalAmount = item.total_amount ? Number(item.total_amount).toFixed(2) : (Number(item.qty || 0) * Number(item.unit_price || 0)).toFixed(2)
-                            const unitPrice = Number(item.unit_price || 0).toFixed(2)
-                            return (
-                              <div
-                                key={index}
-                                className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200"
-                              >
-                                {/* Invoice No and Date Row */}
-                                <div className="flex justify-between items-center mb-2">
-                                  <div className="font-semibold text-black text-sm">
-                                    {item.invoice_no || item.purchase_order_no || '—'}
-                                  </div>
-                                  <div className="text-gray-600 text-xs">
-                                    {item.creation_datetime
-                                      ? formatDate(item.creation_datetime)
-                                      : '—'}
-                                  </div>
-                                </div>
-
-                                {/* Amount Row */}
-                                <div className="flex justify-between items-center mb-2">
-                                  <span className="text-gray-600 font-medium text-xs">
-                                    Qty: {item.qty || 0}
-                                  </span>
-                                  <div className="flex flex-col items-end">
-                                    <span className="text-gray-600 font-medium text-xs">
-                                      Unit: <span className="font-bold text-green-600">{unitPrice} {currencySymbol}</span>
-                                    </span>
-                                    <span className="text-gray-600 font-medium text-xs mt-0.5">
-                                      Total: <span className="font-bold text-green-600">{totalAmount} {currencySymbol}</span>
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      ) : (
-                        <div className="text-center py-4">
-                          <div className="text-sm text-gray-500">No purchase history found</div>
-                        </div>
-                      )}
-                    </div>
-                    {/* Pager */}
-                    <div className="flex items-center justify-between mt-3">
-                      <button
-                        className={`px-3 py-1 text-sm rounded border ${purchaseHistoryPage > 1 ? 'bg-white hover:bg-gray-50' : 'opacity-40 cursor-not-allowed'}`}
-                        disabled={purchaseHistoryPage <= 1}
-                        onClick={() => {
-                          if (purchaseHistoryPage <= 1) return
-                          const prev = Math.max(1, purchaseHistoryPage - 1)
-                          setPurchaseHistoryPage(prev)
-                          fetchPurchaseHistory(selectedItemId as string, prev, purchaseHistorySearch)
-                          purchaseHistoryScrollRef.current?.scrollTo({ top: 0 })
-                        }}
-                      >
-                        Prev
-                      </button>
-                      <div className="text-sm text-gray-600">Page {purchaseHistoryPage}</div>
-                      <button
-                        className={`px-3 py-1 text-sm rounded border ${purchaseHasMoreRef.current ? 'bg-white hover:bg-gray-50' : 'opacity-40 cursor-not-allowed'}`}
-                        disabled={!purchaseHasMoreRef.current}
-                        onClick={() => {
-                          if (!purchaseHasMoreRef.current) return
-                          const next = purchaseHistoryPage + 1
-                          setPurchaseHistoryPage(next)
-                          fetchPurchaseHistory(selectedItemId as string, next, purchaseHistorySearch)
-                          purchaseHistoryScrollRef.current?.scrollTo({ top: 0 })
                         }}
                       >
                         Next
@@ -4829,12 +4688,12 @@ const RightPanel: React.FC<RightPanelProps> = ({
             }, 0)
 
             // Get the current tab and update the item
-            const currentTab = usePOSTabStore.getState().getCurrentTab()
+            const currentTab = usePurchaseTabStore.getState().getCurrentTab()
             if (currentTab) {
               // Use itemIndex if available (for duplicate items), otherwise fall back to item_code
               if (warehousePopupData.itemIndex !== undefined && warehousePopupData.itemIndex >= 0) {
                 // Update by index to ensure we update the correct duplicate item
-                const { updateItemInTabByIndex } = usePOSTabStore.getState()
+                const { updateItemInTabByIndex } = usePurchaseTabStore.getState()
                 updateItemInTabByIndex(currentTab.id, warehousePopupData.itemIndex, {
                   quantity: totalAllocated,
                   warehouseAllocations: allocations
