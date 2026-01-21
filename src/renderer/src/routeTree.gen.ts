@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as PurchaseRouteImport } from './routes/purchase'
 import { Route as PosRouteImport } from './routes/pos'
 import { Route as PickingRouteImport } from './routes/picking'
+import { Route as Picker_feedbackRouteImport } from './routes/picker_feedback'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 
@@ -30,6 +31,11 @@ const PickingRoute = PickingRouteImport.update({
   path: '/picking',
   getParentRoute: () => rootRouteImport,
 } as any)
+const Picker_feedbackRoute = Picker_feedbackRouteImport.update({
+  id: '/picker_feedback',
+  path: '/picker_feedback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -44,6 +50,7 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/picker_feedback': typeof Picker_feedbackRoute
   '/picking': typeof PickingRoute
   '/pos': typeof PosRoute
   '/purchase': typeof PurchaseRoute
@@ -51,6 +58,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/picker_feedback': typeof Picker_feedbackRoute
   '/picking': typeof PickingRoute
   '/pos': typeof PosRoute
   '/purchase': typeof PurchaseRoute
@@ -59,21 +67,36 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/picker_feedback': typeof Picker_feedbackRoute
   '/picking': typeof PickingRoute
   '/pos': typeof PosRoute
   '/purchase': typeof PurchaseRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/picking' | '/pos' | '/purchase'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/picker_feedback'
+    | '/picking'
+    | '/pos'
+    | '/purchase'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/picking' | '/pos' | '/purchase'
-  id: '__root__' | '/' | '/login' | '/picking' | '/pos' | '/purchase'
+  to: '/' | '/login' | '/picker_feedback' | '/picking' | '/pos' | '/purchase'
+  id:
+    | '__root__'
+    | '/'
+    | '/login'
+    | '/picker_feedback'
+    | '/picking'
+    | '/pos'
+    | '/purchase'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
+  Picker_feedbackRoute: typeof Picker_feedbackRoute
   PickingRoute: typeof PickingRoute
   PosRoute: typeof PosRoute
   PurchaseRoute: typeof PurchaseRoute
@@ -102,6 +125,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PickingRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/picker_feedback': {
+      id: '/picker_feedback'
+      path: '/picker_feedback'
+      fullPath: '/picker_feedback'
+      preLoaderRoute: typeof Picker_feedbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -122,6 +152,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
+  Picker_feedbackRoute: Picker_feedbackRoute,
   PickingRoute: PickingRoute,
   PosRoute: PosRoute,
   PurchaseRoute: PurchaseRoute,

@@ -1,4 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { createFileRoute } from '@tanstack/react-router'
+import ProtectedLayout from '@renderer/components/hocs/ProtectedLayout'
+import MainLayout from '@renderer/components/layout/MainLayout'
 
 // ============= Types =============
 interface PickItem {
@@ -308,3 +311,13 @@ const PickerFeedbackScreen = () => {
 };
 
 export default PickerFeedbackScreen;
+
+export const Route = createFileRoute('/picker_feedback')({
+    component: () => (
+        <ProtectedLayout>
+            <MainLayout>
+                <PickerFeedbackScreen />
+            </MainLayout>
+        </ProtectedLayout>
+    )
+})

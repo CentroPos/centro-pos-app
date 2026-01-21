@@ -170,7 +170,6 @@ const POSInterface: React.FC = () => {
   const items = getCurrentTabItems();
   console.log('SHD ==> [POSInterface = items]', items)
   const currentTab = getCurrentTab();
-  const selectedPriceList = currentTab?.orderData?.price_list || 'Standard Selling'
 
   // Clear selected item when no active tab
   React.useEffect(() => {
@@ -204,6 +203,8 @@ const POSInterface: React.FC = () => {
   const { user, isAuthenticated } = useAuthStore()
   const { setProfile, setCurrentUserPrivileges } = usePOSProfileStore()
   const { profile } = usePOSProfileStore()
+
+  const selectedPriceList = currentTab?.orderData?.price_list || profile?.selling_price_list || 'Standard Selling'
 
   // Test direct API call and set profile data
   React.useEffect(() => {

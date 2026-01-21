@@ -4,6 +4,7 @@ import { ShoppingCart, Package, Barcode } from 'lucide-react'
 import { cn } from '@renderer/lib/utils'
 import ProfileDropdown from '@renderer/components/common/ProfileDropdown'
 import Clock from '@renderer/components/common/Clock'
+import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 
 interface MainLayoutProps {
     children: React.ReactNode
@@ -11,6 +12,7 @@ interface MainLayoutProps {
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     const { pathname } = useLocation()
+    const { currentUserPrivileges } = usePOSProfileStore()
 
     const tabs = [
         {
@@ -21,6 +23,13 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             activeMatcher: (path: string) => path === '/pos' || path === '/pos/'
         },
         {
+            id: 'purchase',
+            label: 'Purchase',
+            icon: Barcode,
+            path: '/purchase',
+            activeMatcher: (path: string) => path.startsWith('/purchase')
+        },
+        {
             id: 'picking',
             label: 'Dynamic Picking',
             icon: Package,
@@ -28,13 +37,19 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             activeMatcher: (path: string) => path.startsWith('/picking')
         },
         {
-            id: 'purchase',
+            id: 'picker_feedback',
             label: 'Picker Feedback',
             icon: Barcode,
-            path: '/purchase',
-            activeMatcher: (path: string) => path.startsWith('/purchase')
+            path: '/picker_feedback',
+            activeMatcher: (path: string) => path.startsWith('/picker_feedback')
         }
-    ]
+    ].filter((t) => {
+        // Gate feature tabs if privileges are known. If not loaded yet, keep them visible to avoid blank nav.
+        if (!currentUserPrivileges) return true
+        if (t.id === 'sales') return currentUserPrivileges.sales
+        if (t.id === 'purchase') return currentUserPrivileges.purchase
+        return true
+    })
 
     return (
         <div className="flex flex-col h-screen w-screen bg-background">
