@@ -37,8 +37,50 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
   const globalDiscountPercent = getCurrentTabGlobalDiscount()
   const isRoundingEnabled = getCurrentTabRoundingEnabled()
 
+  // Fetch order details when tab is opened/selected (for previously opened orders)
+  // This ensures button states update dynamically when switching tabs
+  React.useEffect(() => {
+    const fetchOrderDetails = async () => {
+      if (!currentTab?.purchaseOrderId || !currentTab?.id) return
+
+      try {
+        console.log('📦 Fetching purchase order details for tab:', currentTab.id, 'Order ID:', currentTab.purchaseOrderId)
+        const res = await window.electronAPI?.proxy?.request({
+          url: '/api/method/centro_pos_apis.api.purchase.get_purchase_order_details',
+          params: {
+            purchase_order_id: currentTab.purchaseOrderId
+          },
+          method: 'GET'
+        })
+
+        if (res?.data?.data && currentTab.id) {
+          const orderData = res.data.data
+          const docstatus = Number(orderData.docstatus) || null
+
+          console.log('📦 Purchase order details fetched for tab:', {
+            tabId: currentTab.id,
+            orderId: currentTab.purchaseOrderId,
+            docstatus: docstatus,
+            isConfirmed: docstatus === 1
+          })
+
+          // Update orderData to refresh status and button states
+          updateTabOrderData(currentTab.id, orderData)
+        }
+      } catch (e) {
+        console.error('Failed to fetch purchase order details for tab:', e)
+      }
+    }
+
+    // Fetch when purchaseOrderId exists (order is created) and tab changes
+    if (currentTab?.purchaseOrderId) {
+      fetchOrderDetails()
+    }
+  }, [activeTabId, currentTab?.purchaseOrderId, currentTab?.id, updateTabOrderData])
+
   const [isSaving, setIsSaving] = useState(false)
-  const [isConfirming, setIsConfirming] = useState(false)
+  const [isConfirming, setIsConfirming] = useState(false) // Flag to indicate confirm mode (vs pay mode)
+  const [isConfirmingProcessing, setIsConfirmingProcessing] = useState(false) // Loading state for confirm button
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [payOpen, setPayOpen] = useState(false)
@@ -235,8 +277,9 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
       return
     }
 
+    // Set processing state only when actually processing
     if (isConfirming) {
-      setIsConfirming(true)
+      setIsConfirmingProcessing(true)
     } else {
       setIsProcessingPayment(true)
     }
@@ -282,12 +325,41 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
           } else {
             toast.error(confirmResponse?.data?.message || confirmResponse?.message || 'Failed to confirm purchase order')
           }
-          setIsConfirming(false)
+          setIsConfirmingProcessing(false)
           setIsProcessingPayment(false)
           return
         }
+
+        // Refresh order data after confirmation to update status
+        if (activeTabId && currentTab.purchaseOrderId) {
+          try {
+            console.log('🔄 Refreshing purchase order data after confirmation...')
+            const res = await window.electronAPI?.proxy?.request({
+              url: '/api/method/centro_pos_apis.api.purchase.get_purchase_order_details',
+              params: {
+                purchase_order_id: currentTab.purchaseOrderId
+              }
+            })
+            if (res?.data?.data) {
+              console.log('✅ Purchase order data refreshed:', res.data.data)
+              updateTabOrderData(activeTabId, res.data.data)
+              const newDocstatus = Number(res.data.data?.docstatus)
+              console.log('📋 Order status after refresh - docstatus:', newDocstatus, 'isConfirmed:', newDocstatus === 1)
+            }
+          } catch (refreshError) {
+            console.error('❌ Failed to refresh purchase order data:', refreshError)
+          }
+        }
+
+        // ONLY confirm, don't process payment here
+        toast.success('Purchase Order confirmed successfully')
+        setConfirmOpen(false)
+        setIsConfirmingProcessing(false)
+        setAmount('')
+        return
       }
 
+      // Payment mode - only process payment if order is already confirmed
       // Get supplier ID for payment entry
       const selectedSupplier = getCurrentTabSupplier()
       let supplierId = selectedSupplier?.supplier_id || currentTab?.supplier?.supplier_id || null
@@ -300,72 +372,71 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
       if (!supplierId) {
         console.error('❌ No supplier ID found for payment entry')
         toast.error('Supplier ID not found. Payment entry not created.')
-      } else {
-        // Get posting date from store or use current date
-        const selectedPostingDate = getCurrentTabPostingDate()
-        const formattedDate = selectedPostingDate || transactionDate || getCurrentDate()
-
-        // Get purchase invoice number from order data (if available after confirmation or from existing order)
-        // If no invoice, reference the Purchase Order itself
-        const purchaseInvoice = currentTab?.orderData?.purchase_invoice_no || 
-                               confirmResponse?.data?.data?.purchase_invoice_no ||
-                               null
-        const purchaseOrderId = currentTab.purchaseOrderId
-
-        // For pay mode, try to get invoice from linked invoices if available
-        const linkedInvoices = currentTab?.orderData?.linked_invoices
-        let purchaseInvoiceFromLinked = null
-        if (linkedInvoices && !purchaseInvoice) {
-          if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
-            purchaseInvoiceFromLinked = linkedInvoices[0]?.purchase_invoice_no || linkedInvoices[0]?.name
-          } else if (typeof linkedInvoices === 'object') {
-            purchaseInvoiceFromLinked = (linkedInvoices as any)?.purchase_invoice_no || (linkedInvoices as any)?.name
-          }
-        }
-
-        const finalPurchaseInvoice = purchaseInvoice || purchaseInvoiceFromLinked
-
-        // Create payment entry using the same endpoint as sales
-        const paymentEntryData = {
-          payment_type: 'Pay', // Pay for purchase (opposite of Receive for sales)
-          party_type: 'Supplier', // Supplier for purchase (opposite of Customer for sales)
-          party: supplierId,
-          posting_date: formattedDate,
-          paid_amount: paidAmount,
-          mode_of_payment: paymentMode,
-          references: finalPurchaseInvoice ? [
-            {
-              reference_doctype: 'Purchase Invoice',
-              reference_name: finalPurchaseInvoice,
-              allocated_amount: paidAmount
-            }
-          ] : purchaseOrderId ? [
-            {
-              reference_doctype: 'Purchase Order',
-              reference_name: purchaseOrderId,
-              allocated_amount: paidAmount
-            }
-          ] : []
-        }
-
-        console.log('💳 ===== CREATE PAYMENT ENTRY API CALL (PURCHASE) =====')
-        console.log('💳 API URL: /api/method/centro_pos_apis.api.order.create_payment_entry')
-        console.log('💳 Request Method: POST')
-        console.log('💳 Request Body:', JSON.stringify(paymentEntryData, null, 2))
-
-        await window.electronAPI?.proxy?.request({
-          method: 'POST',
-          url: '/api/method/centro_pos_apis.api.order.create_payment_entry',
-          data: paymentEntryData
-        })
-
-        console.log('💳 Payment entry created successfully for purchase order')
+        setIsProcessingPayment(false)
+        return
       }
 
-      // Refresh order data FIRST to update status and enable Pay/Return buttons
+      // Get posting date from store or use current date
+      const selectedPostingDate = getCurrentTabPostingDate()
+      const formattedDate = selectedPostingDate || transactionDate || getCurrentDate()
+
+      // Get purchase invoice number from order data
+      const purchaseInvoice = currentTab?.orderData?.purchase_invoice_no || null
+      const purchaseOrderId = currentTab.purchaseOrderId
+
+      // Try to get invoice from linked invoices if available
+      const linkedInvoices = currentTab?.orderData?.linked_invoices
+      let purchaseInvoiceFromLinked = null
+      if (linkedInvoices && !purchaseInvoice) {
+        if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
+          purchaseInvoiceFromLinked = linkedInvoices[0]?.purchase_invoice_no || linkedInvoices[0]?.name
+        } else if (typeof linkedInvoices === 'object') {
+          purchaseInvoiceFromLinked = (linkedInvoices as any)?.purchase_invoice_no || (linkedInvoices as any)?.name
+        }
+      }
+
+      const finalPurchaseInvoice = purchaseInvoice || purchaseInvoiceFromLinked
+
+      // Create payment entry using the same endpoint as sales
+      const paymentEntryData = {
+        payment_type: 'Pay', // Pay for purchase (opposite of Receive for sales)
+        party_type: 'Supplier', // Supplier for purchase (opposite of Customer for sales)
+        party: supplierId,
+        posting_date: formattedDate,
+        paid_amount: paidAmount,
+        mode_of_payment: paymentMode,
+        references: finalPurchaseInvoice ? [
+          {
+            reference_doctype: 'Purchase Invoice',
+            reference_name: finalPurchaseInvoice,
+            allocated_amount: paidAmount
+          }
+        ] : purchaseOrderId ? [
+          {
+            reference_doctype: 'Purchase Order',
+            reference_name: purchaseOrderId,
+            allocated_amount: paidAmount
+          }
+        ] : []
+      }
+
+      console.log('💳 ===== CREATE PAYMENT ENTRY API CALL (PURCHASE) =====')
+      console.log('💳 API URL: /api/method/centro_pos_apis.api.order.create_payment_entry')
+      console.log('💳 Request Method: POST')
+      console.log('💳 Request Body:', JSON.stringify(paymentEntryData, null, 2))
+
+      await window.electronAPI?.proxy?.request({
+        method: 'POST',
+        url: '/api/method/centro_pos_apis.api.order.create_payment_entry',
+        data: paymentEntryData
+      })
+
+      console.log('💳 Payment entry created successfully for purchase order')
+
+      // Refresh order data after payment
       if (activeTabId && currentTab.purchaseOrderId) {
         try {
-          console.log('🔄 Refreshing purchase order data after confirm/payment...')
+          console.log('🔄 Refreshing purchase order data after payment...')
           const res = await window.electronAPI?.proxy?.request({
             url: '/api/method/centro_pos_apis.api.purchase.get_purchase_order_details',
             params: {
@@ -375,32 +446,21 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
           if (res?.data?.data) {
             console.log('✅ Purchase order data refreshed:', res.data.data)
             updateTabOrderData(activeTabId, res.data.data)
-            const newDocstatus = Number(res.data.data?.docstatus)
-            console.log('📋 Order status after refresh - docstatus:', newDocstatus, 'isConfirmed:', newDocstatus === 1)
-            
-            // Force a small delay to ensure state updates propagate
-            await new Promise(resolve => setTimeout(resolve, 100))
           }
         } catch (refreshError) {
           console.error('❌ Failed to refresh purchase order data:', refreshError)
         }
       }
 
-      if (isConfirming) {
-        toast.success('Purchase Order confirmed and payment recorded')
-        setConfirmOpen(false)
-        setIsConfirming(false)
-      } else {
-        toast.success('Payment recorded successfully')
-        setPayOpen(false)
-        setIsProcessingPayment(false)
-      }
+      toast.success('Payment recorded successfully')
+      setPayOpen(false)
+      setIsProcessingPayment(false)
       setAmount('')
     } catch (e: any) {
       console.error('❌ Purchase confirm/payment failed', e)
       toast.error(e?.response?.data?.message || e?.message || `Failed to ${isConfirming ? 'confirm' : 'process payment for'} purchase order`)
     } finally {
-      setIsConfirming(false)
+      setIsConfirmingProcessing(false)
       setIsProcessingPayment(false)
     }
   }, [currentTab, amount, paymentMode, isConfirming, activeTabId, transactionDate, getCurrentTabSupplier, getCurrentTabPostingDate, updateTabOrderData, setConfirmOpen, setPayOpen, setAmount, setIsConfirming, setIsProcessingPayment])
@@ -437,7 +497,7 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
       // Shift+Enter: Trigger Confirm button
       if (e.key === 'Enter' && e.shiftKey) {
         // Allow Shift+Enter even in input fields (common pattern for submitting forms)
-        if (!isConfirming && !isProcessingPayment) {
+        if (!isConfirmingProcessing && !isProcessingPayment) {
           e.preventDefault()
           e.stopPropagation()
           console.log('⌨️ Shift+Enter pressed - triggering Confirm/Pay')
@@ -461,7 +521,7 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [confirmOpen, payOpen, paymentMode, paymentModes, isConfirming, isProcessingPayment, handleConfirmPayClick])
+  }, [confirmOpen, payOpen, paymentMode, paymentModes, isConfirmingProcessing, isProcessingPayment, handleConfirmPayClick])
 
   // Keyboard shortcuts for buttons
   useEffect(() => {
@@ -991,10 +1051,10 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
             <Button
               data-confirm-button
               onClick={handleConfirmPayClick}
-              disabled={isConfirming || isProcessingPayment}
-              className={`px-8 py-3 text-lg font-semibold flex items-center gap-2 ${isConfirming || isProcessingPayment ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'} text-white`}
+              disabled={isConfirmingProcessing || isProcessingPayment}
+              className={`px-8 py-3 text-lg font-semibold flex items-center gap-2 ${isConfirmingProcessing || isProcessingPayment ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'} text-white`}
             >
-              {isConfirming ? (
+              {isConfirmingProcessing ? (
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                   Confirming...
