@@ -79,6 +79,24 @@ const PurchaseHeader: React.FC<PurchaseHeaderProps> = ({ onNewOrder }) => {
     return `#${last5Digits}`
   }
 
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || !e.shiftKey) return
+      const key = e.key.toLowerCase()
+      if (key === 'n') {
+        e.preventDefault()
+        handleNewOrder()
+      } else if (key === 'x') {
+        e.preventDefault()
+        if (activeTabId) {
+          handleAttemptClose(activeTabId)
+        }
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [activeTabId, tabs])
+
   return (
     <div className="p-3">
       <div className="flex items-center justify-between">
@@ -91,39 +109,39 @@ const PurchaseHeader: React.FC<PurchaseHeaderProps> = ({ onNewOrder }) => {
             New
             <span className="text-[9px] opacity-80 bg-white/10 px-1 py-0.5 rounded ml-0.5">Ctrl+N</span>
           </Button>
-        </div>
 
-        <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
-          {tabs.map((tab) => {
-            const isActive = tab.id === activeTabId
-            return (
+          {/* Tabs */}
+          <div className="flex gap-2">
+            {tabs.map((tab) => (
               <div
                 key={tab.id}
-                className={[
-                  'flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-colors',
-                  isActive ? 'bg-primary text-primary-foreground border-primary' : 'bg-white border-gray-200 text-gray-700'
-                ].join(' ')}
+                className={`flex items-center px-3 py-2 rounded-lg cursor-pointer transition-all duration-200 text-xs border ${activeTabId === tab.id
+                  ? 'bg-white text-gray-900 font-bold shadow-sm shadow-gray-300 border-primary'
+                  : 'bg-white/60 text-gray-800 hover:bg-white/80 border-transparent'
+                  }`}
                 onClick={() => setActiveTab(tab.id)}
-                role="button"
-                tabIndex={0}
+                aria-selected={activeTabId === tab.id}
+                title={tab.purchaseOrderId || (tab.type === 'new' ? 'New Purchase Order' : 'Purchase Order')}
               >
-                <span className="text-[11px] font-medium">
-                  {tab.purchaseOrderId ? abbreviateOrderId(tab.purchaseOrderId) : tab.displayName}
+                <span className="flex items-center gap-2">
+                  {activeTabId === tab.id && (
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-gray-300" />
+                  )}
+                  {tab.displayName || (tab.purchaseOrderId ? abbreviateOrderId(tab.purchaseOrderId) : tab.type === 'new' ? 'New' : 'Order')}
                 </span>
                 <button
-                  type="button"
-                  className="text-[12px] opacity-70 hover:opacity-100"
+                  className="ml-2 text-gray-400 hover:text-red-500 text-base leading-none"
                   onClick={(e) => {
                     e.stopPropagation()
                     handleAttemptClose(tab.id)
                   }}
-                  aria-label="Close tab"
+                  title="Close tab"
                 >
                   ×
                 </button>
               </div>
-            )
-          })}
+            ))}
+          </div>
         </div>
       </div>
 
