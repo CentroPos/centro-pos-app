@@ -31,7 +31,6 @@ const PurchaseInterface: React.FC = () => {
     activeTabId,
     addItemToTab,
     removeItemFromTab,
-    createNewTab,
     updateTabSupplier,
     setTabEdited
   } = usePurchaseTabStore()
@@ -54,13 +53,11 @@ const PurchaseInterface: React.FC = () => {
   }, [posProfile, user?.email, setProfile, setCurrentUserPrivileges])
 
   const handleNewPurchase = () => {
-    const created = createNewTab()
-    if (created) {
-      // Small delay to ensure tab is created before opening modal
-      setTimeout(() => {
-        setSupplierModalOpen(true)
-      }, 100)
-    }
+    // Tab is already created by PurchaseHeader, just open supplier modal
+    // Small delay to ensure tab is created before opening modal
+    setTimeout(() => {
+      setSupplierModalOpen(true)
+    }, 100)
   }
 
   const addItem = (item: any) => {
