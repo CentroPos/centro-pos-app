@@ -37,6 +37,7 @@ interface PurchaseTab {
   buying_price_list?: string | null
   globalDiscountPercent?: number
   isRoundingEnabled?: boolean
+  instantPrintUrl?: string | null
 }
 
 interface PurchaseTabStore {
@@ -79,6 +80,9 @@ interface PurchaseTabStore {
   // Rounding methods
   updateTabRoundingEnabled: (tabId: string, enabled: boolean) => void
   getCurrentTabRoundingEnabled: () => boolean
+
+  // Instant Print methods
+  updateTabInstantPrintUrl: (tabId: string, url: string | null) => void
 
   // Duplicate tab method
   duplicateCurrentTab: () => boolean
@@ -421,6 +425,13 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
         const state = get()
         const currentTab = state.tabs.find(tab => tab.id === state.activeTabId)
         return currentTab?.isRoundingEnabled ?? true
+      },
+
+      // Instant Print methods
+      updateTabInstantPrintUrl: (tabId: string, url: string | null) => {
+        set((state) => ({
+          tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, instantPrintUrl: url } : tab))
+        }))
       },
 
       // Duplicate current tab
