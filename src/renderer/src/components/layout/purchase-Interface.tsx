@@ -32,7 +32,8 @@ const PurchaseInterface: React.FC = () => {
     addItemToTab,
     removeItemFromTab,
     createNewTab,
-    updateTabSupplier
+    updateTabSupplier,
+    setTabEdited
   } = usePurchaseTabStore()
 
   const currentTab = getCurrentTab()
@@ -54,7 +55,12 @@ const PurchaseInterface: React.FC = () => {
 
   const handleNewPurchase = () => {
     const created = createNewTab()
-    if (created) setSupplierModalOpen(true)
+    if (created) {
+      // Small delay to ensure tab is created before opening modal
+      setTimeout(() => {
+        setSupplierModalOpen(true)
+      }, 100)
+    }
   }
 
   const addItem = (item: any) => {
@@ -148,7 +154,12 @@ const PurchaseInterface: React.FC = () => {
         open={supplierModalOpen}
         onClose={() => setSupplierModalOpen(false)}
         onSelect={(s) => {
-          if (!activeTabId) return
+          if (!activeTabId) {
+            toast.error('No active tab. Please create a new purchase order first.')
+            setSupplierModalOpen(false)
+            return
+          }
+          // Update supplier in the tab store
           updateTabSupplier(activeTabId, {
             name: (s as any).supplier_name || s.name,
             supplier_id: (s as any).supplier_id || (s as any).name || s.name,
@@ -156,7 +167,11 @@ const PurchaseInterface: React.FC = () => {
             email: (s as any).email,
             tax_id: (s as any).tax_id
           })
+          // Mark tab as edited since supplier was selected
+          setTabEdited(activeTabId, true)
+          setSupplierModalOpen(false)
           setRightPanelTab('customer')
+          toast.success(`Supplier "${(s as any).supplier_name || s.name}" selected`)
         }}
       />
     </Fragment>

@@ -111,18 +111,21 @@ const PurchaseDiscountSection: React.FC<Props> = ({
       setShowSupplierModal(false)
       return
     }
-    if (activeTabId) {
-      updateTabSupplier(activeTabId, {
-        name: supplier.supplier_name || supplier.name,
-        supplier_id: supplier.supplier_id || supplier.name,
-        mobile_no: supplier.mobile_no,
-        email: supplier.email,
-        tax_id: supplier.tax_id
-      })
-      setTabEdited(activeTabId, true)
-    }
+    // Update supplier in the tab store
+    updateTabSupplier(activeTabId, {
+      name: supplier.supplier_name || supplier.name,
+      supplier_id: supplier.supplier_id || supplier.name,
+      mobile_no: supplier.mobile_no,
+      email: supplier.email,
+      tax_id: supplier.tax_id
+    })
+    // Mark tab as edited since supplier was selected
+    setTabEdited(activeTabId, true)
     setShowSupplierModal(false)
+    // Notify parent component
     onSupplierSelect?.(supplier)
+    // Show success message
+    toast.success(`Supplier "${supplier.supplier_name || supplier.name}" selected`)
   }
 
   // Sync local state with store
