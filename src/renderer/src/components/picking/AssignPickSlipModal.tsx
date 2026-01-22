@@ -305,6 +305,10 @@ export function AssignPickSlipModal({
                 }) : null);
 
                 if (onSuccess) onSuccess();
+                // Automatically close modal after successful update
+                setTimeout(() => {
+                    onClose();
+                }, 500); // Small delay to show success message
             }
         } catch (e: any) {
             console.error("Failed to update pick slip", e);
