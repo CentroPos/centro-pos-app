@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { Search, User } from 'lucide-react'
 import { toast } from 'sonner'
+import * as DialogPrimitive from '@radix-ui/react-dialog'
+import { cn } from '@renderer/lib/utils'
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@renderer/components/ui/dialog'
+import { Dialog, DialogHeader, DialogTitle, DialogPortal } from '@renderer/components/ui/dialog'
 
 type Supplier = {
   name: string
@@ -89,24 +90,29 @@ const SupplierModal: React.FC<SupplierModalProps> = ({ open, onClose, onSelect }
 
   if (!open) return null
 
-  return createPortal(
+  return (
     <Dialog open={open} onOpenChange={(isOpen) => (isOpen ? undefined : onClose())}>
-      <DialogContent
-        className="max-w-4xl max-h-[75vh] bg-white m-4 flex flex-col"
-        onKeyDown={(e) => {
-          // Keep arrow keys in modal; allow cursor movement in input
-          const target = e.target as HTMLElement
-          const isInputField =
-            target.tagName === 'INPUT' ||
-            target.tagName === 'TEXTAREA' ||
-            !!target.closest('input') ||
-            !!target.closest('textarea')
+      <DialogPortal>
+        {/* No overlay - just the content on top of existing UI */}
+        <DialogPrimitive.Content
+          className={cn(
+            "bg-white data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-[9999] grid w-full max-w-4xl max-h-[75vh] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-2xl duration-200 m-4 flex flex-col"
+          )}
+          style={{ zIndex: 9999 }}
+          onKeyDown={(e) => {
+            // Keep arrow keys in modal; allow cursor movement in input
+            const target = e.target as HTMLElement
+            const isInputField =
+              target.tagName === 'INPUT' ||
+              target.tagName === 'TEXTAREA' ||
+              !!target.closest('input') ||
+              !!target.closest('textarea')
 
-          if ((e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !isInputField) {
-            e.stopPropagation()
-          }
-        }}
-      >
+            if ((e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !isInputField) {
+              e.stopPropagation()
+            }
+          }}
+        >
         <DialogHeader className="flex-shrink-0">
           <div className="flex items-center justify-between">
             <DialogTitle className="flex items-center gap-2">
@@ -176,9 +182,9 @@ const SupplierModal: React.FC<SupplierModalProps> = ({ open, onClose, onSelect }
             )}
           </div>
         </div>
-      </DialogContent>
-    </Dialog>,
-    document.body
+        </DialogPrimitive.Content>
+      </DialogPortal>
+    </Dialog>
   )
 }
 

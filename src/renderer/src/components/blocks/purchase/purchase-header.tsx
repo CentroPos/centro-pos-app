@@ -81,13 +81,16 @@ const PurchaseHeader: React.FC<PurchaseHeaderProps> = ({ onNewOrder }) => {
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!e.ctrlKey || !e.shiftKey) return
+      if (!e.ctrlKey) return
       const key = e.key.toLowerCase()
-      if (key === 'n') {
+      if (key === 'n' && !e.shiftKey) {
         e.preventDefault()
-        handleNewOrder()
-      } else if (key === 'x') {
+        e.stopPropagation()
+        const created = createNewTab()
+        if (created) onNewOrder?.()
+      } else if (key === 'x' && !e.shiftKey) {
         e.preventDefault()
+        e.stopPropagation()
         if (activeTabId) {
           handleAttemptClose(activeTabId)
         }
@@ -95,7 +98,7 @@ const PurchaseHeader: React.FC<PurchaseHeaderProps> = ({ onNewOrder }) => {
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [activeTabId, tabs])
+  }, [activeTabId, tabs, createNewTab, onNewOrder])
 
   return (
     <div className="p-3">
