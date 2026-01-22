@@ -23,6 +23,11 @@ interface POSProfile {
   custom_hide_cost_and_margin_info?: number
   custom_show_purchase_history?: number
   taxes_and_charges?: string
+  // Purchase-specific fields
+  custom_buying_price_list?: string
+  custom_purchase_taxes_and_charges?: string
+  custom_purchase_tax_rate?: number
+  custom_default_purchase_warehouse?: string
 }
 
 interface POSProfileStore {
