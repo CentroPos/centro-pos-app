@@ -227,13 +227,30 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
 
   const paymentStatus = getPaymentStatus()
 
-  // Load Amount Due from supplier (for purchase, we'll use 0.00 for now or fetch from supplier insights if available)
+  // Load Amount Due and update Order Amount when Pay dialog opens
   useEffect(() => {
-    if (!confirmOpen && !payOpen) return
+    if (!payOpen) return
     
     let cancelled = false
     const fetchAmountDue = async () => {
       try {
+        // For Pay dialog, update Order Amount to use outstanding_amount from linked_invoices[0]
+        if (currentTab?.orderData?.linked_invoices) {
+          const linkedInvoices = currentTab.orderData.linked_invoices
+          let outstandingAmount: number | null = null
+
+          if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
+            outstandingAmount = Number(linkedInvoices[0]?.outstanding_amount ?? 0)
+          } else if (typeof linkedInvoices === 'object' && !Array.isArray(linkedInvoices)) {
+            outstandingAmount = Number((linkedInvoices as any)?.outstanding_amount ?? 0)
+          }
+
+          // Update Order Amount to use outstanding_amount
+          if (outstandingAmount !== null && !cancelled) {
+            setOrderAmount(outstandingAmount.toFixed(2))
+          }
+        }
+
         // For purchase, amount due would be from supplier's outstanding invoices
         // For now, set to 0.00 (can be enhanced later with supplier insights API)
         const supplier = getCurrentTabSupplier()
@@ -252,7 +269,7 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
     }
     fetchAmountDue()
     return () => { cancelled = true }
-  }, [confirmOpen, payOpen, getCurrentTabSupplier])
+  }, [payOpen, currentTab?.orderData?.linked_invoices, getCurrentTabSupplier])
 
   // Initialize date when modal opens
   useEffect(() => {
@@ -1078,51 +1095,105 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
           className="max-w-4xl w-[90vw] bg-white border-2 shadow-2xl"
           onOpenAutoFocus={(e) => {
             e.preventDefault()
+            // Focus will be handled by useEffect
           }}
         >
-          <DialogHeader>
-            <DialogTitle>Make Payment</DialogTitle>
+          <DialogHeader className="pb-4">
+            <DialogTitle className="text-xl font-bold text-gray-800">Payment</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Payment Mode</label>
+
+          {/* Row: amounts */}
+          <div className="grid grid-cols-3 gap-4 mb-6">
+            <div className="p-4 rounded-lg bg-gray-50 border-2">
+              <div className="text-sm font-medium text-gray-700 mb-2 truncate">Order Amount</div>
+              <div className="text-lg font-semibold text-gray-900">{orderAmount}</div>
+            </div>
+            <div className="p-4 rounded-lg bg-gray-50 border-2">
+              <div className="text-sm font-medium text-gray-700 mb-2 truncate">Amount Due</div>
+              <div className="text-lg font-semibold text-gray-900">{amountDue}</div>
+            </div>
+            <div className="p-4 rounded-lg bg-gray-50 border-2">
+              <div className="text-sm font-medium text-gray-700 mb-2 truncate">Total Pending</div>
+              <div className="text-lg font-semibold text-gray-900">{totalPending}</div>
+            </div>
+          </div>
+
+          {/* Date, Mode, Amount */}
+          <div className="grid grid-cols-3 gap-4 mb-6">
+            <div>
+              <div className="text-sm font-medium text-gray-700 mb-2">Date</div>
+              <Input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="text-lg py-3"
+              />
+            </div>
+            <div>
+              <div className="text-sm font-medium text-gray-700 mb-2">Payment Mode</div>
               <Select value={paymentMode} onValueChange={(v) => setPaymentMode(v as PaymentMode)}>
-                <SelectTrigger>
-                  <SelectValue />
+                <SelectTrigger className="w-full text-sm py-3">
+                  <SelectValue placeholder="Select mode" />
                 </SelectTrigger>
-                <SelectContent>
-                  {paymentModes.map((m) => (
-                    <SelectItem key={m} value={m}>
-                      {m}
+                <SelectContent className="bg-white border-gray-200 shadow-lg">
+                  {paymentModes.map((mode) => (
+                    <SelectItem key={mode} value={mode}>
+                      {mode}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Paid Amount</label>
+            <div>
+              <div className="text-sm font-medium text-gray-700 mb-2">Amount</div>
               <Input
+                ref={amountInputRef}
+                type="number"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                placeholder="Enter amount"
-                inputMode="decimal"
                 onKeyDown={(e) => {
-                  // Move focus out of input when arrow keys are pressed at edges
-                  if (e.key === 'ArrowLeft' && (e.target as HTMLInputElement).selectionStart === 0) {
-                    e.preventDefault()
-                    ;(e.target as HTMLInputElement).blur()
-                  } else if (
-                    e.key === 'ArrowRight' &&
-                    (e.target as HTMLInputElement).selectionStart === (e.target as HTMLInputElement).value.length
-                  ) {
-                    e.preventDefault()
-                    ;(e.target as HTMLInputElement).blur()
+                  // When arrow keys are pressed, move focus out of the input
+                  if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                    // Only blur if cursor is at the edge (beginning for left/up, end for right/down)
+                    const input = e.currentTarget as HTMLInputElement
+                    const cursorPosition = input.selectionStart || 0
+                    const valueLength = input.value.length
+                    
+                    if (
+                      (e.key === 'ArrowRight' && cursorPosition === valueLength) ||
+                      (e.key === 'ArrowLeft' && cursorPosition === 0) ||
+                      e.key === 'ArrowDown' ||
+                      e.key === 'ArrowUp'
+                    ) {
+                      e.preventDefault()
+                      input.blur()
+                      // Focus the Confirm button or next logical element
+                      setTimeout(() => {
+                        const confirmButton = document.querySelector('[data-confirm-button]') as HTMLButtonElement
+                        if (confirmButton && !confirmButton.disabled) {
+                          confirmButton.focus()
+                        }
+                      }, 0)
+                    }
                   }
                 }}
+                className="text-lg py-3"
+                placeholder="Enter amount"
+                min="0"
+                step="0.01"
               />
             </div>
           </div>
-          <DialogFooter>
+
+          {/* Payment Status - Real-time calculation */}
+          <div className="mb-6 p-4 bg-gray-50 rounded-lg border-2">
+            <span className="text-sm font-medium text-gray-700 mr-3">Payment Status:</span>
+            <span className={`px-3 py-2 ${paymentStatus.color} text-sm font-medium rounded-lg`}>
+              {paymentStatus.text}
+            </span>
+          </div>
+
+          <DialogFooter className="pt-6">
             <Button variant="outline" onClick={() => setPayOpen(false)}>
               Cancel
             </Button>
@@ -1130,8 +1201,21 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
               data-confirm-button
               onClick={handleConfirmPayClick}
               disabled={isProcessingPayment || !amount || Number(amount) <= 0}
+              className={`px-8 py-3 text-lg font-semibold flex items-center gap-2 ${isProcessingPayment ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'} text-white`}
             >
-              {isProcessingPayment ? 'Processing...' : 'Pay'}
+              {isProcessingPayment ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  Processing...
+                </div>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="credit-card" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512" fill="currentColor">
+                    <path d="M64 32C28.7 32 0 60.7 0 96v32H576V96c0-35.3-28.7-64-64-64H64zM576 224H0V416c0 35.3 28.7 64 64 64H512c35.3 0 64-28.7 64-64V224zM112 352h64c8.8 0 16 7.2 16 16s-7.2 16-16 16H112c-8.8 0-16-7.2-16-16s7.2-16 16-16zm112 16c0-8.8 7.2-16 16-16H368c8.8 0 16 7.2 16 16s-7.2 16-16 16H240c-8.8 0-16-7.2-16-16z"></path>
+                  </svg>
+                  Confirm and Pay
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

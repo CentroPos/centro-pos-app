@@ -791,8 +791,6 @@ type RightPanelProps = {
   selectedCustomer?: any
   onTabChange?: (tab: string) => void
   activeTab?: 'product' | 'customer' | 'prints' | 'payments' | 'orders'
-  onAddItem?: (item: any) => void
-  onReplaceItem?: (item: any) => void
 }
 
 const RightPanel: React.FC<RightPanelProps> = ({
@@ -800,9 +798,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
   items,
   selectedCustomer,
   onTabChange,
-  activeTab: externalActiveTab,
-  onAddItem,
-  onReplaceItem
+  activeTab: externalActiveTab
 }) => {
   const [internalActiveTab, setInternalActiveTab] = useState<
     'product' | 'customer' | 'prints' | 'payments' | 'orders'
@@ -827,7 +823,6 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [currencySymbol, setCurrencySymbol] = useState('$')
   const { profile } = usePOSProfileStore()
   const hideCostAndMargin = profile?.custom_hide_cost_and_margin_info === 1
-  const showPurchaseHistory = profile?.custom_show_purchase_history === 1
 
   // Tab configuration for Purchase - Purchase History and Supplier History
   const productTabs = [
@@ -841,14 +836,6 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [isOpeningOrder, setIsOpeningOrder] = useState(false)
 
   // History state for Purchase History and Supplier History tabs
-  const [salesHistory, setSalesHistory] = useState<any[]>([])
-  const [salesHistoryLoading, setSalesHistoryLoading] = useState(false)
-  const [salesHistorySearch, setSalesHistorySearch] = useState('')
-  const [salesHistoryPage, setSalesHistoryPage] = useState(1)
-  const salesHistoryScrollRef = React.useRef<HTMLDivElement>(null)
-  const salesHasMoreRef = React.useRef(false)
-  const isFetchingSalesRef = React.useRef(false)
-
   const [customerHistory, setCustomerHistory] = useState<any[]>([])
   const [customerHistoryLoading, setCustomerHistoryLoading] = useState(false)
   const [customerHistorySearch, setCustomerHistorySearch] = useState('')
@@ -960,25 +947,6 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
         const isConfirmed = Number(orderData.docstatus) === 1
         const orderStatus = isConfirmed ? 'confirmed' : 'draft'
-
-        // Extract invoice info
-        let invoiceNumber = null
-        let invoiceStatus = null
-        let invoiceCustomReverseStatus = null
-        const linkedInvoices = orderData.linked_invoices
-
-        if (linkedInvoices) {
-          if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
-            const firstInvoice = linkedInvoices[0]
-            invoiceNumber = firstInvoice?.name || null
-            invoiceStatus = firstInvoice?.status || null
-            invoiceCustomReverseStatus = firstInvoice?.custom_reverse_status || null
-          } else if (linkedInvoices && typeof linkedInvoices === 'object' && !Array.isArray(linkedInvoices)) {
-            invoiceNumber = linkedInvoices.name || null
-            invoiceStatus = linkedInvoices.status || null
-            invoiceCustomReverseStatus = linkedInvoices.custom_reverse_status || null
-          }
-        }
 
         const enrichedOrderData = {
           ...orderData,
@@ -1368,68 +1336,6 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [mostOrderedSearch, setMostOrderedSearch] = useState('')
 
   const PAGE_LEN = 3
-  const SALES_PAGE_LEN = 4
-
-  const fetchSalesHistory = async (itemCode: string, page = salesHistoryPage, searchTerm: string = '') => {
-    if (!itemCode) {
-      console.log('🚫 Sales history fetch skipped - missing itemCode:', itemCode)
-      return
-    }
-
-    console.log('📞 Sales History API called:', {
-      itemCode,
-      page,
-      searchTerm,
-      productSubTab,
-      selectedItemId,
-      timestamp: new Date().toISOString()
-    })
-
-    if (isFetchingSalesRef.current) {
-      console.log('⚠️ Sales history fetch already in progress, skipping...')
-      return
-    }
-    isFetchingSalesRef.current = true
-    setSalesHistoryLoading(true)
-    try {
-      const apiUrl = '/api/method/centro_pos_apis.api.product.get_product_sales_history'
-      const apiParams = {
-        item_id: itemCode,
-        limit_start: page,
-        limit_page_length: SALES_PAGE_LEN,
-        search_term: searchTerm || '' // Always include search_term
-      }
-
-      console.log('📞 Sales History API request params:', apiParams)
-
-      const response = await window.electronAPI?.proxy?.request({
-        method: 'GET',
-        url: apiUrl,
-        params: apiParams
-      })
-
-      console.log('📦 Sales History API result:', response)
-
-      // Handle nested data structure: response.data.data
-      const salesData = response?.data?.data || response?.data
-      const dataArray = Array.isArray(salesData) ? salesData : (Array.isArray(response?.data?.data) ? response.data.data : [])
-
-      if (dataArray.length > 0) {
-        salesHasMoreRef.current = dataArray.length === SALES_PAGE_LEN
-        setSalesHistory(dataArray)
-      } else {
-        setSalesHistory([])
-        salesHasMoreRef.current = false
-      }
-    } catch (error) {
-      console.error('❌ Error loading sales history:', error)
-      setSalesHistory([])
-      salesHasMoreRef.current = false
-    } finally {
-      setSalesHistoryLoading(false)
-      isFetchingSalesRef.current = false
-    }
-  }
 
   const fetchCustomerHistory = async (itemCode: string, page = customerHistoryPage, searchTerm: string = '') => {
     if (!itemCode || !selectedCustomer) {
@@ -2024,9 +1930,6 @@ const RightPanel: React.FC<RightPanelProps> = ({
     return customerHistory
   }, [customerHistory])
 
-  const filteredPurchaseHistory = useMemo(() => {
-    return purchaseHistory
-  }, [purchaseHistory])
 
   const filteredRecentOrders = useMemo(() => {
     return recentOrders
