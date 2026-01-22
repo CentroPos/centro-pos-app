@@ -247,10 +247,8 @@ export function AssignPickSlipModal({
 
                 setCreatedSlip(newSlip);
                 if (onSuccess) onSuccess();
-                // Automatically close modal after successful assignment
-                setTimeout(() => {
-                    onClose();
-                }, 500); // Small delay to show success message
+                // Don't auto-close - allow user to update if needed
+                // Modal stays open so user can click "Update" button to make changes
             }
         } catch (e: any) {
             console.error("Failed to assign pick slip", e);
