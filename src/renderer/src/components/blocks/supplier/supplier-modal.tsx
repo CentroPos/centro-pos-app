@@ -164,7 +164,8 @@ const SupplierModal: React.FC<SupplierModalProps> = ({ open, onClose, onSelect }
                   <button
                     key={`${s.supplier_id}-${idx}`}
                     type="button"
-                    onClick={() => handlePick(s)}
+                    onClick={() => setSelectedIndex(idx)}
+                    onDoubleClick={() => handlePick(s)}
                     className={[
                       'w-full text-left px-4 py-3 hover:bg-muted transition-colors',
                       idx === selectedIndex ? 'bg-muted' : ''
