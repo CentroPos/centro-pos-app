@@ -28,6 +28,8 @@ interface POSProfile {
   custom_purchase_taxes_and_charges?: string
   custom_purchase_tax_rate?: number
   custom_default_purchase_warehouse?: string
+  // Allowed warehouses for returns
+  allowed_warehouses?: Array<{ name: string }>
 }
 
 interface POSProfileStore {

@@ -64,6 +64,10 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
   const [returnLoading, setReturnLoading] = useState(false)
   const [selectedItems, setSelectedItems] = useState<{ [key: string]: { selected: boolean; qty: number; originalQty: number; itemCode: string; originalSalesInvoiceItem: string } }>({})
   const [searchQuery, setSearchQuery] = useState('')
+  const [selectedWarehouse, setSelectedWarehouse] = useState<string>('')
+  
+  // Get allowed warehouses from profile
+  const allowedWarehouses = profile?.allowed_warehouses || []
   
   // Calculate selected items count
   const selectedItemsCount = Object.values(selectedItems).filter(item => item.selected).length
@@ -83,6 +87,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
       setInvoiceData(null)
       setSelectedItems({})
       setSearchQuery('')
+      setSelectedWarehouse('')
     } else {
       console.log('📋 [ReturnModal] Modal opening, checking for invoice number...')
       // When modal opens, pre-fill invoice number from store if available
@@ -106,6 +111,13 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
       }
     }
   }, [isOpen, storedInvoiceNumber, currentTab?.orderData?.linked_invoices])
+
+  // Set default warehouse when modal opens and allowed warehouses are available
+  useEffect(() => {
+    if (isOpen && allowedWarehouses.length > 0 && !selectedWarehouse) {
+      setSelectedWarehouse(allowedWarehouses[0].name)
+    }
+  }, [isOpen, allowedWarehouses, selectedWarehouse])
   
   // Also watch for invoice number updates while modal is open
   useEffect(() => {
@@ -433,6 +445,8 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
         url: '/api/method/centro_pos_apis.api.order.return_order',
         data: {
           original_invoice: invoiceData.name,
+          warehouse: selectedWarehouse || '',
+          note: '',
           items: itemsToReturn
         }
       })
@@ -621,6 +635,31 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                   </div>
                 </div>
               </div>
+
+              {/* Warehouse Selection */}
+              {allowedWarehouses.length > 0 && (
+                <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                  <label className="text-sm font-semibold text-gray-700 font-sans mb-2 block">
+                    Select Warehouse
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {allowedWarehouses.map((warehouse) => (
+                      <button
+                        key={warehouse.name}
+                        type="button"
+                        onClick={() => setSelectedWarehouse(warehouse.name)}
+                        className={`px-4 py-2 rounded-full text-sm font-medium transition-all border ${
+                          selectedWarehouse === warehouse.name
+                            ? 'bg-green-700 hover:bg-green-800 text-white border-green-700 shadow-sm'
+                            : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+                        }`}
+                      >
+                        {warehouse.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Items Table with Tabs */}
               <div className="flex-1 flex flex-col space-y-2 overflow-hidden min-h-0">
@@ -867,7 +906,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                 </Button>
                 <Button
                   onClick={handleReturnOrder}
-                  disabled={returnLoading || Object.values(selectedItems).every(item => !item.selected)}
+                  disabled={returnLoading || Object.values(selectedItems).every(item => !item.selected) || (allowedWarehouses.length > 0 && !selectedWarehouse)}
                   className="bg-orange-500 hover:bg-orange-600 text-white font-sans font-medium px-6 py-2 flex items-center gap-2"
                 >
                   {returnLoading ? (

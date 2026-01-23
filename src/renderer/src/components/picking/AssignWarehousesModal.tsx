@@ -161,20 +161,10 @@ export function AssignWarehousesModal({
 
     // Validation Logic
     const isValid = useMemo(() => {
+        // Allow assign if at least one warehouse is selected (including delivery warehouse)
         const hasSelection = operationsList.some(op => op.isCustomerPickup);
-        if (!hasSelection) return false;
-
-        const isDeliveryRow = selectedDeliveryWarehouse !== null;
-        const isDeliverySelected = isDeliveryRow && operationsList[0]?.isCustomerPickup;
-
-        // If Delivery Row is selected, NO other rows should be selected (Exclusivity)
-        if (isDeliverySelected) {
-            const othersSelected = operationsList.slice(1).some(op => op.isCustomerPickup);
-            return !othersSelected;
-        }
-
-        return true;
-    }, [operationsList, selectedDeliveryWarehouse]);
+        return hasSelection;
+    }, [operationsList]);
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
