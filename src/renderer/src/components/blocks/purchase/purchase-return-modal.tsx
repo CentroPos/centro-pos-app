@@ -180,15 +180,19 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
         
         setInvoiceData(invoiceData)
         
-        // Initialize selected items
+        // Initialize selected items with checkboxes unchecked and returnable quantities
+        // Use original_purchase_invoice_item as key to avoid multi-select issues with duplicate item codes
         const initialSelectedItems: { [key: string]: { selected: boolean; qty: number; originalQty: number; itemCode: string; originalPurchaseInvoiceItem: string } } = {}
-        invoiceData.items.forEach((item) => {
-          if (item.returnable_qty > 0) {
-            initialSelectedItems[item.item_code] = {
+        invoiceData.items.forEach((item: InvoiceItem) => {
+          // Use original_purchase_invoice_item as the key, fallback to item_code if not available
+          const key = item.original_purchase_invoice_item || item.item_code
+          if (key) {
+            const returnableQty = typeof item.returnable_qty === 'number' ? item.returnable_qty : 0
+            initialSelectedItems[key] = {
               selected: false,
-              qty: item.returnable_qty,
-              originalQty: item.returnable_qty,
-              itemCode: item.item_code,
+              qty: returnableQty, // Pre-fill with returnable quantity
+              originalQty: returnableQty,
+              itemCode: item.item_code || '',
               originalPurchaseInvoiceItem: item.original_purchase_invoice_item || ''
             }
           }
@@ -219,38 +223,112 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
     }
   }, [invoiceNumber, isOpen])
 
-  // Handle item selection
-  const handleItemToggle = (itemCode: string) => {
-    setSelectedItems((prev) => {
-      const current = prev[itemCode]
-      if (!current) return prev
+  // Handle item selection checkbox
+  // key is original_purchase_invoice_item (or item_code as fallback)
+  const handleItemSelect = (key: string, selected: boolean) => {
+    // Find the item by original_purchase_invoice_item or item_code
+    const item = invoiceData?.items?.find((it: InvoiceItem) => 
+      (it.original_purchase_invoice_item && it.original_purchase_invoice_item === key) ||
+      (!it.original_purchase_invoice_item && it.item_code === key)
+    )
+    
+    // If trying to select, check if returnable_qty is 0
+    if (selected) {
+      const returnableQty = typeof item?.returnable_qty === 'number' ? item.returnable_qty : 0
+      
+      if (returnableQty === 0) {
+        // Show error message and prevent selection
+        toast.error('Cannot select item with zero returnable quantity', {
+          position: 'bottom-right'
+        })
+        return
+      }
+    }
+    
+    setSelectedItems(prev => {
+      const currentItem = prev[key]
+      // Get returnable_qty from the item in invoiceData
+      const returnableQty = typeof item?.returnable_qty === 'number' ? item.returnable_qty : (currentItem?.originalQty ?? 0)
       return {
         ...prev,
-        [itemCode]: {
-          ...current,
-          selected: !current.selected,
-          qty: !current.selected ? current.originalQty : 0
+        [key]: {
+          ...prev[key],
+          selected,
+          originalQty: returnableQty,
+          itemCode: item?.item_code || currentItem?.itemCode || '',
+          originalPurchaseInvoiceItem: item?.original_purchase_invoice_item || currentItem?.originalPurchaseInvoiceItem || key,
+          // When selected, always auto-fill with returnable qty
+          // When deselected, keep the current qty (or returnableQty if not set)
+          qty: selected ? returnableQty : (currentItem?.qty ?? returnableQty)
         }
       }
     })
   }
 
-  // Handle quantity change
-  const handleQtyChange = (itemCode: string, newQty: number) => {
-    setSelectedItems((prev) => {
-      const current = prev[itemCode]
-      if (!current) return prev
-      const maxQty = current.originalQty
-      const qty = Math.max(0, Math.min(newQty, maxQty))
-      return {
-        ...prev,
-        [itemCode]: {
-          ...current,
-          qty,
-          selected: qty > 0
-        }
+  // Handle select all checkbox
+  const handleSelectAll = (checked: boolean) => {
+    if (!invoiceData) return
+    
+    // If trying to select all, check if any items have returnable_qty = 0
+    if (checked) {
+      const itemsWithZeroQty = invoiceData.items.filter((item: InvoiceItem) => {
+        const returnableQty = typeof item.returnable_qty === 'number' ? item.returnable_qty : 0
+        return returnableQty === 0
+      })
+      
+      if (itemsWithZeroQty.length > 0) {
+        toast.error(`Cannot select ${itemsWithZeroQty.length} item(s) with zero returnable quantity`, {
+          position: 'bottom-right'
+        })
       }
+    }
+    
+    setSelectedItems(prev => {
+      const updated: { [key: string]: { selected: boolean; qty: number; originalQty: number; itemCode: string; originalPurchaseInvoiceItem: string } } = { ...prev }
+      invoiceData.items.forEach((item: InvoiceItem) => {
+        // Use original_purchase_invoice_item as key, fallback to item_code
+        const key = item.original_purchase_invoice_item || item.item_code
+        if (key) {
+          const returnableQty = typeof item.returnable_qty === 'number' ? item.returnable_qty : 0
+          // Only select items with returnable_qty > 0
+          const shouldSelect = checked && returnableQty > 0
+          updated[key] = {
+            selected: shouldSelect,
+            qty: shouldSelect ? returnableQty : (updated[key]?.qty ?? returnableQty),
+            originalQty: returnableQty,
+            itemCode: item.item_code || '',
+            originalPurchaseInvoiceItem: item.original_purchase_invoice_item || ''
+          }
+        }
+      })
+      return updated
     })
+  }
+
+  // Check if all items are selected
+  const areAllItemsSelected = () => {
+    if (!invoiceData || invoiceData.items.length === 0) return false
+    return invoiceData.items.every((item: InvoiceItem) => {
+      const key = item.original_purchase_invoice_item || item.item_code
+      if (!key) return true
+      return selectedItems[key]?.selected === true
+    })
+  }
+
+  // Handle quantity change for selected items
+  // key is original_purchase_invoice_item (or item_code as fallback)
+  const handleQuantityChange = (key: string, qty: number) => {
+    // Convert to number and ensure it's not negative
+    const numericQty = parseFloat(qty.toString()) || 0
+    const validQty = Math.max(0, numericQty)
+    
+    setSelectedItems(prev => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        qty: validQty
+      }
+    }))
   }
 
   // Process return order
@@ -261,10 +339,12 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
     }
 
     // Get selected items with quantities
+    // Include original_purchase_invoice_item in the API call
     const itemsToReturn = Object.entries(selectedItems)
       .filter(([, itemData]) => itemData.selected && itemData.qty > 0)
       .map(([, itemData]) => ({
         original_purchase_invoice_item: itemData.originalPurchaseInvoiceItem || '',
+        item_code: itemData.itemCode,
         qty: typeof itemData.qty === 'number' ? itemData.qty : 0
       }))
 
@@ -322,198 +402,306 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
     }
   }
 
-  // Filter items based on search query
-  const filteredItems = invoiceData?.items.filter((item) =>
-    item.item_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.item_code.toLowerCase().includes(searchQuery.toLowerCase())
-  ) || []
-
-  // Get selected items for display
-  const selectedItemsList = Object.entries(selectedItems)
-    .filter(([, itemData]) => itemData.selected && itemData.qty > 0)
-    .map(([itemCode, itemData]) => {
-      const item = invoiceData?.items.find((i) => i.item_code === itemCode)
-      return item ? { ...item, selectedQty: itemData.qty } : null
-    })
-    .filter((item): item is NonNullable<typeof item> => item !== null)
-
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl w-[95vw] h-[90vh] bg-white border-2 shadow-2xl flex flex-col">
-        <DialogHeader className="flex-shrink-0">
-          <DialogTitle className="text-xl font-bold text-gray-800">Return Purchase Order</DialogTitle>
+      <DialogContent className="!max-w-[2625px] sm:!max-w-[800px] w-[98vw] h-[85vh] max-h-[900px] bg-white border-2 border-gray-200 shadow-2xl flex flex-col">
+        <DialogHeader className="pb-4 border-b border-gray-200">
+          <DialogTitle className="text-xl font-semibold text-gray-800 font-sans">
+            Process Return Purchase Order
+          </DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 overflow-hidden flex flex-col gap-4">
-          {/* Invoice Number Input */}
-          <div className="flex-shrink-0">
-            <Label htmlFor="invoice-number" className="text-sm font-medium text-gray-700">
+        <div className="flex-1 flex flex-col space-y-4 overflow-hidden">
+          {/* Invoice Number Input - Hidden but functional for auto-population */}
+          <div className="hidden">
+            <Label htmlFor="invoice-number" className="text-sm font-medium text-gray-700 font-sans">
               Purchase Invoice Number
             </Label>
             <Input
               id="invoice-number"
+              type="text"
+              placeholder="Enter purchase invoice number"
               value={invoiceNumber}
               onChange={(e) => setInvoiceNumber(e.target.value)}
-              placeholder="Enter purchase invoice number"
-              className="mt-1"
-              disabled={loading || returnLoading}
+              className="w-full font-sans border-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
             />
           </div>
 
+          {/* Loading State */}
           {loading && (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center">
-                <i className="fas fa-spinner fa-spin text-2xl text-gray-400 mb-2"></i>
-                <p className="text-sm text-gray-500">Loading return availability...</p>
+            <div className="flex items-center justify-center py-8 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-3">
+                <i className="fas fa-spinner fa-spin text-lg text-blue-500"></i>
+                <span className="text-gray-600 font-sans">Loading invoice details...</span>
               </div>
             </div>
           )}
 
-          {!loading && invoiceData && (
-            <div className="flex-1 overflow-hidden flex flex-col gap-4">
+          {/* Invoice Details */}
+          {invoiceData && !loading && (
+            <div className="flex-1 flex flex-col space-y-3 overflow-hidden">
               {/* Invoice Summary */}
-              <div className="flex-shrink-0 grid grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
-                <div>
-                  <p className="text-xs text-gray-500">Supplier</p>
-                  <p className="text-sm font-semibold">{invoiceData.supplier_name}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Invoice #</p>
-                  <p className="text-sm font-semibold">{invoiceData.name}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Date</p>
-                  <p className="text-sm font-semibold">{invoiceData.posting_date}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Grand Total</p>
-                  <p className="text-sm font-semibold">
-                    {currencySymbol} {invoiceData.grand_total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                  </p>
+              <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                <div className="grid grid-cols-2 gap-3 text-sm font-sans">
+                  <div>
+                    <span className="font-medium text-gray-600">Invoice:</span>
+                    <span className="ml-2 text-gray-800 font-medium">{invoiceData.name}</span>
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-600">Supplier:</span>
+                    <span className="ml-2 text-gray-800 font-medium">{invoiceData.supplier_name}</span>
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-600">Date:</span>
+                    <span className="ml-2 text-gray-800 font-medium">{invoiceData.posting_date}</span>
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-600">Total:</span>
+                    <span className="ml-2 text-gray-800 font-medium">{currencySymbol} {(invoiceData.grand_total || 0).toFixed(2)}</span>
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-600">Total Qty:</span>
+                    <span className="ml-2 text-gray-800 font-medium">{invoiceData.total_order_qty ?? '—'}</span>
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-600">Total Items:</span>
+                    <span className="ml-2 text-gray-800 font-medium">{invoiceData.total_unique_items ?? '—'}</span>
+                  </div>
                 </div>
               </div>
 
-              <Tabs defaultValue="items" className="flex-1 overflow-hidden flex flex-col">
-                <TabsList className="flex-shrink-0">
-                  <TabsTrigger value="items">Items ({filteredItems.length})</TabsTrigger>
-                  <TabsTrigger value="selected">
-                    Selected ({selectedItemsCount})
-                  </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="items" className="flex-1 overflow-hidden flex flex-col mt-4">
-                  {/* Search */}
-                  <div className="flex-shrink-0 mb-4">
-                    <Input
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search items..."
-                      className="w-full"
-                    />
-                  </div>
-
-                  {/* Items Table */}
-                  <div className="flex-1 overflow-auto border rounded-lg">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-12">Select</TableHead>
-                          <TableHead>Item Code</TableHead>
-                          <TableHead>Item Name</TableHead>
-                          <TableHead>UOM</TableHead>
-                          <TableHead className="text-right">Original Qty</TableHead>
-                          <TableHead className="text-right">Already Returned</TableHead>
-                          <TableHead className="text-right">Returnable Qty</TableHead>
-                          <TableHead className="text-right">Return Qty</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredItems.map((item) => {
-                          const itemData = selectedItems[item.item_code]
-                          const isSelected = itemData?.selected || false
-                          const returnQty = itemData?.qty || 0
-
-                          return (
-                            <TableRow key={item.item_code} className={isSelected ? 'bg-blue-50' : ''}>
-                              <TableCell>
+              {/* Items Table with Tabs */}
+              <div className="flex-1 flex flex-col space-y-2 overflow-hidden min-h-0">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-bold text-gray-800 font-sans">Select Items to Return</h3>
+                  {(() => {
+                    // Calculate total amount for selected items
+                    const totalAmount = invoiceData.items
+                      .filter((item) => {
+                        const selectionKey = item.original_purchase_invoice_item || item.item_code || ''
+                        return selectedItems[selectionKey]?.selected === true
+                      })
+                      .reduce((sum, item) => {
+                        const selectionKey = item.original_purchase_invoice_item || item.item_code || ''
+                        const rate = typeof item.rate === 'number' ? item.rate : 0
+                        const qty = selectedItems[selectionKey]?.qty ?? 0
+                        return sum + (rate * qty)
+                      }, 0)
+                    return (
+                      <span className="text-base font-bold text-gray-800 font-sans">
+                        Total Selected Amount: {currencySymbol} {totalAmount.toFixed(2)}
+                      </span>
+                    )
+                  })()}
+                </div>
+                
+                {/* Search Box */}
+                <div className="space-y-2">
+                  <Input
+                    type="text"
+                    placeholder="🔍 Search items by code or name..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-1/2 font-sans border-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                  />
+                </div>
+                
+                <Tabs defaultValue="items" className="flex-1 flex flex-col overflow-hidden min-h-0 relative">
+                  <TabsList className="grid w-full grid-cols-2 bg-gray-100 p-1 rounded-lg flex-shrink-0">
+                    <TabsTrigger 
+                      value="items"
+                      className="data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm font-sans"
+                    >
+                      Items
+                    </TabsTrigger>
+                    <TabsTrigger 
+                      value="selected"
+                      className="data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm font-sans relative"
+                    >
+                      Selected Items
+                      {selectedItemsCount > 0 && (
+                        <span className="ml-2 min-w-[18px] h-[18px] px-1.5 rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center">
+                          {selectedItemsCount}
+                        </span>
+                      )}
+                    </TabsTrigger>
+                  </TabsList>
+                  
+                  {/* Items Tab */}
+                  <TabsContent value="items" className="mt-2 flex-1 flex flex-col overflow-hidden min-h-0 data-[state=inactive]:hidden !relative">
+                    <div className="border-2 border-gray-200 rounded-lg overflow-hidden bg-white flex-1 flex flex-col min-h-0">
+                      <div className="overflow-y-auto overflow-x-hidden flex-1 min-h-0">
+                        <Table className="w-full">
+                          <TableHeader className="sticky top-0 bg-gray-100 z-10">
+                            <TableRow className="bg-gray-100 border-b-2 border-gray-200">
+                              <TableHead className="w-16 font-sans font-semibold text-gray-700">
                                 <Checkbox
-                                  checked={isSelected}
-                                  onCheckedChange={() => handleItemToggle(item.item_code)}
-                                  disabled={item.returnable_qty === 0}
+                                  checked={areAllItemsSelected()}
+                                  onCheckedChange={(checked) => handleSelectAll(checked as boolean)}
                                 />
-                              </TableCell>
-                              <TableCell className="font-medium">{item.item_code}</TableCell>
-                              <TableCell className="max-w-[300px] break-words overflow-wrap-break-word line-clamp-2">
-                                {item.item_name}
-                              </TableCell>
-                              <TableCell className="whitespace-nowrap">{item.uom}</TableCell>
-                              <TableCell className="text-right whitespace-nowrap">{item.original_qty || 0}</TableCell>
-                              <TableCell className="text-right whitespace-nowrap">{item.already_returned_qty || 0}</TableCell>
-                              <TableCell className="text-right whitespace-nowrap font-semibold text-green-600">
-                                {item.returnable_qty}
-                              </TableCell>
-                              <TableCell>
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  max={item.returnable_qty}
-                                  value={returnQty}
-                                  onChange={(e) => handleQtyChange(item.item_code, Number(e.target.value))}
-                                  disabled={!isSelected || item.returnable_qty === 0}
-                                  className="w-20 text-right"
-                                />
-                              </TableCell>
+                              </TableHead>
+                              <TableHead className="font-sans font-semibold text-gray-700">Item Code</TableHead>
+                              <TableHead className="font-sans font-semibold text-gray-700">Item Name</TableHead>
+                              <TableHead className="font-sans font-semibold text-gray-700">UOM</TableHead>
+                              <TableHead className="text-right font-sans font-semibold text-gray-700">Rate</TableHead>
+                              <TableHead className="text-right font-sans font-semibold text-gray-700">Returnable Qty</TableHead>
                             </TableRow>
-                          )
-                        })}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="selected" className="flex-1 overflow-hidden flex flex-col mt-4">
-                  <div className="flex-1 overflow-auto border rounded-lg">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Item Code</TableHead>
-                          <TableHead>Item Name</TableHead>
-                          <TableHead>UOM</TableHead>
-                          <TableHead className="text-right">Return Qty</TableHead>
-                          <TableHead className="text-right">Rate</TableHead>
-                          <TableHead className="text-right">Amount</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {selectedItemsList.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={6} className="text-center text-gray-500 py-8">
-                              No items selected for return
-                            </TableCell>
-                          </TableRow>
-                        ) : (
-                          selectedItemsList.map((item) => (
-                            <TableRow key={item.item_code}>
-                              <TableCell className="font-medium">{item.item_code}</TableCell>
-                              <TableCell className="max-w-[300px] break-words overflow-wrap-break-word line-clamp-2">
-                                {item.item_name}
-                              </TableCell>
-                              <TableCell className="whitespace-nowrap">{item.uom}</TableCell>
-                              <TableCell className="text-right whitespace-nowrap">{item.selectedQty}</TableCell>
-                              <TableCell className="text-right whitespace-nowrap">
-                                {currencySymbol} {Number(item.rate || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                              </TableCell>
-                              <TableCell className="text-right whitespace-nowrap font-semibold">
-                                {currencySymbol} {(Number(item.rate || 0) * item.selectedQty).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                              </TableCell>
+                          </TableHeader>
+                          <TableBody>
+                            {invoiceData.items
+                              .filter((item) => {
+                                if (!searchQuery.trim()) return true
+                                const searchLower = searchQuery.toLowerCase().trim()
+                                const itemCode = (item.item_code || '').toLowerCase()
+                                const itemName = (item.item_name || '').toLowerCase()
+                                return itemCode.includes(searchLower) || itemName.includes(searchLower)
+                              })
+                              .map((item, index) => {
+                                // Safely extract item data with fallbacks
+                                const itemCode = item.item_code || `item-${index}`
+                                const itemName = item.item_name || 'Unknown Item'
+                                const uom = item.uom || 'Nos'
+                                const rate = typeof item.rate === 'number' ? item.rate : 0
+                                const returnableQty = typeof item.returnable_qty === 'number' ? item.returnable_qty : 0
+                                // Use original_purchase_invoice_item as key for selection, fallback to item_code
+                                const selectionKey = item.original_purchase_invoice_item || itemCode
+                                
+                                return (
+                                  <TableRow key={index} className="hover:bg-gray-50 border-b border-gray-100">
+                                    <TableCell className="py-3">
+                                      <Checkbox
+                                        checked={selectedItems[selectionKey]?.selected || false}
+                                        onCheckedChange={(checked) => 
+                                          handleItemSelect(selectionKey, checked as boolean)
+                                        }
+                                      />
+                                    </TableCell>
+                                    <TableCell className="font-medium font-sans text-gray-800 text-xs whitespace-nowrap" style={{ fontSize: '0.75rem' }}>{itemCode}</TableCell>
+                                    <TableCell className="font-sans text-gray-700 text-xs max-w-[300px]" style={{ fontSize: '0.75rem', wordBreak: 'break-word', overflowWrap: 'break-word', lineHeight: '1.4' }} title={itemName}>
+                                      <div className="line-clamp-2">{itemName}</div>
+                                    </TableCell>
+                                    <TableCell className="font-sans text-gray-700 text-left whitespace-nowrap">{uom}</TableCell>
+                                    <TableCell className="text-right font-sans text-gray-700 whitespace-nowrap">{rate.toFixed(2)}</TableCell>
+                                    <TableCell className="text-right font-sans text-gray-700 whitespace-nowrap">{returnableQty}</TableCell>
+                                  </TableRow>
+                                )
+                              })}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
+                  </TabsContent>
+                  
+                  {/* Selected Items Tab */}
+                  <TabsContent value="selected" className="mt-2 flex-1 flex flex-col overflow-hidden min-h-0 data-[state=inactive]:hidden !relative">
+                    <div className="border-2 border-gray-200 rounded-lg overflow-hidden bg-white flex-1 flex flex-col min-h-0">
+                      <div className="overflow-y-auto overflow-x-hidden flex-1 min-h-0">
+                        <Table className="w-full">
+                          <TableHeader className="sticky top-0 bg-gray-100 z-10">
+                            <TableRow className="bg-gray-100 border-b-2 border-gray-200">
+                              <TableHead className="font-sans font-semibold text-gray-700">Item Code</TableHead>
+                              <TableHead className="font-sans font-semibold text-gray-700">Item Name</TableHead>
+                              <TableHead className="font-sans font-semibold text-gray-700">UOM</TableHead>
+                              <TableHead className="text-right font-sans font-semibold text-gray-700">Rate</TableHead>
+                              <TableHead className="text-right font-sans font-semibold text-gray-700">Returnable Qty</TableHead>
+                              <TableHead className="text-right font-sans font-semibold text-gray-700">Qty</TableHead>
                             </TableRow>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </TabsContent>
-              </Tabs>
+                          </TableHeader>
+                          <TableBody>
+                            {invoiceData.items
+                              .filter((item) => {
+                                const selectionKey = item.original_purchase_invoice_item || item.item_code || ''
+                                const isSelected = selectedItems[selectionKey]?.selected === true
+                                if (!isSelected) return false
+                                
+                                // Apply search filter
+                                if (!searchQuery.trim()) return true
+                                const searchLower = searchQuery.toLowerCase().trim()
+                                const itemCode = (item.item_code || '').toLowerCase()
+                                const itemName = (item.item_name || '').toLowerCase()
+                                return itemCode.includes(searchLower) || itemName.includes(searchLower)
+                              })
+                              .map((item, index) => {
+                                // Safely extract item data with fallbacks
+                                const itemCode = item.item_code || `item-${index}`
+                                const itemName = item.item_name || 'Unknown Item'
+                                const uom = item.uom || 'Nos'
+                                const rate = typeof item.rate === 'number' ? item.rate : 0
+                                // Use original_purchase_invoice_item as key for selection, fallback to item_code
+                                const selectionKey = item.original_purchase_invoice_item || itemCode
+                                const returnableQty = typeof item.returnable_qty === 'number' ? item.returnable_qty : (selectedItems[selectionKey]?.originalQty ?? 0)
+                                const returnQty = selectedItems[selectionKey]?.qty ?? returnableQty
+                                
+                                return (
+                                  <TableRow key={index} className="hover:bg-gray-50 border-b border-gray-100">
+                                    <TableCell className="font-medium font-sans text-gray-800 text-xs whitespace-nowrap" style={{ fontSize: '0.75rem' }}>{itemCode}</TableCell>
+                                    <TableCell className="font-sans text-gray-700 text-xs max-w-[300px]" style={{ fontSize: '0.75rem', wordBreak: 'break-word', overflowWrap: 'break-word', lineHeight: '1.4' }} title={itemName}>
+                                      <div className="line-clamp-2">{itemName}</div>
+                                    </TableCell>
+                                    <TableCell className="font-sans text-gray-700 text-left whitespace-nowrap">{uom}</TableCell>
+                                    <TableCell className="text-right font-sans text-gray-700 whitespace-nowrap">{rate.toFixed(2)}</TableCell>
+                                    <TableCell className="text-right font-sans text-gray-700 whitespace-nowrap">{returnableQty}</TableCell>
+                                    <TableCell className="text-right">
+                                      <div className="flex justify-end">
+                                        <Input
+                                          type="number"
+                                          min="0"
+                                          max={returnableQty}
+                                          value={returnQty.toString()}
+                                          onChange={(e) => {
+                                            const inputValue = e.target.value
+                                            // Allow empty string for clearing, or parse as number
+                                            if (inputValue === '') {
+                                              handleQuantityChange(selectionKey, 0)
+                                            } else {
+                                              const numericValue = parseFloat(inputValue)
+                                              if (!isNaN(numericValue)) {
+                                                handleQuantityChange(selectionKey, numericValue)
+                                              }
+                                            }
+                                          }}
+                                          onBlur={(e) => {
+                                            // Ensure we have a valid number on blur
+                                            const value = parseFloat(e.target.value) || 0
+                                            // Ensure value doesn't exceed returnable qty
+                                            const validValue = Math.min(value, returnableQty)
+                                            handleQuantityChange(selectionKey, validValue)
+                                          }}
+                                          className="w-20 text-right font-sans border-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                                          placeholder="0"
+                                        />
+                                      </div>
+                                    </TableCell>
+                                  </TableRow>
+                                )
+                              })}
+                            {invoiceData.items.filter((item) => {
+                              const selectionKey = item.original_purchase_invoice_item || item.item_code || ''
+                              const isSelected = selectedItems[selectionKey]?.selected === true
+                              if (!isSelected) return false
+                              
+                              // Apply search filter
+                              if (!searchQuery.trim()) return true
+                              const searchLower = searchQuery.toLowerCase().trim()
+                              const itemCode = (item.item_code || '').toLowerCase()
+                              const itemName = (item.item_name || '').toLowerCase()
+                              return itemCode.includes(searchLower) || itemName.includes(searchLower)
+                            }).length === 0 && (
+                              <TableRow>
+                                <TableCell colSpan={6} className="text-center py-8 text-gray-500 font-sans">
+                                  {searchQuery.trim() 
+                                    ? 'No selected items match your search.'
+                                    : 'No items selected. Please select items from the "Items" tab.'}
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
+                  </TabsContent>
+                </Tabs>
+              </div>
 
               {/* Action Buttons */}
               <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 flex-shrink-0">
@@ -547,12 +735,6 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
               </div>
             </div>
           )}
-
-          {!loading && !invoiceData && invoiceNumber && (
-            <div className="flex-1 flex items-center justify-center">
-              <p className="text-sm text-gray-500">Enter a purchase invoice number to view returnable items</p>
-            </div>
-          )}
         </div>
       </DialogContent>
     </Dialog>
@@ -560,4 +742,6 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
 }
 
 export default PurchaseReturnModal
+
+
 
