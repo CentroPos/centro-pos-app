@@ -865,46 +865,42 @@ const RightPanel: React.FC<RightPanelProps> = ({
     // Open order directly (from orders tab)
     setIsOpeningOrder(true)
     try {
-      console.log('📦 Opening order:', orderId)
+      console.log('📦 Opening purchase order:', orderId)
       const res = await window.electronAPI?.proxy.request({
-        url: '/api/method/centro_pos_apis.api.order.get_sales_order_details',
+        url: '/api/method/centro_pos_apis.api.purchase.get_purchase_order_details',
         params: {
-          sales_order_id: String(orderId)
+          purchase_order_id: String(orderId)
         }
       })
       const orderData = res?.data?.data || null
 
       if (orderData) {
-        const customerId = orderData.customer || null
+        const supplierId = orderData.supplier || null
 
         // Fetch all related data in parallel
-        console.log('📞 API Call: get_customer_details (Order Open)', {
-          url: '/api/method/centro_pos_apis.api.customer.get_customer_details',
-          params: { customer_id: customerId }
+        console.log('📞 API Call: supplier_details (Order Open)', {
+          url: '/api/method/centro_pos_apis.api.supplier.supplier_details',
+          params: { supplier_id: supplierId }
         })
-        const [customerDetailsRes, customerInsightsRes, recentOrdersRes, mostOrderedRes] = await Promise.allSettled([
-          customerId ? window.electronAPI?.proxy?.request({
-            url: '/api/method/centro_pos_apis.api.customer.get_customer_details',
-            params: { customer_id: customerId }
+        const [supplierDetailsRes, recentOrdersRes, mostOrderedRes] = await Promise.allSettled([
+          supplierId ? window.electronAPI?.proxy?.request({
+            url: '/api/method/centro_pos_apis.api.supplier.supplier_details',
+            params: { supplier_id: supplierId }
           }).then((res) => {
-            console.log('📥 API Response: get_customer_details (Order Open)', {
+            console.log('📥 API Response: supplier_details (Order Open)', {
               fullResponse: res,
               data: res?.data,
-              customerData: res?.data?.data
+              supplierData: res?.data?.data
             })
             return res
           }) : Promise.resolve(null),
-          customerId ? window.electronAPI?.proxy?.request({
-            url: '/api/method/centro_pos_apis.api.customer.customer_amount_insights',
-            params: { customer_id: customerId, limit_start: 1, limit_page_length: 4 }
+          supplierId ? window.electronAPI?.proxy?.request({
+            url: '/api/method/centro_pos_apis.api.supplier.supplier_recent_orders',
+            params: { supplier_id: supplierId, limit_start: 1, limit_page_length: 3 }
           }) : Promise.resolve(null),
-          customerId ? window.electronAPI?.proxy?.request({
-            url: '/api/method/centro_pos_apis.api.customer.get_customer_recent_orders',
-            params: { customer_id: customerId, limit_start: 1, limit_page_length: 3 }
-          }) : Promise.resolve(null),
-          customerId ? window.electronAPI?.proxy?.request({
-            url: '/api/method/centro_pos_apis.api.customer.get_customer_most_ordered_products',
-            params: { customer_id: customerId, limit_start: 1, limit_page_length: 3 }
+          supplierId ? window.electronAPI?.proxy?.request({
+            url: '/api/method/centro_pos_apis.api.supplier.get_supplier_most_ordered_products',
+            params: { supplier_id: supplierId, limit_start: 1, limit_page_length: 3 }
           }) : Promise.resolve(null)
         ])
 
@@ -951,8 +947,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
         const enrichedOrderData = {
           ...orderData,
           _relatedData: {
-            customerDetails: customerDetailsRes.status === 'fulfilled' ? customerDetailsRes.value?.data?.data : null,
-            customerInsights: customerInsightsRes.status === 'fulfilled' ? customerInsightsRes.value?.data?.data : null,
+            supplierDetails: supplierDetailsRes.status === 'fulfilled' ? supplierDetailsRes.value?.data?.data : null,
             recentOrders: recentOrdersRes.status === 'fulfilled' ? recentOrdersRes.value?.data?.data : null,
             mostOrdered: mostOrderedRes.status === 'fulfilled' ? mostOrderedRes.value?.data?.data : null,
             itemHistories: itemHistories
@@ -1533,8 +1528,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
     if (selectedItemId) {
       if (productSubTab === 'purchase-history') {
-        console.log('🔄 Purchase History tab active, fetching purchase history...')
-        fetchPurchaseHistory(selectedItemId, purchaseHistoryPage, purchaseHistorySearch)
+          console.log('🔄 Purchase History tab active, fetching purchase history...')
+          fetchPurchaseHistory(selectedItemId, purchaseHistoryPage, purchaseHistorySearch)
       } else if (productSubTab === 'supplier-history') {
         console.log('🔄 Supplier History tab active, fetching supplier history...')
         fetchCustomerHistory(selectedItemId, customerHistoryPage, customerHistorySearch)
@@ -2123,36 +2118,15 @@ const RightPanel: React.FC<RightPanelProps> = ({
         setOrdersLoading(true)
         setOrdersError(null)
 
-        // Resolve customer_id via customer list API
-        console.log('📞 Recent Orders: Resolving customer_id via customer list API...')
-        const customerListRes = await window.electronAPI?.proxy?.request({
-          url: '/api/method/centro_pos_apis.api.customer.customer_list',
-          params: {
-            search_term: '',
-            limit_start: 1,
-            limit_page_length: 50
-          }
-        })
-
-        const customers = customerListRes?.data?.data || []
-        const matchingCustomer = customers.find(
-          (c: any) => c.customer_name === selectedCustomer.name
-        )
-
-        if (!matchingCustomer) {
-          console.log('❌ Recent Orders: Customer not found in system')
-          setOrdersError('Customer not found in system')
-          return
-        }
-
-        const customerId = matchingCustomer.name
+        // Use supplier name directly as supplier_id (API expects supplier name like "Supplier 1")
+        const supplierId = selectedCustomer.name
         const recentOrdersParams = {
-          customer_id: customerId,
+          supplier_id: supplierId,
           limit_start: page,
           limit_page_length: PAGE_LEN_LOCAL,
           search_term: searchTerm || '' // Always include search_term
         }
-        const apiUrl = '/api/method/centro_pos_apis.api.customer.get_customer_recent_orders'
+        const apiUrl = '/api/method/centro_pos_apis.api.supplier.supplier_recent_orders'
         console.log('📞 Recent Orders API Call:')
         console.log('   URL:', apiUrl)
         console.log('   Params:', JSON.stringify(recentOrdersParams, null, 2))
@@ -2182,9 +2156,9 @@ const RightPanel: React.FC<RightPanelProps> = ({
           if (orders.length === PAGE_LEN_LOCAL) {
             try {
               const probe = await window.electronAPI?.proxy?.request({
-                url: '/api/method/centro_pos_apis.api.customer.get_customer_recent_orders',
+                url: '/api/method/centro_pos_apis.api.supplier.supplier_recent_orders',
                 params: {
-                  customer_id: customerId,
+                  supplier_id: supplierId,
                   limit_start: page + 1,
                   limit_page_length: PAGE_LEN_LOCAL,
                   search_term: searchTerm || '' // Always include search_term
@@ -2287,27 +2261,15 @@ const RightPanel: React.FC<RightPanelProps> = ({
       try {
         setMostLoading(true)
         setMostError(null)
-        // Resolve customer_id via customer list API
-        console.log('📞 Most Ordered: Resolving customer_id via customer list API...')
-        const listRes = await window.electronAPI?.proxy?.request({
-          url: '/api/method/centro_pos_apis.api.customer.customer_list',
-          params: { search_term: '', limit_start: 1, limit_page_length: 50 }
-        })
-        const list = listRes?.data?.data || []
-        const match = list.find((c: any) => c.customer_name === selectedCustomer.name)
-        const customerId = match?.name
-        if (!customerId) {
-          console.log('❌ Most Ordered: Customer not found in system')
-          setMostOrdered([])
-          return
-        }
+        // Use supplier name directly as supplier_id (API expects supplier name like "Supplier 1")
+        const supplierId = selectedCustomer.name
         const mostOrderedParams = {
-          customer_id: customerId,
+          supplier_id: supplierId,
           limit_start: page,
           limit_page_length: PAGE_LEN_LOCAL,
           search_term: searchTerm || '' // Always include search_term
         }
-        const apiUrl = '/api/method/centro_pos_apis.api.customer.get_customer_most_ordered_products'
+        const apiUrl = '/api/method/centro_pos_apis.api.supplier.get_supplier_most_ordered_products'
         console.log('📞 Most Ordered API Call:')
         console.log('   URL:', apiUrl)
         console.log('   Params:', JSON.stringify(mostOrderedParams, null, 2))
@@ -2336,9 +2298,9 @@ const RightPanel: React.FC<RightPanelProps> = ({
           if (items.length === PAGE_LEN_LOCAL) {
             try {
               const probe = await window.electronAPI?.proxy?.request({
-                url: '/api/method/centro_pos_apis.api.customer.get_customer_most_ordered_products',
+                url: '/api/method/centro_pos_apis.api.supplier.get_supplier_most_ordered_products',
                 params: {
-                  customer_id: customerId,
+                  supplier_id: supplierId,
                   limit_start: page + 1,
                   limit_page_length: PAGE_LEN_LOCAL,
                   search_term: searchTerm || '' // Always include search_term
@@ -2438,11 +2400,11 @@ const RightPanel: React.FC<RightPanelProps> = ({
       // Always bypass cache when switching to customer tab to get fresh insights
       const preFetched = currentTab?.orderData?._relatedData
 
-      if ((preFetched?.customerDetails || preFetched?.customerInsights) && !shouldBypassCache) {
-        console.log('✅ Using pre-fetched customer data from order')
+      if (preFetched?.supplierDetails && !shouldBypassCache) {
+        console.log('✅ Using pre-fetched supplier data from order')
         if (!cancelled) {
-          setCustomerDetails(preFetched.customerDetails || null)
-          setCustomerInsights(preFetched.customerInsights || null)
+          setCustomerDetails(preFetched.supplierDetails || null)
+          setCustomerInsights(preFetched.supplierInsights || null)
           setCustomerDetailsLoading(false)
 
           // Set _lastKnownStatus and _lastKnownOrderId so we can detect changes later
@@ -2478,8 +2440,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
           ...currentTab.orderData,
           _relatedData: {
             ...currentTab.orderData._relatedData,
-            customerInsights: null,
-            customerDetails: null
+            supplierDetails: null
           }
         }
         updateTabOrderData(currentTab.id, updatedOrderData)
@@ -2489,71 +2450,76 @@ const RightPanel: React.FC<RightPanelProps> = ({
         setCustomerDetailsLoading(true)
         setCustomerDetailsError(null)
 
-        // Step 1: Get customer ID from customer list
-        const listRes = await window.electronAPI?.proxy?.request({
-          url: '/api/method/centro_pos_apis.api.customer.customer_list',
-          params: { search_term: '', limit_start: 1, limit_page_length: 50 }
-        })
-        const list = listRes?.data?.data || []
-        const match = list.find((c: any) => c.customer_name === selectedCustomer.name)
-        const customerId = match?.name
+        // Step 1: Use supplier name directly as supplier_id (API expects supplier name like "Supplier 1")
+        const supplierId = selectedCustomer.name
 
-        if (!customerId) {
-          console.log('❌ Customer ID not found for:', selectedCustomer.name)
-          setCustomerDetails(null)
-          setCustomerInsights(null)
-          setCustomerDetailsLoading(false)
-          resolveCustomerBypass('details')
-          return
-        }
+        console.log('✅ Using supplier name as supplier_id:', supplierId)
 
-        console.log('✅ Found customer ID:', customerId, 'for customer:', selectedCustomer.name)
-
-        // Step 2: Fetch customer details
-        console.log('📞 API Call: get_customer_details', {
-          url: '/api/method/centro_pos_apis.api.customer.get_customer_details',
-          params: { customer_id: customerId }
+        // Step 2: Fetch supplier details
+        console.log('📞 API Call: supplier_details', {
+          url: '/api/method/centro_pos_apis.api.supplier.supplier_details',
+          params: { supplier_id: supplierId }
         })
         const detailsRes = await window.electronAPI?.proxy?.request({
-          url: '/api/method/centro_pos_apis.api.customer.get_customer_details',
-          params: { customer_id: customerId }
+          url: '/api/method/centro_pos_apis.api.supplier.supplier_details',
+          params: { supplier_id: supplierId }
         })
-        console.log('📥 API Response: get_customer_details', {
+        console.log('📥 API Response: supplier_details', {
           fullResponse: detailsRes,
           data: detailsRes?.data,
-          customerData: detailsRes?.data?.data
+          supplierData: detailsRes?.data?.data
         })
 
-        // Step 3: Fetch customer insights
-        const insightsRes = await window.electronAPI?.proxy?.request({
-          url: '/api/method/centro_pos_apis.api.customer.customer_amount_insights',
-          params: { customer_id: customerId }
+        // Step 3: Fetch supplier amount insights
+        console.log('📞 API Call: supplier_amount_insights', {
+          url: '/api/method/centro_pos_apis.api.supplier.supplier_amount_insights',
+          params: { supplier_id: supplierId }
         })
+        let insights = null
+        try {
+          const insightsRes = await window.electronAPI?.proxy?.request({
+            url: '/api/method/centro_pos_apis.api.supplier.supplier_amount_insights',
+            params: { supplier_id: supplierId }
+          })
+          console.log('📥 API Response: supplier_amount_insights', {
+            fullResponse: insightsRes,
+            data: insightsRes?.data,
+            insightsData: insightsRes?.data?.data
+          })
+          // Handle response structure: could be insightsRes?.data?.data or insightsRes?.data
+          insights = insightsRes?.data?.data || insightsRes?.data || null
+          console.log('✅ Parsed insights:', insights)
+        } catch (insightsError: any) {
+          console.error('❌ Error fetching supplier insights:', insightsError)
+          // Don't fail the whole operation if insights fail, just log it
+          insights = null
+        }
 
         if (!cancelled) {
           const details = detailsRes?.data?.data || null
-          const insights = insightsRes?.data?.data || null
-          console.log('✅ Customer details loaded:', {
+          console.log('✅ Supplier details loaded:', {
             hasDetails: !!details,
             hasInsights: !!insights,
-            customerName: details?.customer_name || selectedCustomer.name
+            supplierName: details?.supplier_name || selectedCustomer.name,
+            insightsKeys: insights ? Object.keys(insights) : []
           })
           setCustomerDetails(details)
           setCustomerInsights(insights)
 
-          // Update orderData with fresh insights and track status/orderId
-          if (currentTab?.id && currentTab?.orderData) {
+          // Update orderData with fresh supplier details and insights, and track status/orderId
+          if (currentTab?.id && currentTab?.orderData && detailsRes) {
             const updatedOrderData = {
               ...currentTab.orderData,
               _relatedData: {
                 ...currentTab.orderData._relatedData,
-                customerInsights: insightsRes?.data?.data || null,
-                customerDetails: detailsRes?.data?.data || null
+                supplierDetails: (detailsRes as any)?.data?.data || null,
+                supplierInsights: insights || null
               },
               _lastKnownStatus: currentTab.status,
               _lastKnownOrderId: currentTab.orderId
             }
             updateTabOrderData(currentTab.id, updatedOrderData)
+            console.log('💾 Cached supplier insights in orderData:', insights)
           }
         }
       } catch (e: any) {
@@ -2902,43 +2868,13 @@ const RightPanel: React.FC<RightPanelProps> = ({
               <div className="p-4 border-b border-gray-200/60 bg-white/90">
                 <h4 className="font-bold text-gray-800 mb-3">Pricing & Stock</h4>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl">
-                    <div className="text-xs text-gray-600">Unit Price</div>
-                    <div className="font-bold text-blue-600">
-                      {currencySymbol} {productData.standard_rate.toFixed(2)}
-                    </div>
-                  </div>
-                  <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50/40 rounded-xl">
-                    <div className="space-y-1">
-                      <div className="text-sm">
-                        <span className="text-gray-600">Min Price: </span>
-                        <span className="font-bold text-purple-600">
-                          {currencySymbol} {productData.min_price.toFixed(2)}
-                        </span>
-                      </div>
-                      <div className="text-sm">
-                        <span className="text-gray-600">Max Price: </span>
-                        <span className="font-bold text-blue-600">
-                          {currencySymbol} {productData.max_price.toFixed(2)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
                   {!hideCostAndMargin && (
-                    <>
-                      <div className="p-3 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl">
-                        <div className="text-xs text-gray-600">Cost</div>
-                        <div className="font-bold text-orange-600">
-                          {currencySymbol} {productData.cost.toFixed(2)}
-                        </div>
+                    <div className="p-3 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl">
+                      <div className="text-xs text-gray-600">Cost</div>
+                      <div className="font-bold text-orange-600">
+                        {currencySymbol} {productData.cost.toFixed(2)}
                       </div>
-                      <div className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl">
-                        <div className="text-xs text-gray-600">Margin</div>
-                        <div className="font-bold text-purple-600">
-                          {productData.margin.toFixed(1)}%
-                        </div>
-                      </div>
-                    </>
+                    </div>
                   )}
                   <div className="p-3 bg-gradient-to-r from-green-50 to-green-50/50 rounded-xl col-span-2">
                     <div className="text-xs text-gray-600">Available Qty</div>
@@ -2956,17 +2892,6 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       ) : (
                         <span className="font-bold text-gray-500 opacity-80">{productData.on_hand} <span className="text-[12px]">({productData.on_hand_uom || 'units'})</span></span>
                       )}
-                    </div>
-                  </div>
-                  <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl">
-                    <div className="text-xs text-gray-600">Reserved Quantity</div>
-                    <div className="font-bold text-gray-600">
-                      {productListLoading ? (
-                        <div className="font-bold text-gray-500">Loading...</div>
-                      ) : (
-                        <span className="font-bold text-gray-500 opacity-80">{productData.reserved_qty} <span className="text-[12px]">({productData.on_hand_uom || 'units'})</span></span>
-                      )}
-
                     </div>
                   </div>
                 </div>
@@ -3447,7 +3372,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
             )}
             {!customerDetailsLoading && !customerDetailsError && customerDetails &&
               typeof customerDetails === 'object' &&
-              (customerDetails.customer_name || customerDetails.name) &&
+              (customerDetails.supplier_name || customerDetails.customer_name || customerDetails.name) &&
               !customerDetails.status &&
               !customerDetails.message && (
                 <>
@@ -3461,19 +3386,19 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       <div className="flex-1">
                         <div className="flex items-center justify-between gap-3">
                           <h3 className="font-bold text-lg">
-                            {String(customerDetails.customer_name || customerDetails.name || '')}
+                            {String(customerDetails.supplier_name || customerDetails.customer_name || customerDetails.name || '')}
                           </h3>
                           <button
                             type="button"
                             onClick={() => triggerTabRefresh('customer')}
                             className="inline-flex items-center justify-center rounded-full p-2 text-gray-500 hover:text-black hover:bg-gray-100 transition-colors"
-                            title="Refresh customer data"
+                            title="Refresh supplier data"
                           >
                             <RefreshCcw className="h-4 w-4" />
                           </button>
                         </div>
                         <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">VAT: {String(customerDetails.tax_id || 'Not Applicable')}</p>
-                        <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">Type: {String(customerDetails.customer_type || '—')}</p>
+                        <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">Type: {String(customerDetails.supplier_type || customerDetails.customer_type || '—')}</p>
                         <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">Mobile: {String(customerDetails.mobile_no || '—')}</p>
                         <p style={{ fontSize: '12px' }} className="text-sm text-gray-600">
                           ADDRESS:{' '}
@@ -3608,17 +3533,25 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     </div>
                   </div>
 
+                  {/* Supplier Insights - Always show when customerDetails exists */}
+                  {(() => {
+                    console.log('🔍 Rendering insights section:', {
+                      hasCustomerDetails: !!customerDetails,
+                      hasCustomerInsights: !!customerInsights,
+                      customerInsights: customerInsights,
+                      customerInsightsKeys: customerInsights ? Object.keys(customerInsights) : []
+                    })
+                    return null
+                  })()}
                   <div className="grid grid-cols-2 gap-3">
                     <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl">
                       <div className="text-xs text-gray-600">Total Invoiced</div>
                       <div className="font-bold text-blue-600">
                         {(() => {
-                          const inv = Number(customerInsights?.total_invoice_amount ?? 0)
-                          const ret = Number(customerInsights?.total_return_amount ?? 0)
-                          const net = inv - ret
-                          if (isNaN(net)) return '0.00'
-                          const formattedValue = Math.abs(net).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                          return net < 0 ? `-${formattedValue}` : formattedValue
+                          const value = Number(customerInsights?.total_invoice_amount ?? 0)
+                          if (isNaN(value)) return '0.00'
+                          const formattedValue = Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                          return value < 0 ? `-${formattedValue}` : formattedValue
                         })()}{' '}{currencySymbol}
                       </div>
                     </div>
@@ -3648,62 +3581,49 @@ const RightPanel: React.FC<RightPanelProps> = ({
                           : ''}
                       </div>
                       <div className="font-bold text-green-600">
-                        {(customerInsights?.last_payment_amount?.toLocaleString() || '0.00')}{' '}{currencySymbol}
+                        {(() => {
+                          const value = Number(customerInsights?.last_payment_amount ?? 0)
+                          if (isNaN(value)) return '0.00'
+                          return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                        })()}{' '}{currencySymbol}
                       </div>
                     </div>
                     <div className="p-3 bg-gradient-to-r from-blue-50 to-yellow-50 rounded-xl">
-                      <div className="text-xs text-gray-600">Credit Limit</div>
+                      <div className="text-xs text-gray-600">Total Invoices</div>
                       <div className="font-bold text-orange-600">
-                        {(() => {
-                          const value = Number(customerInsights?.total_credit_limit ?? 0)
-                          if (isNaN(value)) return '0.00'
-                          const formattedValue = Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                          return value < 0 ? `-${formattedValue}` : formattedValue
-                        })()}{' '}{currencySymbol}
+                        {customerInsights?.total_invoices?.toLocaleString() || '0'}
                       </div>
                     </div>
                     <div className="p-3 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl">
-                      <div className="text-xs text-gray-600">Available Credit Limit</div>
+                      <div className="text-xs text-gray-600">Total Debit Notes</div>
                       <div className="font-bold text-orange-600">
-                        {(() => {
-                          const value = Number(customerInsights?.available_credit_limit ?? 0)
-                          if (isNaN(value)) return '0.00'
-                          const formattedValue = Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                          return value < 0 ? `-${formattedValue}` : formattedValue
-                        })()}{' '}{currencySymbol}
+                        {customerInsights?.total_debit_notes?.toLocaleString() || '0'}
                       </div>
                     </div>
                     <div className="p-3 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl">
-                      <div className="text-xs text-gray-600">Deposit Insights</div>
+                      <div className="text-xs text-gray-600">Total Order Count</div>
                       <div className="font-bold text-emerald-600">
-                        {(() => {
-                          const value = Number(customerInsights?.advance_balance ?? 0)
-                          if (isNaN(value)) return '0.00'
-                          const formattedValue = Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                          return value < 0 ? `-${formattedValue}` : formattedValue
-                        })()}{' '}{currencySymbol}
+                        {customerInsights?.total_order_count?.toLocaleString() || '0'}
                       </div>
                     </div>
                     <div className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl">
                       <div className="text-[10px] text-gray-600">Returns vs Invoices</div>
                       <div className="flex flex-col gap-1 mt-1">
                         <span className="text-[11px] font-semibold text-purple-700">
-                          Returns:{' '}
-                          {(() => {
+                          Returns: {customerInsights?.total_return_orders?.toLocaleString() || '0'} ({(() => {
                             const value = Number(customerInsights?.total_return_amount ?? 0)
                             if (isNaN(value)) return '0'
                             const formattedValue = Math.abs(value).toLocaleString('en-US')
                             return value < 0 ? `-${formattedValue}` : formattedValue
-                          })()}{' '}{currencySymbol}
+                          })()}{' '}{currencySymbol})
                         </span>
                         <span className="text-[11px] font-semibold text-blue-600">
-                          Invoices:{' '}
-                          {(() => {
+                          Invoices: {customerInsights?.total_invoices?.toLocaleString() || '0'} ({(() => {
                             const value = Number(customerInsights?.total_invoice_amount ?? 0)
                             if (isNaN(value)) return '0'
                             const formattedValue = Math.abs(value).toLocaleString('en-US')
                             return value < 0 ? `-${formattedValue}` : formattedValue
-                          })()}{' '}{currencySymbol}
+                          })()}{' '}{currencySymbol})
                         </span>
                       </div>
                     </div>
@@ -4360,8 +4280,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     !ordersError &&
                     filteredRecentOrders.length > 0 &&
                     filteredRecentOrders.map((order, index) => {
-                      // Extract order ID
-                      const orderId = order.sales_order_id || order.sales_order_no || order.invoice_no || order.name
+                      // Extract order ID - use purchase_order_no for purchase orders
+                      const orderId = order.purchase_order_no || order.purchase_order_id || order.invoice_no || order.name
 
                       return (
                         <div
@@ -4376,26 +4296,26 @@ const RightPanel: React.FC<RightPanelProps> = ({
                           <div className="flex justify-between items-center mb-2">
                             <div className="flex flex-col">
                               <div className="font-semibold text-primary text-sm">
-                                {order.sales_order_no || order.sales_order_id || '—'}
+                                {order.purchase_order_no || order.purchase_order_id || '—'}
                               </div>
-                              {(order.invoice_no || order.sales_invoice_id) && (
+                              {order.invoice_no && (
                                 <div className="text-gray-700 text-[10px] mt-0.5">
-                                  {order.invoice_no || order.sales_invoice_id}
+                                  {order.invoice_no}
                                 </div>
                               )}
                             </div>
                             <div className="text-gray-600 text-xs">
-                              {new Date(order.creation_datetime).toLocaleDateString('en-US', {
+                              {order.creation_datetime ? new Date(order.creation_datetime).toLocaleDateString('en-US', {
                                 month: 'short',
                                 day: 'numeric',
                                 year: 'numeric'
-                              })}
+                              }) : '—'}
                             </div>
                           </div>
                           <div className="flex justify-between items-center mb-2">
-                            <span className="text-gray-600 font-medium">Qty: {order.total_qty}</span>
+                            <span className="text-gray-600 font-medium">Qty: {order.total_qty || 0}</span>
                             <span className="font-bold text-green-600 text-sm">
-                              {currencySymbol} {order.total_amount?.toLocaleString()}
+                              {currencySymbol} {order.total_amount?.toLocaleString() || '0.00'}
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
@@ -4406,16 +4326,18 @@ const RightPanel: React.FC<RightPanelProps> = ({
                                   ? 'bg-green-100 text-green-700'
                                   : order.status === 'Draft'
                                     ? 'bg-yellow-100 text-yellow-700'
-                                    : 'bg-gray-100 text-gray-700'
+                                    : order.status === 'Partly Paid'
+                                      ? 'bg-orange-100 text-orange-700'
+                                      : 'bg-gray-100 text-gray-700'
                                 }`}
                             >
-                              {order.status}
+                              {order.status || '—'}
                             </span>
                             <span className="text-gray-500 text-xs">
-                              {new Date(order.creation_datetime).toLocaleTimeString('en-US', {
+                              {order.creation_datetime ? new Date(order.creation_datetime).toLocaleTimeString('en-US', {
                                 hour: '2-digit',
                                 minute: '2-digit'
-                              })}
+                              }) : '—'}
                             </span>
                           </div>
                         </div>
@@ -4513,16 +4435,21 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       >
                         <div className="flex justify-between items-center">
                           <div className="font-semibold text-black">
-                            {item.item_name} ({item.item_code})
+                            {item.item_name || '—'} ({item.item_code || '—'})
                           </div>
-                          <div className="text-gray-600">Qty: {item.total_qty}</div>
+                          <div className="text-gray-600">Qty: {item.total_qty?.toLocaleString() || '0'}</div>
                         </div>
                         <div className="flex justify-between mt-1">
-                          <span className="text-gray-600">Avg Price: {item.avg_price}</span>
+                          <span className="text-gray-600">Avg Price: {currencySymbol} {Number(item.avg_price || 0).toFixed(2)}</span>
                           <span className="font-semibold text-purple-700">
-                            Total: {item.total_price}
+                            Total: {currencySymbol} {Number(item.total_price || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         </div>
+                        {item.custom_part_no && (
+                          <div className="text-gray-500 text-[10px] mt-1">
+                            Part No: {item.custom_part_no}
+                          </div>
+                        )}
                       </div>
                     ))}
                   {!mostLoading &&
