@@ -261,18 +261,21 @@ const LoginPage: React.FC = () => {
 
   return (
     <div>
-      <div className="bg-gradient-to-br from-slate-50 to-gray-100 min-h-screen flex items-center justify-center p-6 font-sans relative">
-        {/* Background Pattern */}
-        <div className="absolute inset-0 opacity-30">
-          <div className="absolute top-0 left-0 w-72 h-72 bg-purple-300 rounded-full mix-blend-multiply filter blur-xl animate-pulse"></div>
-          <div className="absolute top-0 right-0 w-72 h-72 bg-yellow-300 rounded-full mix-blend-multiply filter blur-xl animate-pulse delay-2000"></div>
-          <div className="absolute -bottom-8 left-20 w-72 h-72 bg-pink-300 rounded-full mix-blend-multiply filter blur-xl animate-pulse delay-4000"></div>
-        </div>
-
+      <div className="min-h-screen flex items-center justify-center p-6 font-sans bg-slate-100 relative">
         {/* Main Content Container */}
         <div className="flex flex-col md:flex-row items-center justify-center gap-6 lg:gap-20 w-full max-w-screen-xl px-4 z-10">
-          {/* Login Card */}
-          <div className="glass-effect rounded-3xl modern-shadow w-full max-w-md p-8 relative shrink-0">
+          {/* Login Card with background band exactly behind it */}
+          <div className="relative w-full max-w-md shrink-0">
+            {/* Band matches login card width & height */}
+            <div className="pointer-events-none absolute inset-0 rounded-[40px] overflow-hidden shadow-[0_40px_120px_rgba(15,23,42,0.35)]">
+              {/* Soft base gradient */}
+              <div className="absolute inset-0 bg-gradient-to-b from-white/95 via-slate-50 to-white/95" />
+              {/* Colored glow blobs */}
+              <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-72 h-72 bg-purple-300 rounded-full mix-blend-multiply filter blur-3xl opacity-70" />
+              <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-80 h-80 bg-yellow-200 rounded-full mix-blend-multiply filter blur-3xl opacity-60" />
+              <div className="absolute -bottom-24 left-1/2 -translate-x-1/2 w-72 h-72 bg-pink-300 rounded-full mix-blend-multiply filter blur-3xl opacity-70" />
+            </div>
+            <div className="glass-effect rounded-3xl modern-shadow w-full p-8 relative z-10">
             <div className="text-center mb-8">
               <div className="w-32 h-32 mx-auto mb-4 flex items-center justify-center">
                 <img
@@ -401,8 +404,10 @@ const LoginPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Side Info Card */}
-          <div className="glass-effect rounded-2xl p-8 w-80 modern-shadow opacity-90 shrink-0">
+          </div>
+
+          {/* Side Info Card (clean, without glow band) */}
+          <div className="rounded-2xl p-8 w-80 bg-white shadow-md opacity-90 shrink-0">
             <div className="space-y-6">
               <div className="text-center">
                 <div className="w-20 h-20 mx-auto mb-4 flex items-center justify-center">
