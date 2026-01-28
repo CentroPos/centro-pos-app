@@ -378,11 +378,15 @@ const DynamicPickupInterface: React.FC = () => {
     const handleAssignWarehouses = async (deliveryWarehouseId: string, operations: WarehouseOperation[]) => {
         // Logic to save/assign warehouses
         console.log("Assigning Warehouses:", { deliveryWarehouseId, operations });
-        
-        // Automatically refresh invoice details to update status
+
+        // Automatically refresh invoice details to update picker status/operations
         if (activeTab) {
             try {
                 await fetchInvoiceDetails(activeTab.invoice);
+
+                // Make sure user sees the latest picker status in the side panel
+                setRightSidebarTab('details');
+
                 toast.success("Warehouses assigned successfully. Status updated.");
             } catch (error) {
                 console.error("Failed to refresh invoice details after assignment", error);

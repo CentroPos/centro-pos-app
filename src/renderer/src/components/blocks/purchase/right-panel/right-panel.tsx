@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react'
+import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { RefreshCcw } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@renderer/components/ui/dialog'
 import { Button } from '@renderer/components/ui/button'
@@ -2767,7 +2767,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
             }`}
           onClick={() => handleTabChange('customer')}
         >
-          Customer
+          Supplier
         </button>
         <button
           className={`flex-1 px-4 font-medium text-sm border-b-3 transition-all h-full ${activeTab === 'prints'

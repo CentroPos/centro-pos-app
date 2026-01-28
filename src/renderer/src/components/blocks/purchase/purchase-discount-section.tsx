@@ -350,7 +350,13 @@ const PurchaseDiscountSection: React.FC<Props> = ({
   return (
     <div className="p-2 pb-6 relative">
       <div className="flex gap-3 mb-2">
-        <Button variant="outline" className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          className="flex items-center gap-2"
+          onClick={handleGlobalDiscountClick}
+          disabled={isReadOnly || !currentTab?.id}
+          title={isReadOnly ? 'Discount cannot be edited for confirmed orders' : 'Click to edit global discount percentage'}
+        >
           <span className="text-blue-500">%</span>
           Discount
           <span className="text-xs bg-gray-200 px-1 rounded">Ctrl+D</span>
