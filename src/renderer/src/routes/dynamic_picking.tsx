@@ -633,7 +633,10 @@ const DynamicPickupInterface: React.FC = () => {
                 invoiceNo={activeTab?.invoice.invoiceNo || ''}
                 existingPickSlip={editingPickSlip}
                 onSuccess={() => {
-                    if (activeTab) fetchInvoiceDetails(activeTab.invoice);
+                    if (activeTab) {
+                        fetchInvoiceDetails(activeTab.invoice);
+                        setRightSidebarTab('details');
+                    }
                     if (!editingPickSlip && activeTab) {
                         // Clear selection if it was a new assignment
                         updateLocalTabState(activeTab.invoice.id, { selectedItems: new Set() });
@@ -643,7 +646,12 @@ const DynamicPickupInterface: React.FC = () => {
 
             <AssignWarehousesModal
                 isOpen={isFinishModalOpen}
-                onClose={() => setIsFinishModalOpen(false)}
+                onClose={() => {
+                    setIsFinishModalOpen(false);
+                    if (activeTab) {
+                        fetchInvoiceDetails(activeTab.invoice).then(() => setRightSidebarTab('details'));
+                    }
+                }}
                 onAssign={handleAssignWarehouses}
                 warehouses={warehouses}
                 currentOperations={activeTab?.warehouseDetails?.operations || []}
