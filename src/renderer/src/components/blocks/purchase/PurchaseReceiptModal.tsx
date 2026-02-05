@@ -225,7 +225,7 @@ const PurchaseReceiptModal: React.FC<PurchaseReceiptModalProps> = ({
           <div className="grid grid-cols-2 gap-4 flex-1 min-h-0 overflow-hidden">
             <div className="flex flex-col min-h-0 overflow-hidden">
               <h4 className="text-sm font-semibold mb-2 shrink-0">Unbilled receipts (click to select, click again to deselect)</h4>
-              <div className="border rounded-md h-[320px] overflow-auto">
+              <div className="border rounded-md h-[320px] overflow-auto [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded-full">
                 <Table className="min-w-max w-full">
                   <TableHeader>
                     <TableRow>
@@ -267,7 +267,7 @@ const PurchaseReceiptModal: React.FC<PurchaseReceiptModalProps> = ({
                   <div className="text-xs text-muted-foreground mb-2 shrink-0 truncate" title={`${receiptDetails.purchase_receipt_id} · ${receiptDetails.supplier} · ${receiptDetails.posting_date}`}>
                     {receiptDetails.purchase_receipt_id} · {receiptDetails.supplier} · {receiptDetails.posting_date}
                   </div>
-                  <div className="border rounded-md h-[320px] overflow-auto">
+                  <div className="border rounded-md h-[320px] overflow-auto [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded-full">
                     <Table className="min-w-max w-full">
                       <TableHeader>
                         <TableRow>
