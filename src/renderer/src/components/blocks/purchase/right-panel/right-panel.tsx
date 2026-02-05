@@ -844,6 +844,14 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [purchaseHistory, setPurchaseHistory] = useState<any[]>([])
   const [purchaseHistoryLoading, setPurchaseHistoryLoading] = useState(false)
 
+  const [supplierHistory, setSupplierHistory] = useState<any[]>([])
+  const [supplierHistoryLoading, setSupplierHistoryLoading] = useState(false)
+  const [supplierHistoryPage, setSupplierHistoryPage] = useState(1)
+  const [supplierHistorySearch, setSupplierHistorySearch] = useState('')
+  const supplierHistoryScrollRef = React.useRef<HTMLDivElement>(null)
+  const isFetchingSupplierRef = React.useRef(false)
+  const supplierHasMoreRef = React.useRef(true)
+
   // Function to open order (reusable)
   const handleOpenOrder = async (orderId: string, skipConfirm: boolean = false) => {
     if (!orderId) return
@@ -1482,6 +1490,39 @@ const RightPanel: React.FC<RightPanelProps> = ({
     }
   }
 
+  // Fetch product supplier history (which suppliers supplied this product)
+  const fetchProductSupplierHistory = async (itemCode: string, page = 1, searchTerm: string = '') => {
+    if (!itemCode) return
+    if (isFetchingSupplierRef.current) return
+    isFetchingSupplierRef.current = true
+    setSupplierHistoryLoading(true)
+    try {
+      const response = await window.electronAPI?.proxy?.request({
+        method: 'GET',
+        url: '/api/method/centro_pos_apis.api.product.get_product_supplier_history',
+        params: {
+          item_id: itemCode,
+          limit_start: page,
+          limit_page_length: PAGE_LEN,
+          ...(searchTerm ? { search_term: searchTerm } : {})
+        }
+      })
+      if (response?.success && response?.data?.data) {
+        const newData = Array.isArray(response.data.data) ? response.data.data : []
+        supplierHasMoreRef.current = newData.length === PAGE_LEN
+        setSupplierHistory(newData)
+      } else {
+        setSupplierHistory([])
+      }
+    } catch (error) {
+      console.error('❌ Error loading product supplier history:', error)
+      setSupplierHistory([])
+    } finally {
+      setSupplierHistoryLoading(false)
+      isFetchingSupplierRef.current = false
+    }
+  }
+
   // Load history data when product or supplier changes
   useEffect(() => {
     console.log('🔄 ===== HISTORY LOADING TRIGGERED =====')
@@ -1494,21 +1535,24 @@ const RightPanel: React.FC<RightPanelProps> = ({
       console.log('🔄 Product/Supplier changed, loading history data...')
 
       // Load histories when product or supplier changes
-      console.log('🔄 Calling fetchSupplierHistory with:', selectedItemId)
-      console.log('🔄 Calling fetchPurchaseHistory with:', selectedItemId)
       fetchCustomerHistory(selectedItemId, customerHistoryPage, customerHistorySearch)
       fetchPurchaseHistory(selectedItemId, purchaseHistoryPage, purchaseHistorySearch)
+      if (productSubTab === 'supplier-history') {
+        fetchProductSupplierHistory(selectedItemId, supplierHistoryPage, supplierHistorySearch)
+      }
     } else {
       console.log('🔄 No product selected, clearing history data...')
-      // Clear history when no product is selected
       setCustomerHistory([])
       setPurchaseHistory([])
+      setSupplierHistory([])
     }
     // reset pagination on product or supplier change
     setCustomerHistoryPage(1)
     setPurchaseHistoryPage(1)
+    setSupplierHistoryPage(1)
     customerHasMoreRef.current = true
     purchaseHasMoreRef.current = true
+    supplierHasMoreRef.current = true
   }, [selectedItemId, selectedCustomer, refreshTokens.product])
 
   // Reset customer/most pagination when customer tab switches or customer changes
@@ -1531,14 +1575,16 @@ const RightPanel: React.FC<RightPanelProps> = ({
           console.log('🔄 Purchase History tab active, fetching purchase history...')
           fetchPurchaseHistory(selectedItemId, purchaseHistoryPage, purchaseHistorySearch)
       } else if (productSubTab === 'supplier-history') {
-        console.log('🔄 Supplier History tab active, fetching supplier history...')
-        fetchCustomerHistory(selectedItemId, customerHistoryPage, customerHistorySearch)
+        console.log('🔄 Supplier History tab active, fetching product supplier history...')
+        fetchProductSupplierHistory(selectedItemId, supplierHistoryPage, supplierHistorySearch)
       }
     }
   }, [
     productSubTab,
     purchaseHistoryPage,
     purchaseHistorySearch,
+    supplierHistoryPage,
+    supplierHistorySearch,
     customerHistoryPage,
     customerHistorySearch,
     selectedItemId,
@@ -1734,20 +1780,19 @@ const RightPanel: React.FC<RightPanelProps> = ({
     return () => clearTimeout(handler)
   }, [purchaseHistorySearch, productSubTab, selectedItemId])
 
-  // Supplier History search
+  // Supplier History search (product supplier history)
   const prevSupplierSearchRef = useRef<string>('')
   useEffect(() => {
     if (productSubTab !== 'supplier-history' || !selectedItemId) return
-    if (prevSupplierSearchRef.current === customerHistorySearch) return
+    if (prevSupplierSearchRef.current === supplierHistorySearch) return
 
     const handler = setTimeout(() => {
-      setCustomerHistory([])
-      setCustomerHistoryPage(1)
-      prevSupplierSearchRef.current = customerHistorySearch
-      fetchCustomerHistory(selectedItemId, 1, customerHistorySearch)
+      setSupplierHistoryPage(1)
+      prevSupplierSearchRef.current = supplierHistorySearch
+      fetchProductSupplierHistory(selectedItemId, 1, supplierHistorySearch)
     }, 300)
     return () => clearTimeout(handler)
-  }, [customerHistorySearch, productSubTab, selectedItemId])
+  }, [supplierHistorySearch, productSubTab, selectedItemId])
 
   // Debounced search effects for customer tab - matching Orders pattern
   // Recent Orders search
@@ -2581,7 +2626,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
         };
         console.log('📞 Orders API request params:', ordersParams);
         const res = await window.electronAPI?.proxy?.request({
-          url: '/api/method/centro_pos_apis.api.order.order_list',
+          url: '/api/method/centro_pos_apis.api.purchase.purchase_order_list',
           params: ordersParams,
         });
         console.log('📦 Orders API result:', res);
@@ -2670,7 +2715,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
         };
         console.log('📞 Returns API request params:', returnsParams);
         const res = await window.electronAPI?.proxy?.request({
-          url: '/api/method/centro_pos_apis.api.order.order_list',
+          url: '/api/method/centro_pos_apis.api.purchase.purchase_order_list',
           params: returnsParams,
         });
         console.log('📦 Returns API result:', res);
@@ -3029,7 +3074,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                         setProductSubTab('supplier-history')
                         if (selectedItemId) {
                           console.log('🔄 Triggering supplier history fetch from tab click')
-                          fetchCustomerHistory(selectedItemId, customerHistoryPage, customerHistorySearch)
+                          fetchProductSupplierHistory(selectedItemId, supplierHistoryPage, supplierHistorySearch)
                         }
                       }}
                     >
@@ -3197,13 +3242,13 @@ const RightPanel: React.FC<RightPanelProps> = ({
                   </div>
                 )}
 
-                {/* Supplier History Tab */}
+                {/* Supplier History Tab - product supplier history (get_product_supplier_history) */}
                 {productSubTab === 'supplier-history' && (
                   <div className="p-4">
                     <div className="text-xs text-gray-500 mb-2">
-                      {selectedCustomer
-                        ? `Supplier history for ${selectedCustomer.name}`
-                        : 'Select a supplier to view supplier history'}
+                      {selectedItemId
+                        ? 'Supplier history for selected product'
+                        : 'Select a product to view supplier history'}
                     </div>
 
                     {/* Search Bar */}
@@ -3211,8 +3256,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       <input
                         type="text"
                         placeholder="Search supplier history..."
-                        value={customerHistorySearch}
-                        onChange={(e) => setCustomerHistorySearch(e.target.value)}
+                        value={supplierHistorySearch}
+                        onChange={(e) => setSupplierHistorySearch(e.target.value)}
                         className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       />
                       <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
@@ -3232,118 +3277,116 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       </div>
                     </div>
 
-                    {/* Supplier History Content */}
-                    <div ref={customerHistoryScrollRef} className="max-h-64 overflow-y-auto scrollbar-hide">
-                      {!selectedCustomer ? (
+                    {/* Product Supplier History Content */}
+                    <div ref={supplierHistoryScrollRef} className="max-h-64 overflow-y-auto scrollbar-hide">
+                      {!selectedItemId ? (
                         <div className="text-center py-4">
                           <div className="text-sm text-gray-500">
-                            Select a supplier to view history
+                            Select a product (click an item in the table) to view supplier history
                           </div>
                         </div>
-                      ) : customerHistoryLoading ? (
+                      ) : supplierHistoryLoading ? (
                         <div className="text-center py-4">
                           <div className="text-sm text-gray-500">Loading supplier history...</div>
                         </div>
-                      ) : filteredCustomerHistory.length > 0 ? (
+                      ) : supplierHistory.length > 0 ? (
                         <div className="space-y-2">
-                          {filteredCustomerHistory.map((item, index) => {
-                            const formatDate = (dateString: string) => {
-                              if (!dateString) return '—'
-                              const date = new Date(dateString)
-                              const day = String(date.getDate()).padStart(2, '0')
-                              const month = String(date.getMonth() + 1).padStart(2, '0')
-                              const year = date.getFullYear()
-                              return `${day}/${month}/${year}`
-                            }
-                            const unitPrice = Number(item.unit_price || 0).toFixed(2)
-                            // Extract order ID from item
-                            const orderId = item.sales_order_id || item.sales_order_no || item.invoice_no || item.name
+                          {supplierHistory
+                            .filter((item: any) => {
+                              if (!supplierHistorySearch) return true
+                              const searchLower = supplierHistorySearch.toLowerCase()
+                              return (
+                                item.supplier_name?.toLowerCase().includes(searchLower) ||
+                                item.supplier?.toLowerCase().includes(searchLower) ||
+                                item.purchase_order_no?.toLowerCase().includes(searchLower) ||
+                                item.purchase_invoice_no?.toLowerCase().includes(searchLower)
+                              )
+                            })
+                            .map((item: any, index: number) => {
+                              const formatDate = (dateString: string) => {
+                                if (!dateString) return '—'
+                                const date = new Date(dateString)
+                                const day = String(date.getDate()).padStart(2, '0')
+                                const month = String(date.getMonth() + 1).padStart(2, '0')
+                                const year = date.getFullYear()
+                                return `${day}/${month}/${year}`
+                              }
+                              const unitPrice = Number(item.unit_price ?? item.rate ?? 0).toFixed(2)
+                              const orderId = item.purchase_order_id || item.purchase_order_no || item.purchase_invoice_no || item.name
 
-                            return (
-                              <div
-                                key={index}
-                                className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200 cursor-pointer hover:shadow-sm transition"
-                                onClick={() => {
-                                  if (orderId) {
-                                    handleOpenOrder(String(orderId), false)
-                                  }
-                                }}
-                              >
-                                {/* Order No and Date Row */}
-                                <div className="flex justify-between items-center mb-2">
-                                  <div className="font-semibold text-black text-sm">
-                                    {item.sales_order_no || item.invoice_no || '—'}
+                              return (
+                                <div
+                                  key={index}
+                                  className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200 cursor-pointer hover:shadow-sm transition"
+                                  onClick={() => {
+                                    if (orderId) {
+                                      handleOpenOrder(String(orderId), false)
+                                    }
+                                  }}
+                                >
+                                  <div className="flex justify-between items-center mb-2">
+                                    <div className="font-semibold text-black text-sm">
+                                      {item.purchase_order_no || item.purchase_invoice_no || item.name || '—'}
+                                    </div>
+                                    <div className="text-gray-600 text-xs">
+                                      {item.creation_datetime || item.posting_date
+                                        ? formatDate(item.creation_datetime || item.posting_date)
+                                        : '—'}
+                                    </div>
                                   </div>
-                                  <div className="text-gray-600 text-xs">
-                                    {item.creation_datetime
-                                      ? formatDate(item.creation_datetime)
-                                      : '—'}
-                                  </div>
-                                </div>
-
-                                {/* Customer Name and Amount Row */}
-                                <div className="flex justify-between items-center mb-2">
-                                  <span className="text-gray-700 font-medium text-xs">
-                                    {item.customer_name || item.customer || selectedCustomer?.name || '—'}
-                                  </span>
-                                  <span className="text-gray-600 font-medium text-xs">
-                                    Unit: <span className="font-bold text-green-600">{unitPrice} {currencySymbol}</span>
-                                  </span>
-                                </div>
-
-                                {/* Total Qty Row */}
-                                <div className="mb-2">
-                                  <span className="text-gray-600 font-medium text-xs">
-                                    Qty: {item.quantity || item.qty || 0}
-                                  </span>
-                                </div>
-
-                                {/* Status Row */}
-                                <div className="flex items-center gap-2">
-                                  {item.status && (
-                                    <span className="text-xs px-2 py-1 rounded-full font-medium bg-gray-100 text-gray-700">
-                                      {item.status}
+                                  <div className="flex justify-between items-center mb-2">
+                                    <span className="text-gray-700 font-medium text-xs">
+                                      {item.supplier_name || item.supplier || '—'}
                                     </span>
-                                  )}
-                                  {!item.status && (
-                                    <span className="text-gray-400 text-xs">—</span>
+                                    <span className="text-gray-600 font-medium text-xs">
+                                      Unit: <span className="font-bold text-green-600">{unitPrice} {currencySymbol}</span>
+                                    </span>
+                                  </div>
+                                  <div className="mb-2">
+                                    <span className="text-gray-600 font-medium text-xs">
+                                      Qty: {item.quantity ?? item.qty ?? 0}
+                                    </span>
+                                  </div>
+                                  {item.status && (
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs px-2 py-1 rounded-full font-medium bg-gray-100 text-gray-700">
+                                        {item.status}
+                                      </span>
+                                    </div>
                                   )}
                                 </div>
-                              </div>
-                            )
-                          })}
+                              )
+                            })}
                         </div>
                       ) : (
                         <div className="text-center py-4">
-                          <div className="text-sm text-gray-500">No customer history found</div>
+                          <div className="text-sm text-gray-500">No supplier history found for this product</div>
                         </div>
                       )}
                     </div>
                     {/* Pager */}
                     <div className="flex items-center justify-between mt-3">
                       <button
-                        className={`px-3 py-1 text-sm rounded border ${customerHistoryPage > 1 ? 'bg-white hover:bg-gray-50' : 'opacity-40 cursor-not-allowed'}`}
-                        disabled={customerHistoryPage <= 1}
+                        className={`px-3 py-1 text-sm rounded border ${supplierHistoryPage > 1 ? 'bg-white hover:bg-gray-50' : 'opacity-40 cursor-not-allowed'}`}
+                        disabled={supplierHistoryPage <= 1}
                         onClick={() => {
-                          if (customerHistoryPage <= 1) return
-                          const prev = Math.max(1, customerHistoryPage - 1)
-                          setCustomerHistoryPage(prev)
-                          fetchCustomerHistory(selectedItemId as string, prev, customerHistorySearch)
-                          customerHistoryScrollRef.current?.scrollTo({ top: 0 })
+                          const prev = Math.max(1, supplierHistoryPage - 1)
+                          setSupplierHistoryPage(prev)
+                          fetchProductSupplierHistory(selectedItemId as string, prev, supplierHistorySearch)
+                          supplierHistoryScrollRef.current?.scrollTo({ top: 0 })
                         }}
                       >
                         Prev
                       </button>
-                      <div className="text-sm text-gray-600">Page {customerHistoryPage}</div>
+                      <div className="text-sm text-gray-600">Page {supplierHistoryPage}</div>
                       <button
-                        className={`px-3 py-1 text-sm rounded border ${customerHasMoreRef.current ? 'bg-white hover:bg-gray-50' : 'opacity-40 cursor-not-allowed'}`}
-                        disabled={!customerHasMoreRef.current}
+                        className={`px-3 py-1 text-sm rounded border ${supplierHasMoreRef.current ? 'bg-white hover:bg-gray-50' : 'opacity-40 cursor-not-allowed'}`}
+                        disabled={!supplierHasMoreRef.current}
                         onClick={() => {
-                          if (!customerHasMoreRef.current) return
-                          const next = customerHistoryPage + 1
-                          setCustomerHistoryPage(next)
-                          fetchCustomerHistory(selectedItemId as string, next, customerHistorySearch)
-                          customerHistoryScrollRef.current?.scrollTo({ top: 0 })
+                          const next = supplierHistoryPage + 1
+                          setSupplierHistoryPage(next)
+                          fetchProductSupplierHistory(selectedItemId as string, next, supplierHistorySearch)
+                          supplierHistoryScrollRef.current?.scrollTo({ top: 0 })
                         }}
                       >
                         Next
@@ -4630,7 +4673,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     !ordersTabError &&
                     filteredOrders.length > 0 &&
                     filteredOrders.map((order, index) => {
-                      // Parse creation datetime
+                      // Purchase order list API: purchase_order_id, supplier_name, total_qty, creation, grand_total, purchase_invoice_id, invoice_status, custom_reverse_status
                       const creationRaw = order.creation
                       const creationDate = creationRaw ? new Date(String(creationRaw).replace(' ', 'T')) : null
                       const formatDate = (date: Date | null) => {
@@ -4640,33 +4683,27 @@ const RightPanel: React.FC<RightPanelProps> = ({
                         const year = date.getFullYear()
                         return `${day}/${month}/${year}`
                       }
-                      // const formatTime = (date: Date | null) => { // Unused
-                      //   if (!date) return '—'
-                      //   const hours = String(date.getHours()).padStart(2, '0')
-                      //   const minutes = String(date.getMinutes()).padStart(2, '0')
-                      //   return `${hours}:${minutes}`
-                      // }
+                      const orderId = order.purchase_order_id || order.name
 
                       return (
                         <div
                           key={index}
                           className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200 cursor-pointer hover:shadow-sm transition"
                           onClick={() => {
-                            const orderId = order.sales_order_id || order.sales_invoice_id || order.name
                             if (orderId) {
                               handleOpenOrder(String(orderId), true) // Skip confirm for orders tab
                             }
                           }}
                         >
-                          {/* Order No and Date Row */}
+                          {/* Purchase Order ID and Date Row */}
                           <div className="flex justify-between items-center mb-2">
                             <div className="flex flex-col">
                               <div className="font-semibold text-black text-sm">
-                                {order.sales_order_id || '—'}
+                                {order.purchase_order_id || '—'}
                               </div>
-                              {order.sales_invoice_id && (
+                              {order.purchase_invoice_id && (
                                 <div className="text-gray-700 text-[10px] mt-0.5">
-                                  {order.sales_invoice_id}
+                                  {order.purchase_invoice_id}
                                 </div>
                               )}
                             </div>
@@ -4675,10 +4712,10 @@ const RightPanel: React.FC<RightPanelProps> = ({
                             </div>
                           </div>
 
-                          {/* Customer Name and Amount Row */}
+                          {/* Supplier Name and Grand Total Row */}
                           <div className="flex justify-between items-center mb-2">
                             <span className="text-gray-700 font-medium text-xs">
-                              {order.customer_name || '—'}
+                              {order.supplier_name || '—'}
                             </span>
                             <span className="font-bold text-green-600 text-sm">
                               {typeof order.grand_total === 'number'
@@ -4808,7 +4845,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       !ordersTabError &&
                       filteredReturns.length > 0 &&
                       filteredReturns.map((order, index) => {
-                        // Parse creation datetime
+                        // Purchase order list API: purchase_order_id, supplier_name, total_qty, creation, grand_total, purchase_invoice_id, invoice_status, custom_reverse_status
                         const creationRaw = order.creation
                         const creationDate = creationRaw ? new Date(String(creationRaw).replace(' ', 'T')) : null
                         const formatDate = (date: Date | null) => {
@@ -4818,33 +4855,27 @@ const RightPanel: React.FC<RightPanelProps> = ({
                           const year = date.getFullYear()
                           return `${day}/${month}/${year}`
                         }
-                        // const formatTime = (date: Date | null) => { // Unused
-                        //   if (!date) return '—'
-                        //   const hours = String(date.getHours()).padStart(2, '0')
-                        //   const minutes = String(date.getMinutes()).padStart(2, '0')
-                        //   return `${hours}:${minutes}`
-                        // }
+                        const orderId = order.purchase_order_id || order.name
 
                         return (
                           <div
                             key={index}
                             className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200 cursor-pointer hover:shadow-sm transition"
                             onClick={() => {
-                              const orderId = order.sales_order_id || order.sales_invoice_id || order.name
                               if (orderId) {
                                 handleOpenOrder(String(orderId), true) // Skip confirm for returns tab
                               }
                             }}
                           >
-                            {/* Order No and Date Row */}
+                            {/* Purchase Order ID and Date Row */}
                             <div className="flex justify-between items-center mb-2">
                               <div className="flex flex-col">
                                 <div className="font-semibold text-black text-sm">
-                                  {order.sales_order_id || '—'}
+                                  {order.purchase_order_id || '—'}
                                 </div>
-                                {order.sales_invoice_id && (
+                                {order.purchase_invoice_id && (
                                   <div className="text-gray-700 text-[10px] mt-0.5">
-                                    {order.sales_invoice_id}
+                                    {order.purchase_invoice_id}
                                   </div>
                                 )}
                               </div>
@@ -4853,10 +4884,10 @@ const RightPanel: React.FC<RightPanelProps> = ({
                               </div>
                             </div>
 
-                            {/* Customer Name and Amount Row */}
+                            {/* Supplier Name and Grand Total Row */}
                             <div className="flex justify-between items-center mb-2">
                               <span className="text-gray-700 font-medium text-xs">
-                                {order.customer_name || '—'}
+                                {order.supplier_name || '—'}
                               </span>
                               <span className="font-bold text-green-600 text-sm">
                                 {typeof order.grand_total === 'number'
