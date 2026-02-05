@@ -216,6 +216,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     if (field === 'item_description' && !allowLabelEditing) {
       field = 'quantity'
     }
+    // Block editing for items added from purchase receipt (linked via pr_item_id / fromReceipt)
+    const receiptCheckItem = selectedRowIndex >= 0 && selectedRowIndex < filteredItems.length ? filteredItems[selectedRowIndex] : items.find((i: any) => i.item_code === itemCode)
+    if (receiptCheckItem && (receiptCheckItem.fromReceipt === true || (receiptCheckItem.pr_item_id && String(receiptCheckItem.pr_item_id).trim() !== ''))) {
+      return
+    }
     selectItem(itemCode)
     setActiveField(field)
     setIsEditing(true)
@@ -2008,6 +2013,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             data-field="quantity"
                             onClick={(e) => {
                               e.stopPropagation()
+                              if (item.fromReceipt === true || (item.pr_item_id && String(item.pr_item_id).trim() !== '')) return
                               console.log('🖱️ Quantity cell clicked:', item.item_code, 'isReadOnly:', isReadOnly)
                               if (!isReadOnly) {
                                 // Always reset editing state first, regardless of current state
@@ -2329,6 +2335,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             className={`${hasError ? 'text-red-600 font-medium' : hasSplitWarehouse ? 'text-yellow-600 font-medium' : isSelected ? 'font-medium' : ''} w-[80px] text-center`}
                             onClick={(e) => {
                               e.stopPropagation()
+                              if (item.fromReceipt === true || (item.pr_item_id && String(item.pr_item_id).trim() !== '')) return
                               if (!isReadOnly) {
                                 // Always reset editing state first, regardless of current state
                                 resetEditingState()
@@ -2413,6 +2420,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             className={`${hasError ? 'text-red-600 font-medium' : hasSplitWarehouse ? 'text-yellow-600 font-medium' : isSelected ? 'font-medium' : ''} w-[100px] text-center ${priceLimitHighlight.has(item.item_code) ? 'bg-red-50' : ''}`}
                             onClick={(e) => {
                               e.stopPropagation()
+                              if (item.fromReceipt === true || (item.pr_item_id && String(item.pr_item_id).trim() !== '')) return
                               if (!isReadOnly) {
                                 // Always reset editing state first, regardless of current state
                                 resetEditingState()

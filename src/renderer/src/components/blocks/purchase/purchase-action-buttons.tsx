@@ -9,6 +9,7 @@ import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 import { usePurchaseTabStore } from '@renderer/store/usePurchaseTabStore'
 import { handleServerErrorMessages } from '@renderer/lib/error-handler'
 import PurchaseReturnModal from './purchase-return-modal'
+import PurchaseReceiptModal from './PurchaseReceiptModal'
 
 const paymentModes = ['Cash', 'Bank'] as const
 type PaymentMode = (typeof paymentModes)[number]
@@ -85,6 +86,7 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [payOpen, setPayOpen] = useState(false)
   const [returnModalOpen, setReturnModalOpen] = useState(false)
+  const [receiptModalOpen, setReceiptModalOpen] = useState(false)
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('Cash')
   const [amount, setAmount] = useState<string>('')
   const [date, setDate] = useState<string>('')
@@ -578,7 +580,8 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
         qty: Number(it.quantity || 0),
         uom: it.uom,
         rate: Number(it.standard_rate || 0),
-        discount_percentage: Number(it.discount_percentage || 0)
+        discount_percentage: Number(it.discount_percentage || 0),
+        ...(it.pr_item_id ? { pr_item_id: it.pr_item_id } : {})
       }))
 
       // Get posting date from store or use transaction date
@@ -813,6 +816,24 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
       <div className="p-3">
         <div className="flex justify-end items-center">
           <div className="flex gap-4">
+            {/* Receipt Button - add items from unbilled purchase receipt */}
+            <Button
+              data-testid="purchase-receipt-button"
+              className="px-2 py-1 bg-gradient-to-r from-violet-500 to-violet-600 text-white font-medium rounded-lg hover:shadow-lg transition-all duration-300 flex items-center gap-1.5 text-[9px] disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={
+                !currentUserPrivileges?.purchase ||
+                currentTab?.status === 'confirmed' ||
+                currentTab?.status === 'paid' ||
+                !currentTab
+              }
+              onClick={() => setReceiptModalOpen(true)}
+            >
+              <svg className="w-3 h-3" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="receipt" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" fill="currentColor">
+                <path d="M64 0C28.7 0 0 28.7 0 64V448c0 35.3 28.7 64 64 64H320c35.3 0 64-28.7 64-64V160H256c-17.7 0-32-14.3-32-32V0H64zM256 0V128H384L256 0zM80 256H304c8.8 0 16 7.2 16 16s-7.2 16-16 16H80c-8.8 0-16-7.2-16-16s7.2-16 16-16zm0 64H304c8.8 0 16 7.2 16 16s-7.2 16-16 16H80c-8.8 0-16-7.2-16-16s7.2-16 16-16zm0 64H304c8.8 0 16 7.2 16 16s-7.2 16-16 16H80c-8.8 0-16-7.2-16-16s7.2-16 16-16z"></path>
+              </svg>
+              Receipt
+            </Button>
+
             {/* Save Button */}
             <Button
               data-testid="purchase-save-button"
@@ -1228,6 +1249,13 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
         onReturnSuccess={() => {
           console.log('✅ Purchase return successful - refreshing order data')
         }}
+      />
+
+      {/* Purchase Receipt Modal - add items from unbilled purchase receipts */}
+      <PurchaseReceiptModal
+        isOpen={receiptModalOpen}
+        onClose={() => setReceiptModalOpen(false)}
+        onAdded={() => setReceiptModalOpen(false)}
       />
     </>
   )
