@@ -9,7 +9,7 @@ import type { SubmitHandler } from 'react-hook-form'
 // import { API_Endpoints } from '@renderer/config/endpoints'
 // import { useMutationQuery } from '@renderer/hooks/react-query/useReactQuery'
 import { ControlledTextField } from '../form/controlled-text-field'
-import { AlertCircle, Loader2, Lock, UserIcon } from 'lucide-react'
+import { AlertCircle, Loader2, Lock, UserIcon, Eye, EyeOff } from 'lucide-react'
 import { Button } from '../ui/button'
 import { Form } from '../ui/form'
 import { toast } from 'sonner'
@@ -39,6 +39,7 @@ const LoginPage: React.FC = () => {
   const [availableVersion, setAvailableVersion] = React.useState<string | null>(null)
   const [downloadProgress, setDownloadProgress] = React.useState<number>(0)
   const [showBaseUrlPopup, setShowBaseUrlPopup] = React.useState(false)
+  const [showPassword, setShowPassword] = React.useState(false)
 
   const form = useForm<FormData>({
     resolver: yupResolver(schema),
@@ -276,133 +277,141 @@ const LoginPage: React.FC = () => {
               <div className="absolute -bottom-24 left-1/2 -translate-x-1/2 w-72 h-72 bg-pink-300 rounded-full mix-blend-multiply filter blur-3xl opacity-70" />
             </div>
             <div className="glass-effect rounded-3xl modern-shadow w-full p-8 relative z-10">
-            <div className="text-center mb-8">
-              <div className="w-32 h-32 mx-auto mb-4 flex items-center justify-center">
-                <img
-                  src={centroerpLogo}
-                  alt="Centroerp Logo"
-                  className="w-full h-full object-contain"
-                />
+              <div className="text-center mb-8">
+                <div className="w-32 h-32 mx-auto mb-4 flex items-center justify-center">
+                  <img
+                    src={centroerpLogo}
+                    alt="Centroerp Logo"
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+                <h1 className="text-3xl font-bold text-primary mb-2">CentroERP POS</h1>
+                <p className="text-gray-600 text-sm">Point of Sale for Traders</p>
+                {appVersion && (
+                  <div className="text-xs text-gray-500 mt-3">Version {appVersion}</div>
+                )}
               </div>
-              <h1 className="text-3xl font-bold text-primary mb-2">CentroERP POS</h1>
-              <p className="text-gray-600 text-sm">Point of Sale for Traders</p>
-              {appVersion && (
-                <div className="text-xs text-gray-500 mt-3">Version {appVersion}</div>
-              )}
-            </div>
 
-            {/* Login Form */}
-            <div className="space-y-6">
-              {error && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                  <p className="text-red-600 text-sm">{error.message}</p>
-                </div>
-              )}
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                  <ControlledTextField
-                    name="email"
-                    leftIcon={<UserIcon />}
-                    label={"Email or Username"}
-                    className="block text-sm font-semibold text-gray-700"
-                    required
-                    control={form.control}
-                    placeholder="Enter your username"
-                  />
-                  <ControlledTextField
-                    type="password"
-                    name="password"
-                    label={"Password"}
-                    className="block text-sm font-semibold text-gray-700"
-                    required
-                    control={form.control}
-                    leftIcon={<Lock />}
-                    placeholder="Enter your password"
-                  />
-
-                  <Button
-                    type="submit"
-                    disabled={isLoading}
-                    className="w-full py-4 bg-gradient-to-r from-[#334155] to-[#0f172a] text-white font-semibold rounded-xl hover:shadow-2xl transition-all duration-300 modern-shadow disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                        Signing in...
-                      </>
-                    ) : (
-                      'Sign In'
-                    )}
-                  </Button>
-                </form>
-              </Form>
-            </div>
-
-            <div className="mt-6 space-y-3">
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                onClick={handleCheckForUpdates}
-                disabled={updateStatus === 'checking' || updateStatus === 'downloading'}
-              >
-                {updateStatus === 'checking' ? 'Checking for updates…' : 'Check for Updates'}
-              </Button>
-              {updateMessage && (
-                <div className="text-xs text-gray-600 text-center px-2">
-                  {updateMessage}
-                </div>
-              )}
-              {updateStatus === 'available' && (
-                <Button
-                  type="button"
-                  className="w-full bg-blue-500 hover:bg-blue-600"
-                  onClick={handleDownloadUpdate}
-                >
-                  Download Update {availableVersion ? `(${availableVersion})` : ''}
-                </Button>
-              )}
-              {updateStatus === 'downloading' && (
-                <div className="space-y-1">
-                  <div className="w-full bg-gray-200 rounded-full h-1.5">
-                    <div
-                      className="bg-blue-500 h-1.5 rounded-full transition-all"
-                      style={{ width: `${Math.round(downloadProgress)}%` }}
-                    />
+              {/* Login Form */}
+              <div className="space-y-6">
+                {error && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                    <p className="text-red-600 text-sm">{error.message}</p>
                   </div>
-                </div>
-              )}
-              {updateStatus === 'downloaded' && (
+                )}
+                <Form {...form}>
+                  <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                    <ControlledTextField
+                      name="email"
+                      leftIcon={<UserIcon />}
+                      label={"Email or Username"}
+                      className="block text-sm font-semibold text-gray-700"
+                      required
+                      control={form.control}
+                      placeholder="Enter your username"
+                    />
+                    <ControlledTextField
+                      type={showPassword ? 'text' : 'password'}
+                      name="password"
+                      label={"Password"}
+                      className="block text-sm font-semibold text-gray-700"
+                      required
+                      control={form.control}
+                      leftIcon={<Lock />}
+                      rightIcon={
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="focus:outline-none hover:text-primary transition-colors cursor-pointer"
+                        >
+                          {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      }
+                      placeholder="Enter your password"
+                    />
+                    <Button
+                      type="submit"
+                      disabled={isLoading}
+                      className="w-full py-4 bg-gradient-to-r from-[#334155] to-[#0f172a] text-white font-semibold rounded-xl hover:shadow-2xl transition-all duration-300 modern-shadow disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                          Signing in...
+                        </>
+                      ) : (
+                        'Sign In'
+                      )}
+                    </Button>
+                  </form>
+                </Form>
+              </div>
+
+              <div className="mt-6 space-y-3">
                 <Button
                   type="button"
-                  className="w-full bg-green-500 hover:bg-green-600"
-                  onClick={handleInstallUpdate}
+                  variant="outline"
+                  className="w-full"
+                  onClick={handleCheckForUpdates}
+                  disabled={updateStatus === 'checking' || updateStatus === 'downloading'}
                 >
-                  Install Update & Restart
+                  {updateStatus === 'checking' ? 'Checking for updates…' : 'Check for Updates'}
                 </Button>
-              )}
-            </div>
+                {updateMessage && (
+                  <div className="text-xs text-gray-600 text-center px-2">
+                    {updateMessage}
+                  </div>
+                )}
+                {updateStatus === 'available' && (
+                  <Button
+                    type="button"
+                    className="w-full bg-blue-500 hover:bg-blue-600"
+                    onClick={handleDownloadUpdate}
+                  >
+                    Download Update {availableVersion ? `(${availableVersion})` : ''}
+                  </Button>
+                )}
+                {updateStatus === 'downloading' && (
+                  <div className="space-y-1">
+                    <div className="w-full bg-gray-200 rounded-full h-1.5">
+                      <div
+                        className="bg-blue-500 h-1.5 rounded-full transition-all"
+                        style={{ width: `${Math.round(downloadProgress)}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+                {updateStatus === 'downloaded' && (
+                  <Button
+                    type="button"
+                    className="w-full bg-green-500 hover:bg-green-600"
+                    onClick={handleInstallUpdate}
+                  >
+                    Install Update & Restart
+                  </Button>
+                )}
+              </div>
 
-            <div className="flex items-center my-6">
-              <div className="flex-1 border-t border-gray-300"></div>
-              <span className="px-4 text-sm text-gray-500">or continue with</span>
-              <div className="flex-1 border-t border-gray-300"></div>
-            </div>
+              <div className="flex items-center my-6">
+                <div className="flex-1 border-t border-gray-300"></div>
+                <span className="px-4 text-sm text-gray-500">or continue with</span>
+                <div className="flex-1 border-t border-gray-300"></div>
+              </div>
 
-            <div className="space-y-3"></div>
+              <div className="space-y-3"></div>
 
-            <div className="text-center mt-8 space-y-3">
-              <p className="text-sm text-gray-600">
-                Don&apos;t have an account?
-                <span className="text-accent hover:text-accent/80 font-medium transition-all"> Sign up here</span>
-              </p>
-              <div className="flex justify-center space-x-6 text-xs text-gray-500">
-                <span className="hover:text-gray-700 transition-all cursor-pointer">Privacy Policy</span>
-                <span className="hover:text-gray-700 transition-all cursor-pointer">Terms of Service</span>
-                <span className="hover:text-gray-700 transition-all cursor-pointer">Support</span>
+              <div className="text-center mt-8 space-y-3">
+                <p className="text-sm text-gray-600">
+                  Don&apos;t have an account?
+                  <span className="text-accent hover:text-accent/80 font-medium transition-all"> Sign up here</span>
+                </p>
+                <div className="flex justify-center space-x-6 text-xs text-gray-500">
+                  <span className="hover:text-gray-700 transition-all cursor-pointer">Privacy Policy</span>
+                  <span className="hover:text-gray-700 transition-all cursor-pointer">Terms of Service</span>
+                  <span className="hover:text-gray-700 transition-all cursor-pointer">Support</span>
+                </div>
               </div>
             </div>
-          </div>
 
           </div>
 
