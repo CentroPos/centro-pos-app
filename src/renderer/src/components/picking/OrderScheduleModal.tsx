@@ -34,7 +34,7 @@ export function OrderScheduleModal({
     schedule,
     onConfirm,
 }: OrderScheduleModalProps) {
-    const [scheduleType, setScheduleType] = useState<'instant' | 'scheduled'>('scheduled');
+    const [scheduleType, setScheduleType] = useState<'instant' | 'scheduled'>('instant');
     const [selectedDate, setSelectedDate] = useState<Date>(new Date());
     const [selectedTime, setSelectedTime] = useState<string>('');
     const [note, setNote] = useState('');
@@ -62,7 +62,7 @@ export function OrderScheduleModal({
                     setSelectedTime(strTime);
                 }
             } else {
-                setScheduleType('scheduled');
+                setScheduleType('instant');
                 setSelectedDate(new Date());
                 setSelectedTime('');
                 setNote('');
@@ -146,7 +146,7 @@ export function OrderScheduleModal({
             note.trim() || undefined
         );
         // Reset state
-        setScheduleType('scheduled');
+        setScheduleType('instant');
         setSelectedDate(new Date());
         setSelectedTime('');
         setNote('');
@@ -154,7 +154,7 @@ export function OrderScheduleModal({
     };
 
     const handleClose = () => {
-        setScheduleType('scheduled');
+        setScheduleType('instant');
         setSelectedDate(new Date());
         setSelectedTime('');
         setNote('');

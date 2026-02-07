@@ -266,7 +266,7 @@ const LoginPage: React.FC = () => {
         {/* Main Content Container */}
         <div className="flex flex-col md:flex-row items-center justify-center gap-6 lg:gap-20 w-full max-w-screen-xl px-4 z-10">
           {/* Login Card with background band exactly behind it */}
-          <div className="relative w-full max-w-md shrink-0">
+          <div className="relative w-full max-w-lg shrink-0">
             {/* Band matches login card width & height */}
             <div className="pointer-events-none absolute inset-0 rounded-[40px] overflow-hidden shadow-[0_40px_120px_rgba(15,23,42,0.35)]">
               {/* Soft base gradient */}
@@ -413,61 +413,60 @@ const LoginPage: React.FC = () => {
               </div>
             </div>
 
-          </div>
-
-          {/* Side Info Card (clean, without glow band) */}
-          <div className="rounded-2xl p-8 w-80 bg-white shadow-md opacity-90 shrink-0">
-            <div className="space-y-6">
-              <div className="text-center">
-                <div className="w-20 h-20 mx-auto mb-4 flex items-center justify-center">
-                  <img
-                    src={centroerpLogo}
-                    alt="Centroerp Logo"
-                    className="w-full h-full object-contain"
-                  />
-                </div>
-                <h3 className="text-xl font-bold text-primary mb-2">CentroERP POS</h3>
-                <p className="text-gray-600 text-sm">Simple Point of Sale for Traders</p>
-              </div>
-
-              <div className="space-y-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center mt-1">
-                    <i className="fas fa-barcode text-emerald-600 text-sm"></i>
+            {/* Side Info Card (clean, without glow band) */}
+            <div className="hidden xl:block absolute left-full top-1/2 -translate-y-1/2 ml-[calc(25vw-14rem)] rounded-2xl p-8 w-80 bg-white shadow-md opacity-90 transition-all hover:opacity-100">
+              <div className="space-y-6">
+                <div className="text-center">
+                  <div className="w-20 h-20 mx-auto mb-4 flex items-center justify-center">
+                    <img
+                      src={centroerpLogo}
+                      alt="Centroerp Logo"
+                      className="w-full h-full object-contain"
+                    />
                   </div>
-                  <div>
-                    <h4 className="font-semibold text-gray-800 text-sm">Barcode Scanning</h4>
-                    <p className="text-xs text-gray-600">Quick product scanning and checkout</p>
-                  </div>
+                  <h3 className="text-xl font-bold text-primary mb-2">CentroERP POS</h3>
+                  <p className="text-gray-600 text-sm">Simple Point of Sale for Traders</p>
                 </div>
 
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center mt-1">
-                    <i className="fas fa-receipt text-blue-600 text-sm"></i>
+                <div className="space-y-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center mt-1">
+                      <i className="fas fa-barcode text-emerald-600 text-sm"></i>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-800 text-sm">Barcode Scanning</h4>
+                      <p className="text-xs text-gray-600">Quick product scanning and checkout</p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="font-semibold text-gray-800 text-sm">Receipt Printing</h4>
-                    <p className="text-xs text-gray-600">Generate and print customer receipts</p>
+
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center mt-1">
+                      <i className="fas fa-receipt text-blue-600 text-sm"></i>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-800 text-sm">Receipt Printing</h4>
+                      <p className="text-xs text-gray-600">Generate and print customer receipts</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center mt-1">
+                      <i className="fas fa-credit-card text-purple-600 text-sm"></i>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-800 text-sm">Payment Processing</h4>
+                      <p className="text-xs text-gray-600">Accept cash and card payments</p>
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center mt-1">
-                    <i className="fas fa-credit-card text-purple-600 text-sm"></i>
+                <div className="bg-gradient-to-r from-accent/10 to-blue-100/50 rounded-xl p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-semibold text-primary">POS Ready</span>
+                    <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
                   </div>
-                  <div>
-                    <h4 className="font-semibold text-gray-800 text-sm">Payment Processing</h4>
-                    <p className="text-xs text-gray-600">Accept cash and card payments</p>
-                  </div>
+                  <p className="text-xs text-gray-600">System connected to backend</p>
                 </div>
-              </div>
-
-              <div className="bg-gradient-to-r from-accent/10 to-blue-100/50 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-semibold text-primary">POS Ready</span>
-                  <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-                </div>
-                <p className="text-xs text-gray-600">System connected to backend</p>
               </div>
             </div>
           </div>

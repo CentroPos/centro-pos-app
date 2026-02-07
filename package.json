@@ -74,6 +74,7 @@
     "cross-env": "^10.1.0",
     "electron": "37.6.0",
     "electron-builder": "^25.1.8",
+    "electron-reload": "^2.0.0-alpha.1",
     "electron-vite": "^4.0.0",
     "eslint": "^9.31.0",
     "eslint-plugin-react": "^7.37.5",

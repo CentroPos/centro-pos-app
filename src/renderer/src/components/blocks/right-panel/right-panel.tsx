@@ -826,6 +826,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
     orders: 0
   })
   const refreshBypassRef = useRef<{ token?: number; pending?: Set<'recent' | 'most' | 'details'> }>({})
+  const orderSearchInputRef = useRef<HTMLInputElement>(null)
 
   const [currencySymbol, setCurrencySymbol] = useState('$')
   const { profile } = usePOSProfileStore()
@@ -1597,6 +1598,16 @@ const RightPanel: React.FC<RightPanelProps> = ({
   }
 
   // Load history data when product or customer changes
+
+  // Auto-focus search input when switching to orders tab
+  useEffect(() => {
+    if (activeTab === 'orders' && subTab === 'orders') {
+      // Small timeout to ensure the element is rendered
+      setTimeout(() => {
+        orderSearchInputRef.current?.focus()
+      }, 50)
+    }
+  }, [activeTab, subTab])
   useEffect(() => {
     console.log('🔄 ===== HISTORY LOADING TRIGGERED =====')
     console.log('🔄 Selected Item ID:', selectedItemId)
@@ -2013,6 +2024,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
   // Orders tab search states
   const [ordersSearch, setOrdersSearch] = useState('')
+  const [selectedOrderIndex, setSelectedOrderIndex] = useState<number>(-1)
   const [returnsSearch, setReturnsSearch] = useState('')
 
   // Recent orders for selected customer
@@ -2101,6 +2113,11 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const filteredReturns = useMemo(() => {
     return returnsList
   }, [returnsList])
+
+  // Reset selection when search changes or list updates
+  useEffect(() => {
+    setSelectedOrderIndex(-1)
+  }, [ordersSearch, filteredOrders])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -2932,6 +2949,34 @@ const RightPanel: React.FC<RightPanelProps> = ({
     </select>
   </div>
   // ... and similarly for Returns list, use returnsTotal.
+
+  // Handle keyboard navigation for orders search
+  const handleOrderSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (activeTab !== 'orders' || subTab !== 'orders') return
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setSelectedOrderIndex((prev) => {
+        const next = prev + 1
+        return next < filteredOrders.length ? next : prev
+      })
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setSelectedOrderIndex((prev) => {
+        const next = prev - 1
+        return next >= 0 ? next : 0
+      })
+    } else if (e.key === 'Enter') {
+      if (selectedOrderIndex >= 0 && selectedOrderIndex < filteredOrders.length) {
+        e.preventDefault()
+        const order = filteredOrders[selectedOrderIndex]
+        const orderId = order.sales_order_id || order.sales_invoice_id || order.name
+        if (orderId) {
+          handleOpenOrder(String(orderId), true)
+        }
+      }
+    }
+  }
 
   return (
     <div className="w-[480px] bg-white/60 backdrop-blur border-l border-white/20 flex flex-col h-full">
@@ -4999,6 +5044,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
                 {/* Search Bar */}
                 <div className="relative mb-4">
                   <input
+                    ref={orderSearchInputRef}
+                    onKeyDown={handleOrderSearchKeyDown}
                     type="text"
                     placeholder="Search orders..."
                     value={ordersSearch}
@@ -5053,7 +5100,10 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       return (
                         <div
                           key={index}
-                          className="p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg text-xs border border-gray-200 cursor-pointer hover:shadow-sm transition"
+                          className={`p-3 rounded-lg text-xs border cursor-pointer hover:shadow-sm transition ${index === selectedOrderIndex
+                              ? 'bg-blue-50 border-blue-300 ring-1 ring-blue-300'
+                              : 'bg-gradient-to-r from-gray-50 to-slate-50 border-gray-200'
+                            }`}
                           onClick={() => {
                             const orderId = order.sales_order_id || order.sales_invoice_id || order.name
                             if (orderId) {

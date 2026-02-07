@@ -109,7 +109,7 @@ const POSInterface: React.FC = () => {
           console.log('🖱️ Clicked table row to select')
         }
 
-        // Then find and click the quantity cell
+        // Then find and click the quantity cell (minimal delay for event propagation)
         setTimeout(() => {
           const quantityCellSelector = arrayIndex !== undefined && arrayIndex >= 0
             ? `[data-item-index="${arrayIndex}"][data-field="quantity"]`
@@ -120,7 +120,7 @@ const POSInterface: React.FC = () => {
             quantityCell.click()
             console.log('🖱️ Clicked quantity cell')
 
-            // Wait a bit more for the input to appear, then focus it
+            // Wait for input to render (next tick)
             setTimeout(() => {
               // Look for the specific input with data attributes - use arrayIndex if available
               const inputSelector = arrayIndex !== undefined && arrayIndex >= 0
@@ -142,10 +142,10 @@ const POSInterface: React.FC = () => {
                   console.log('✅ Focused and selected fallback input')
                 }
               }
-            }, 150)
+            }, 10)
           }
-        }, 200)
-      }, 100)
+        }, 0)
+      }, 0)
     }
   }
 

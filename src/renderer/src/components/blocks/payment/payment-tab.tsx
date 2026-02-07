@@ -120,7 +120,7 @@ const PaymentTab: React.FC = () => {
   const loadPOSProfile = async () => {
     try {
       console.log('📋 Loading POS profile...')
-      
+
       const response = await window.electronAPI?.proxy?.request({
         url: '/api/method/centro_pos_apis.api.profile.get_pos_profile'
       })
@@ -212,16 +212,12 @@ const PaymentTab: React.FC = () => {
 
     // Only debounce if search term actually changed
     if (prevVoucherSearchRef.current === voucherSearchTerm) return
-    
-    const handler = setTimeout(() => {
-      setPaymentVouchers([]) // Clear previous results
-      setVoucherPage(1) // Reset to first page
-      prevVoucherSearchRef.current = voucherSearchTerm
-    }, 300) // Debounce for 300ms
 
-    return () => {
-      clearTimeout(handler)
-    }
+    // No debounce - load immediately as per user request
+    setPaymentVouchers([]) // Clear previous results
+    setVoucherPage(1) // Reset to first page
+    prevVoucherSearchRef.current = voucherSearchTerm
+    return undefined
   }, [voucherSearchTerm]) // Trigger when search term changes
 
   // Reset page when page length changes
@@ -371,7 +367,7 @@ const PaymentTab: React.FC = () => {
     try {
       setVoucherLoading(true)
       setVoucherError(null)
-      
+
       console.log('📄 Loading payment vouchers...', {
         page,
         searchTerm,
@@ -512,15 +508,15 @@ const PaymentTab: React.FC = () => {
         console.log('📋 pendingPaymentEntryData exists:', !!pendingPaymentEntryData)
         console.log('📋 pendingPaymentEntryData.references:', pendingPaymentEntryData?.references)
         console.log('📋 pendingPaymentEntryData.references is array:', Array.isArray(pendingPaymentEntryData?.references))
-        
+
         if (pendingPaymentEntryData?.references && Array.isArray(pendingPaymentEntryData.references)) {
           console.log('📋 ===== MATCHING REFERENCES WITH INVOICES =====')
           console.log('📋 References to match:', pendingPaymentEntryData.references.length)
           console.log('📋 Invoices to match:', invoices.length)
-          
+
           const matchedInvoices = invoices.map((invoice) => {
             console.log(`📋 Checking invoice: ${invoice.invoice_no} (last5: ${invoice.invoice_no ? invoice.invoice_no.slice(-5) : 'N/A'})`)
-            
+
             // Find matching reference by comparing last 5 digits
             // Extract last 5 digits from reference_name (e.g., "ACC-SINV-2025-00040" -> "00040")
             // and compare with invoice_no (which might be "00040" or full name)
@@ -529,23 +525,23 @@ const PaymentTab: React.FC = () => {
                 console.log('📋 Reference has no reference_name')
                 return false
               }
-              
+
               // Get last 5 digits from reference_name
               const refLast5 = ref.reference_name.slice(-5)
-              
+
               // Compare with invoice_no (could be full name or just last 5 digits)
               const invoiceNo = invoice.invoice_no || ''
               const invoiceLast5 = invoiceNo.length >= 5 ? invoiceNo.slice(-5) : invoiceNo
-              
+
               console.log(`📋 Comparing: ref="${ref.reference_name}" (last5="${refLast5}") vs invoice="${invoiceNo}" (last5="${invoiceLast5}")`)
-              
+
               // Try multiple matching strategies
               const exactMatch = ref.reference_name === invoiceNo
               const last5Match = refLast5 === invoiceLast5
               const refLast5WithInvoice = refLast5 === invoiceNo
-              
+
               const matches = exactMatch || last5Match || refLast5WithInvoice
-              
+
               if (matches) {
                 console.log(`✅ MATCH FOUND! ref="${ref.reference_name}" matches invoice="${invoiceNo}"`)
                 console.log(`   - Exact match: ${exactMatch}`)
@@ -553,7 +549,7 @@ const PaymentTab: React.FC = () => {
                 console.log(`   - RefLast5 with invoice: ${refLast5WithInvoice}`)
                 console.log(`   - Allocated amount: ${ref.allocated_amount}`)
               }
-              
+
               return matches
             })
 
@@ -573,11 +569,11 @@ const PaymentTab: React.FC = () => {
             }
             return invoice
           })
-          
+
           console.log('📋 ===== MATCHING COMPLETE =====')
           console.log('📋 Matched invoices result:', matchedInvoices)
           console.log('📋 Selected invoices:', matchedInvoices.filter(inv => inv.is_selected))
-          
+
           setDueInvoices(matchedInvoices)
           // Clear pending data after applying
           setPendingPaymentEntryData(null)
@@ -585,7 +581,7 @@ const PaymentTab: React.FC = () => {
           console.log('✅ Applied matched invoices to state')
         } else {
           console.log('📋 No pending payment entry data or references not found, using invoices as-is')
-        setDueInvoices(invoices)
+          setDueInvoices(invoices)
         }
         console.log('✅ Successfully loaded due invoices:', invoices)
       } else {
@@ -728,10 +724,10 @@ const PaymentTab: React.FC = () => {
         const due = Number(invoice.due_amount || 0)
         const alloc = Math.min(due, remaining)
         return {
-              ...invoice,
+          ...invoice,
           is_selected: true,
           allocated_amount: alloc
-            }
+        }
       })
     })
   }
@@ -742,7 +738,7 @@ const PaymentTab: React.FC = () => {
       if (!checked) {
         // Unselect all → clear all allocations
         return prev.map((invoice) => ({
-        ...invoice,
+          ...invoice,
           is_selected: false,
           allocated_amount: 0
         }))
@@ -961,113 +957,113 @@ const PaymentTab: React.FC = () => {
               <h2 className="text-lg font-bold text-gray-800">Make Payment</h2>
             </div>
             <div className="flex-1 flex flex-col min-h-0 p-6">
-            {/* Header Section - All Select Boxes */}
-            <div className="grid grid-cols-3 gap-4 mb-4 pb-4 border-b border-gray-200 flex-shrink-0">
-              <div>
-                <Label htmlFor="party-type" className="text-sm font-medium text-gray-700">Party Type</Label>
-                <Select value={partyType} onValueChange={setPartyType}>
-                  <SelectTrigger className="w-full h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                    <SelectValue placeholder="Select party type" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white border-gray-200 shadow-lg z-[140]">
-                    <SelectItem value="Customer">Customer</SelectItem>
-                    <SelectItem value="Supplier">Supplier</SelectItem>
-                  </SelectContent>
-                </Select>
+              {/* Header Section - All Select Boxes */}
+              <div className="grid grid-cols-3 gap-4 mb-4 pb-4 border-b border-gray-200 flex-shrink-0">
+                <div>
+                  <Label htmlFor="party-type" className="text-sm font-medium text-gray-700">Party Type</Label>
+                  <Select value={partyType} onValueChange={setPartyType}>
+                    <SelectTrigger className="w-full h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                      <SelectValue placeholder="Select party type" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200 shadow-lg z-[140]">
+                      <SelectItem value="Customer">Customer</SelectItem>
+                      <SelectItem value="Supplier">Supplier</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="payment-type" className="text-sm font-medium text-gray-700">Payment Type</Label>
+                  <Select value={paymentType} onValueChange={setPaymentType}>
+                    <SelectTrigger className="w-full h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                      <SelectValue placeholder="Select payment type" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200 shadow-lg z-[140]">
+                      <SelectItem value="Receive">Receive</SelectItem>
+                      <SelectItem value="Pay">Pay</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="mode-of-payment" className="text-sm font-medium text-gray-700">Mode of Payment</Label>
+                  <Select value={modeOfPayment} onValueChange={setModeOfPayment}>
+                    <SelectTrigger className="w-full h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                      <SelectValue placeholder="Select payment mode" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200 shadow-lg z-[140]">
+                      {paymentModes.map((mode) => (<SelectItem key={mode} value={mode}>{mode}</SelectItem>))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div>
-                <Label htmlFor="payment-type" className="text-sm font-medium text-gray-700">Payment Type</Label>
-                <Select value={paymentType} onValueChange={setPaymentType}>
-                  <SelectTrigger className="w-full h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                    <SelectValue placeholder="Select payment type" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white border-gray-200 shadow-lg z-[140]">
-                    <SelectItem value="Receive">Receive</SelectItem>
-                    <SelectItem value="Pay">Pay</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="mode-of-payment" className="text-sm font-medium text-gray-700">Mode of Payment</Label>
-                <Select value={modeOfPayment} onValueChange={setModeOfPayment}>
-                  <SelectTrigger className="w-full h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                    <SelectValue placeholder="Select payment mode" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white border-gray-200 shadow-lg z-[140]">
-                    {paymentModes.map((mode) => (<SelectItem key={mode} value={mode}>{mode}</SelectItem>))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
 
-            {/* Party Name, Date and Amount */}
-            <div className="grid grid-cols-3 gap-4 mb-4 flex-shrink-0">
-              <div>
-                <Label htmlFor="party-name" className="text-sm font-medium text-gray-700">Party Name</Label>
-                <Input value={selectedCustomer?.customer_name || ''} placeholder="Select customer" readOnly onClick={() => setIsCustomerModalOpen(true)} className="w-full h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500 cursor-pointer hover:bg-gray-50" />
+              {/* Party Name, Date and Amount */}
+              <div className="grid grid-cols-3 gap-4 mb-4 flex-shrink-0">
+                <div>
+                  <Label htmlFor="party-name" className="text-sm font-medium text-gray-700">Party Name</Label>
+                  <Input value={selectedCustomer?.customer_name || ''} placeholder="Select customer" readOnly onClick={() => setIsCustomerModalOpen(true)} className="w-full h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500 cursor-pointer hover:bg-gray-50" />
+                </div>
+                <div>
+                  <Label htmlFor="payment-date" className="text-sm font-medium text-gray-700">Date</Label>
+                  <Input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="w-full h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <Label htmlFor="total-amount" className="text-sm font-medium text-gray-700">Amount</Label>
+                  <Input
+                    type="number"
+                    value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(e.target.value)}
+                    className="w-full h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
               </div>
-              <div>
-                <Label htmlFor="payment-date" className="text-sm font-medium text-gray-700">Date</Label>
-                <Input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="w-full h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500" />
-              </div>
-              <div>
-                <Label htmlFor="total-amount" className="text-sm font-medium text-gray-700">Amount</Label>
-                <Input 
-                  type="number"
-                  value={paymentAmount} 
-                  onChange={(e) => setPaymentAmount(e.target.value)}
-                  className="w-full h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500" 
-                  placeholder="0.00"
-                  min="0"
-                  step="0.01"
-                />
-              </div>
-            </div>
 
-            {/* Due invoices table and actions - Scrollable */}
-            {dueInvoices.length > 0 && (
-              <Card className="border border-gray-200 shadow-sm flex-1 flex flex-col min-h-0">
-                <CardHeader className="bg-gray-50 border-b border-gray-200 flex-shrink-0">
-                  <CardTitle className="text-lg font-semibold text-gray-800">Allocate Pending Due</CardTitle>
-                </CardHeader>
-                <CardContent className="p-0 flex-1 overflow-y-auto min-h-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gray-50">
-                        <TableHead className="w-8 px-2">
-                          <Checkbox 
-                            checked={isAllSelected}
-                            onCheckedChange={handleSelectAll}
-                            className="border-gray-300 focus:ring-blue-500"
-                          />
-                        </TableHead>
-                        <TableHead className="w-16 px-2 text-sm font-medium text-gray-700">Invoice</TableHead>
-                        <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700">Total</TableHead>
-                        <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700">Due</TableHead>
-                        <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700">Allocate</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {dueInvoices.map((invoice, index) => (
-                        <TableRow key={invoice.invoice_no} className="hover:bg-gray-50">
-                          <TableCell className="w-8 px-2">
-                            <Checkbox checked={invoice.is_selected} onCheckedChange={() => handleInvoiceToggle(index)} className="border-gray-300 focus:ring-blue-500" />
-                          </TableCell>
-                          <TableCell className="w-16 px-2 font-medium text-sm text-gray-900">{abbreviateInvoiceNumber(invoice.invoice_no)}</TableCell>
-                          <TableCell className="w-20 px-2 text-right text-sm text-gray-700">{invoice.total_amount.toFixed(2)}</TableCell>
-                          <TableCell className="w-20 px-2 text-right text-sm text-gray-700">{invoice.due_amount.toFixed(2)}</TableCell>
-                          <TableCell className="w-20 px-2 text-right">
-                            <div className="flex justify-end">
-                              <Input type="number" value={invoice.allocated_amount || 0} onChange={(e) => handleAllocatedAmountChange(index, e.target.value)} disabled={!invoice.is_selected} className="w-16 h-8 text-right text-sm border-gray-300 focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100" min="0" max={invoice.due_amount} step="0.01" />
-                            </div>
-                          </TableCell>
+              {/* Due invoices table and actions - Scrollable */}
+              {dueInvoices.length > 0 && (
+                <Card className="border border-gray-200 shadow-sm flex-1 flex flex-col min-h-0">
+                  <CardHeader className="bg-gray-50 border-b border-gray-200 flex-shrink-0">
+                    <CardTitle className="text-lg font-semibold text-gray-800">Allocate Pending Due</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0 flex-1 overflow-y-auto min-h-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-gray-50">
+                          <TableHead className="w-8 px-2">
+                            <Checkbox
+                              checked={isAllSelected}
+                              onCheckedChange={handleSelectAll}
+                              className="border-gray-300 focus:ring-blue-500"
+                            />
+                          </TableHead>
+                          <TableHead className="w-16 px-2 text-sm font-medium text-gray-700">Invoice</TableHead>
+                          <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700">Total</TableHead>
+                          <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700">Due</TableHead>
+                          <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700">Allocate</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            )}
+                      </TableHeader>
+                      <TableBody>
+                        {dueInvoices.map((invoice, index) => (
+                          <TableRow key={invoice.invoice_no} className="hover:bg-gray-50">
+                            <TableCell className="w-8 px-2">
+                              <Checkbox checked={invoice.is_selected} onCheckedChange={() => handleInvoiceToggle(index)} className="border-gray-300 focus:ring-blue-500" />
+                            </TableCell>
+                            <TableCell className="w-16 px-2 font-medium text-sm text-gray-900">{abbreviateInvoiceNumber(invoice.invoice_no)}</TableCell>
+                            <TableCell className="w-20 px-2 text-right text-sm text-gray-700">{invoice.total_amount.toFixed(2)}</TableCell>
+                            <TableCell className="w-20 px-2 text-right text-sm text-gray-700">{invoice.due_amount.toFixed(2)}</TableCell>
+                            <TableCell className="w-20 px-2 text-right">
+                              <div className="flex justify-end">
+                                <Input type="number" value={invoice.allocated_amount || 0} onChange={(e) => handleAllocatedAmountChange(index, e.target.value)} disabled={!invoice.is_selected} className="w-16 h-8 text-right text-sm border-gray-300 focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100" min="0" max={invoice.due_amount} step="0.01" />
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              )}
 
             </div>
             <div className="flex items-center justify-between gap-3 p-6 bg-gray-50 border-t border-gray-200 flex-shrink-0">
@@ -1079,20 +1075,20 @@ const PaymentTab: React.FC = () => {
                 )}
               </div>
               <div className="flex gap-3">
-              <Button 
-                variant="outline" 
-                onClick={() => setIsPaymentModalOpen(false)}
-                className="px-6 py-2 border-gray-300 hover:bg-gray-100"
-              >
-                Close
-              </Button>
-              <Button 
-                onClick={handleMakePayment} 
-                  disabled={loading || !selectedCustomer || parseFloat(paymentAmount) <= 0 || unallocatedAmount < 0} 
-                className="px-8 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-              >
-                {loading ? 'Processing...' : 'Make Payment'}
-              </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsPaymentModalOpen(false)}
+                  className="px-6 py-2 border-gray-300 hover:bg-gray-100"
+                >
+                  Close
+                </Button>
+                <Button
+                  onClick={handleMakePayment}
+                  disabled={loading || !selectedCustomer || parseFloat(paymentAmount) <= 0 || unallocatedAmount < 0}
+                  className="px-8 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                >
+                  {loading ? 'Processing...' : 'Make Payment'}
+                </Button>
               </div>
             </div>
           </div>
@@ -1196,13 +1192,12 @@ const PaymentTab: React.FC = () => {
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-2">
                       <span
-                        className={`text-xs px-2 py-1 rounded-full font-medium ${
-                          voucher.status === 'Submitted'
+                        className={`text-xs px-2 py-1 rounded-full font-medium ${voucher.status === 'Submitted'
                             ? 'bg-green-100 text-green-700'
                             : voucher.status === 'Draft'
                               ? 'bg-yellow-100 text-yellow-700'
                               : 'bg-gray-100 text-gray-700'
-                        }`}
+                          }`}
                       >
                         {voucher.status}
                       </span>
@@ -1337,22 +1332,20 @@ const PaymentTab: React.FC = () => {
                     <div
                       key={customer.id}
                       data-customer-index={index}
-                      className={`p-3 rounded-lg cursor-pointer transition-all duration-200 ${
-                        index === selectedCustomerIndex
+                      className={`p-3 rounded-lg cursor-pointer transition-all duration-200 ${index === selectedCustomerIndex
                           ? 'bg-primary text-primary-foreground'
                           : 'hover:bg-muted'
-                      }`}
+                        }`}
                       onClick={() => handleCustomerSelect(customer)}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
                           <h4 className="font-medium text-sm leading-tight">{customer.customer_name}</h4>
                           <p
-                            className={`text-xs mt-1 ${
-                              index === selectedCustomerIndex
+                            className={`text-xs mt-1 ${index === selectedCustomerIndex
                                 ? 'text-primary-foreground/80'
                                 : 'text-muted-foreground'
-                            }`}
+                              }`}
                           >
                             <span>Tax ID: {customer.gst || customer.tax_id || 'Not Available'}</span>
                             <span className="mx-1">•</span>
@@ -1394,89 +1387,89 @@ const PaymentTab: React.FC = () => {
               <h2 className="text-lg font-bold text-gray-800">Payment Voucher</h2>
             </div>
             <div className="flex-1 flex flex-col min-h-0 p-6">
-            {/* Header Section - All Select Boxes */}
-            <div className="grid grid-cols-3 gap-4 mb-4 pb-4 border-b border-gray-200 flex-shrink-0">
-              <div>
-                <Label htmlFor="party-type" className="text-sm font-medium text-gray-700">Party Type</Label>
-                <Input value={voucherViewData.party_type || 'Customer'} readOnly className="w-full h-10 bg-gray-100 border-gray-300 text-gray-700" />
+              {/* Header Section - All Select Boxes */}
+              <div className="grid grid-cols-3 gap-4 mb-4 pb-4 border-b border-gray-200 flex-shrink-0">
+                <div>
+                  <Label htmlFor="party-type" className="text-sm font-medium text-gray-700">Party Type</Label>
+                  <Input value={voucherViewData.party_type || 'Customer'} readOnly className="w-full h-10 bg-gray-100 border-gray-300 text-gray-700" />
+                </div>
+                <div>
+                  <Label htmlFor="payment-type" className="text-sm font-medium text-gray-700">Payment Type</Label>
+                  <Input value={voucherViewData.payment_type || 'Receive'} readOnly className="w-full h-10 bg-gray-100 border-gray-300 text-gray-700" />
+                </div>
+                <div>
+                  <Label htmlFor="mode-of-payment" className="text-sm font-medium text-gray-700">Mode of Payment</Label>
+                  <Input value={voucherViewData.mode_of_payment || 'Cash'} readOnly className="w-full h-10 bg-gray-100 border-gray-300 text-gray-700" />
+                </div>
               </div>
-              <div>
-                <Label htmlFor="payment-type" className="text-sm font-medium text-gray-700">Payment Type</Label>
-                <Input value={voucherViewData.payment_type || 'Receive'} readOnly className="w-full h-10 bg-gray-100 border-gray-300 text-gray-700" />
-              </div>
-              <div>
-                <Label htmlFor="mode-of-payment" className="text-sm font-medium text-gray-700">Mode of Payment</Label>
-                <Input value={voucherViewData.mode_of_payment || 'Cash'} readOnly className="w-full h-10 bg-gray-100 border-gray-300 text-gray-700" />
-              </div>
-            </div>
 
-            {/* Party Name, Date and Amount */}
-            <div className="grid grid-cols-3 gap-4 mb-4 flex-shrink-0">
-              <div>
-                <Label htmlFor="party-name" className="text-sm font-medium text-gray-700">Party Name</Label>
-                <Input value={voucherViewData.party_name || ''} readOnly className="w-full h-10 bg-gray-100 border-gray-300 text-gray-700" />
+              {/* Party Name, Date and Amount */}
+              <div className="grid grid-cols-3 gap-4 mb-4 flex-shrink-0">
+                <div>
+                  <Label htmlFor="party-name" className="text-sm font-medium text-gray-700">Party Name</Label>
+                  <Input value={voucherViewData.party_name || ''} readOnly className="w-full h-10 bg-gray-100 border-gray-300 text-gray-700" />
+                </div>
+                <div>
+                  <Label htmlFor="payment-date" className="text-sm font-medium text-gray-700">Date</Label>
+                  <Input value={voucherViewData.posting_date || ''} readOnly className="w-full h-10 bg-gray-100 border-gray-300 text-gray-700" />
+                </div>
+                <div>
+                  <Label htmlFor="total-amount" className="text-sm font-medium text-gray-700">Amount</Label>
+                  <Input value={voucherViewData.paid_amount ? voucherViewData.paid_amount.toFixed(2) : '0.00'} readOnly className="w-full h-10 bg-gray-100 border-gray-300 text-gray-700 font-semibold" />
+                </div>
               </div>
-              <div>
-                <Label htmlFor="payment-date" className="text-sm font-medium text-gray-700">Date</Label>
-                <Input value={voucherViewData.posting_date || ''} readOnly className="w-full h-10 bg-gray-100 border-gray-300 text-gray-700" />
-              </div>
-              <div>
-                <Label htmlFor="total-amount" className="text-sm font-medium text-gray-700">Amount</Label>
-                <Input value={voucherViewData.paid_amount ? voucherViewData.paid_amount.toFixed(2) : '0.00'} readOnly className="w-full h-10 bg-gray-100 border-gray-300 text-gray-700 font-semibold" />
-              </div>
-            </div>
 
-            {/* Allocated Invoices table - Scrollable */}
-            {voucherViewData.references && Array.isArray(voucherViewData.references) && voucherViewData.references.length > 0 && (
-              <Card className="border border-gray-200 shadow-sm flex-1 flex flex-col min-h-0">
-                <CardHeader className="bg-gray-50 border-b border-gray-200 flex-shrink-0">
-                  <CardTitle className="text-lg font-semibold text-gray-800">Allocated Invoices</CardTitle>
-                </CardHeader>
-                <CardContent className="p-0 flex-1 overflow-y-auto min-h-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gray-50">
-                        <TableHead className="w-8 px-2">
-                          <Checkbox disabled className="border-gray-300" />
-                        </TableHead>
-                        <TableHead className="w-16 px-2 text-sm font-medium text-gray-700">Invoice</TableHead>
-                        <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700">Total</TableHead>
-                        <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700">Due</TableHead>
-                        <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700">Allocated</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {voucherViewData.references.map((ref: any, index: number) => {
-                        const invoiceNo = ref.reference_name || ''
-                        const invoiceLast5 = invoiceNo.length >= 5 ? invoiceNo.slice(-5) : invoiceNo
-                        const hasOutstanding = (ref.outstanding_amount || 0) > 0
-                        
-                        return (
-                          <TableRow key={index} className="hover:bg-gray-50">
-                            <TableCell className="w-8 px-2">
-                              <Checkbox 
-                                checked={hasOutstanding} 
-                                disabled={!hasOutstanding}
-                                className="border-gray-300"
-                              />
-                            </TableCell>
-                            <TableCell className="w-16 px-2 font-medium text-sm text-gray-900">{invoiceLast5}</TableCell>
-                            <TableCell className="w-20 px-2 text-right text-sm text-gray-700">{(ref.total_amount || 0).toFixed(2)}</TableCell>
-                            <TableCell className="w-20 px-2 text-right text-sm text-gray-700">{(ref.outstanding_amount || 0).toFixed(2)}</TableCell>
-                            <TableCell className="w-20 px-2 text-right text-sm text-gray-700">{(ref.allocated_amount || 0).toFixed(2)}</TableCell>
-                          </TableRow>
-                        )
-                      })}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            )}
+              {/* Allocated Invoices table - Scrollable */}
+              {voucherViewData.references && Array.isArray(voucherViewData.references) && voucherViewData.references.length > 0 && (
+                <Card className="border border-gray-200 shadow-sm flex-1 flex flex-col min-h-0">
+                  <CardHeader className="bg-gray-50 border-b border-gray-200 flex-shrink-0">
+                    <CardTitle className="text-lg font-semibold text-gray-800">Allocated Invoices</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0 flex-1 overflow-y-auto min-h-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-gray-50">
+                          <TableHead className="w-8 px-2">
+                            <Checkbox disabled className="border-gray-300" />
+                          </TableHead>
+                          <TableHead className="w-16 px-2 text-sm font-medium text-gray-700">Invoice</TableHead>
+                          <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700">Total</TableHead>
+                          <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700">Due</TableHead>
+                          <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700">Allocated</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {voucherViewData.references.map((ref: any, index: number) => {
+                          const invoiceNo = ref.reference_name || ''
+                          const invoiceLast5 = invoiceNo.length >= 5 ? invoiceNo.slice(-5) : invoiceNo
+                          const hasOutstanding = (ref.outstanding_amount || 0) > 0
+
+                          return (
+                            <TableRow key={index} className="hover:bg-gray-50">
+                              <TableCell className="w-8 px-2">
+                                <Checkbox
+                                  checked={hasOutstanding}
+                                  disabled={!hasOutstanding}
+                                  className="border-gray-300"
+                                />
+                              </TableCell>
+                              <TableCell className="w-16 px-2 font-medium text-sm text-gray-900">{invoiceLast5}</TableCell>
+                              <TableCell className="w-20 px-2 text-right text-sm text-gray-700">{(ref.total_amount || 0).toFixed(2)}</TableCell>
+                              <TableCell className="w-20 px-2 text-right text-sm text-gray-700">{(ref.outstanding_amount || 0).toFixed(2)}</TableCell>
+                              <TableCell className="w-20 px-2 text-right text-sm text-gray-700">{(ref.allocated_amount || 0).toFixed(2)}</TableCell>
+                            </TableRow>
+                          )
+                        })}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              )}
 
             </div>
             <div className="flex justify-end gap-3 p-6 bg-gray-50 border-t border-gray-200 flex-shrink-0">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={() => setIsVoucherViewModalOpen(false)}
                 className="px-6 py-2 border-gray-300 hover:bg-gray-100"
               >

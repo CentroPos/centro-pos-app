@@ -157,10 +157,8 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
     setApiCustomers([])
     setPage(1)
     setHasMore(true)
-    const handle = setTimeout(() => {
-      loadCustomers(search, 1, false)
-    }, 300)
-    return () => clearTimeout(handle)
+    loadCustomers(search, 1, false)
+    return undefined // No cleanup needed
   }, [search, open, view])
 
   console.log('👥 Customer data:', {
@@ -237,7 +235,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
 
     // Use capture phase so this runs before any other handlers
     inputElement.addEventListener('keydown', handleNativeKeyDown, { capture: true, passive: true })
-    
+
     return () => {
       inputElement.removeEventListener('keydown', handleNativeKeyDown, { capture: true })
     }
@@ -500,17 +498,17 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
 
   return createPortal(
     <Dialog open={open} onOpenChange={(isOpen) => (isOpen ? undefined : resetAndClose())}>
-      <DialogContent 
+      <DialogContent
         className="max-w-5xl max-h-[75vh] bg-white m-4 flex flex-col"
         onKeyDown={(e) => {
           // Prevent arrow keys from propagating to background when modal is open
           // Only prevent if the event is NOT from an input field (where we want cursor movement)
           const target = e.target as HTMLElement
-          const isInputField = target.tagName === 'INPUT' || 
-                               target.tagName === 'TEXTAREA' ||
-                               target.closest('input') ||
-                               target.closest('textarea')
-          
+          const isInputField = target.tagName === 'INPUT' ||
+            target.tagName === 'TEXTAREA' ||
+            target.closest('input') ||
+            target.closest('textarea')
+
           // For arrow keys, stop propagation to prevent background handlers from firing
           // But only if NOT in an input field (where we want normal cursor movement)
           if ((e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !isInputField) {
@@ -554,7 +552,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                     // The browser will move the cursor naturally
                     return
                   }
-                  
+
                   // Only handle up/down arrows for list navigation
                   if (e.key === 'ArrowDown') {
                     e.preventDefault()
@@ -603,11 +601,11 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                 // CRITICAL: Allow left/right arrows to pass through - they're for text editing in inputs
                 // Check if the event is coming from an input field
                 const target = e.target as HTMLElement
-                const isInputField = target.tagName === 'INPUT' || 
-                                     target.tagName === 'TEXTAREA' ||
-                                     target.closest('input') ||
-                                     target.closest('textarea')
-                
+                const isInputField = target.tagName === 'INPUT' ||
+                  target.tagName === 'TEXTAREA' ||
+                  target.closest('input') ||
+                  target.closest('textarea')
+
                 // If left/right arrows are pressed, let them pass through to the input field
                 if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
                   // Don't prevent default - let the browser handle cursor movement
@@ -620,7 +618,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                   // Even if not in input, don't prevent - might be navigating
                   return
                 }
-                
+
                 // Handle arrow keys when list container has focus (only up/down)
                 if (e.key === 'ArrowDown') {
                   e.preventDefault()
