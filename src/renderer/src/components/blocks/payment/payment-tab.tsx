@@ -86,6 +86,9 @@ const PaymentTab: React.FC = () => {
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState<string>('')
   const [selectedCustomerIndex, setSelectedCustomerIndex] = useState<number>(0)
+  const [referenceNo, setReferenceNo] = useState<string>('')
+  const [referenceDate, setReferenceDate] = useState<string>(() => getCurrentDate())
+  const [posProfile, setPosProfile] = useState<any>(null)
   const [_paymentVouchers, setPaymentVouchers] = useState<PaymentVoucher[]>([])
   const [filteredVouchers, setFilteredVouchers] = useState<PaymentVoucher[]>([])
   const [voucherSearchTerm, setVoucherSearchTerm] = useState<string>('')
@@ -109,6 +112,32 @@ const PaymentTab: React.FC = () => {
   const [voucherViewData, setVoucherViewData] = useState<any>(null)
   const [pendingPaymentEntryData, setPendingPaymentEntryData] = useState<any>(null)
   const isLoadingFromVoucherRef = useRef(false)
+  const [totalDueAmount, setTotalDueAmount] = useState<number>(0)
+
+  // Load customer value insights
+  const loadCustomerInsights = async (customerId: string) => {
+    try {
+      console.log('📊 Loading customer insights for:', customerId)
+      const response = await window.electronAPI?.proxy?.request({
+        url: '/api/method/centro_pos_apis.api.customer.customer_amount_insights',
+        params: { customer_id: customerId }
+      })
+
+      console.log('📊 Customer insights response:', response)
+
+      if (response?.data?.data) {
+        const insights = response.data.data
+        const due = insights.amount_due || 0
+        console.log('📊 Customer due amount:', due)
+        setTotalDueAmount(due)
+      } else {
+        setTotalDueAmount(0)
+      }
+    } catch (error) {
+      console.error('❌ Error loading customer insights:', error)
+      setTotalDueAmount(0)
+    }
+  }
 
   // Helper function to abbreviate invoice numbers (last 5 digits)
   const abbreviateInvoiceNumber = (invoiceNo: string): string => {
@@ -127,6 +156,7 @@ const PaymentTab: React.FC = () => {
 
       if (response?.data?.data) {
         const profileData = response.data.data
+        setPosProfile(profileData)
 
         // Extract payment modes from payments array
         if (profileData.payments && Array.isArray(profileData.payments)) {
@@ -172,6 +202,12 @@ const PaymentTab: React.FC = () => {
   useEffect(() => {
     if (isPaymentModalOpen && !isLoadingFromVoucherRef.current) {
       setPaymentAmount('0.00')
+      setReferenceNo('')
+      setReferenceDate(getCurrentDate())
+      // Only reset total due if we're not loading a voucher/customer context
+      if (!selectedCustomer) {
+        setTotalDueAmount(0)
+      }
     }
   }, [isPaymentModalOpen])
 
@@ -451,6 +487,8 @@ const PaymentTab: React.FC = () => {
 
       if (response?.data?.data) {
         const paymentData = response.data.data
+
+
         setVoucherViewData(paymentData)
         setIsVoucherViewModalOpen(true)
       } else {
@@ -610,7 +648,10 @@ const PaymentTab: React.FC = () => {
     setSelectedCustomer(customer)
     setIsCustomerModalOpen(false)
     setPaymentAmount('0.00') // Reset payment amount when customer changes
+    setReferenceNo('')
+    setReferenceDate(getCurrentDate())
     loadDueInvoices(customer.id)
+    loadCustomerInsights(customer.id)
   }
 
   // Handle keyboard navigation in customer modal
@@ -816,6 +857,19 @@ const PaymentTab: React.FC = () => {
       return
     }
 
+    // Validation for reference fields if required
+    const showRefFields = modeOfPayment !== 'Cash' && !posProfile?.custom_autogenerate_bank_references
+    if (showRefFields) {
+      if (!referenceNo.trim()) {
+        toast.error('Reference Number is required')
+        return
+      }
+      if (!referenceDate) {
+        toast.error('Reference Date is required')
+        return
+      }
+    }
+
     try {
       setLoading(true)
 
@@ -827,6 +881,8 @@ const PaymentTab: React.FC = () => {
         posting_date: paymentDate,
         paid_amount: amountValue,
         mode_of_payment: modeOfPayment,
+        reference_no: referenceNo,
+        reference_date: referenceDate,
         references: selectedInvoices.map((invoice) => ({
           reference_doctype: 'Sales Invoice',
           reference_name: invoice.invoice_no,
@@ -997,10 +1053,20 @@ const PaymentTab: React.FC = () => {
               </div>
 
               {/* Party Name, Date and Amount */}
-              <div className="grid grid-cols-3 gap-4 mb-4 flex-shrink-0">
+              <div className="grid grid-cols-4 gap-4 mb-3 flex-shrink-0">
                 <div>
                   <Label htmlFor="party-name" className="text-sm font-medium text-gray-700">Party Name</Label>
                   <Input value={selectedCustomer?.customer_name || ''} placeholder="Select customer" readOnly onClick={() => setIsCustomerModalOpen(true)} className="w-full h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500 cursor-pointer hover:bg-gray-50" />
+                </div>
+                <div>
+                  <Label htmlFor="total-due" className="text-sm font-medium text-gray-700">Total Due Amount</Label>
+                  <Input
+                    id="total-due"
+                    type="text"
+                    value={totalDueAmount.toFixed(2)}
+                    readOnly
+                    className="w-full h-10 bg-gray-100 border-gray-300 text-gray-700 font-semibold"
+                  />
                 </div>
                 <div>
                   <Label htmlFor="payment-date" className="text-sm font-medium text-gray-700">Date</Label>
@@ -1020,38 +1086,70 @@ const PaymentTab: React.FC = () => {
                 </div>
               </div>
 
+              {/* Reference Number and Reference Date (Conditional) */}
+              {modeOfPayment !== 'Cash' && !posProfile?.custom_autogenerate_bank_references && (
+                <div className="grid grid-cols-2 gap-4 mb-3 flex-shrink-0">
+                  <div>
+                    <Label htmlFor="reference-no" className="text-sm font-medium text-gray-700">
+                      Reference No. <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="reference-no"
+                      value={referenceNo}
+                      onChange={(e) => setReferenceNo(e.target.value)}
+                      placeholder="Required"
+                      className="w-full h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="reference-date" className="text-sm font-medium text-gray-700">
+                      Reference Date <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="reference-date"
+                      type="date"
+                      value={referenceDate}
+                      onChange={(e) => setReferenceDate(e.target.value)}
+                      className="w-full h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* Due invoices table and actions - Scrollable */}
               {dueInvoices.length > 0 && (
-                <Card className="border border-gray-200 shadow-sm flex-1 flex flex-col min-h-0">
-                  <CardHeader className="bg-gray-50 border-b border-gray-200 flex-shrink-0">
-                    <CardTitle className="text-lg font-semibold text-gray-800">Allocate Pending Due</CardTitle>
+                <Card className="border border-gray-200 shadow-sm flex flex-col min-h-0 py-0 gap-0">
+                  <CardHeader className="bg-gray-50 border-b border-gray-200 flex-shrink-0 py-2 px-4">
+                    <CardTitle className="text-base font-semibold text-gray-800">Allocate Pending Due</CardTitle>
                   </CardHeader>
-                  <CardContent className="p-0 flex-1 overflow-y-auto min-h-0">
+                  <CardContent className="p-0 overflow-y-auto min-h-0 max-h-[400px]">
                     <Table>
                       <TableHeader>
                         <TableRow className="bg-gray-50">
-                          <TableHead className="w-8 px-2">
+                          <TableHead className="w-8 px-2 border-r border-gray-200">
                             <Checkbox
                               checked={isAllSelected}
                               onCheckedChange={handleSelectAll}
                               className="border-gray-300 focus:ring-blue-500"
                             />
                           </TableHead>
-                          <TableHead className="w-16 px-2 text-sm font-medium text-gray-700">Invoice</TableHead>
-                          <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700">Total</TableHead>
-                          <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700">Due</TableHead>
+                          <TableHead className="w-16 px-2 text-sm font-medium text-gray-700 border-r border-gray-200">Invoice</TableHead>
+                          <TableHead className="w-20 px-2 text-sm font-medium text-gray-700 border-r border-gray-200">Date</TableHead>
+                          <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700 border-r border-gray-200">Total</TableHead>
+                          <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700 border-r border-gray-200">Due</TableHead>
                           <TableHead className="w-20 px-2 text-right text-sm font-medium text-gray-700">Allocate</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {dueInvoices.map((invoice, index) => (
                           <TableRow key={invoice.invoice_no} className="hover:bg-gray-50">
-                            <TableCell className="w-8 px-2">
+                            <TableCell className="w-8 px-2 border-r border-gray-100">
                               <Checkbox checked={invoice.is_selected} onCheckedChange={() => handleInvoiceToggle(index)} className="border-gray-300 focus:ring-blue-500" />
                             </TableCell>
-                            <TableCell className="w-16 px-2 font-medium text-sm text-gray-900">{abbreviateInvoiceNumber(invoice.invoice_no)}</TableCell>
-                            <TableCell className="w-20 px-2 text-right text-sm text-gray-700">{invoice.total_amount.toFixed(2)}</TableCell>
-                            <TableCell className="w-20 px-2 text-right text-sm text-gray-700">{invoice.due_amount.toFixed(2)}</TableCell>
+                            <TableCell className="w-16 px-2 font-medium text-sm text-gray-900 border-r border-gray-100">{abbreviateInvoiceNumber(invoice.invoice_no)}</TableCell>
+                            <TableCell className="w-20 px-2 text-sm text-gray-700 border-r border-gray-100">{invoice.date}</TableCell>
+                            <TableCell className="w-20 px-2 text-right text-sm text-gray-700 border-r border-gray-100">{invoice.total_amount.toFixed(2)}</TableCell>
+                            <TableCell className="w-20 px-2 text-right text-sm text-gray-700 border-r border-gray-100">{invoice.due_amount.toFixed(2)}</TableCell>
                             <TableCell className="w-20 px-2 text-right">
                               <div className="flex justify-end">
                                 <Input type="number" value={invoice.allocated_amount || 0} onChange={(e) => handleAllocatedAmountChange(index, e.target.value)} disabled={!invoice.is_selected} className="w-16 h-8 text-right text-sm border-gray-300 focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100" min="0" max={invoice.due_amount} step="0.01" />
@@ -1193,10 +1291,10 @@ const PaymentTab: React.FC = () => {
                     <div className="flex items-center gap-2">
                       <span
                         className={`text-xs px-2 py-1 rounded-full font-medium ${voucher.status === 'Submitted'
-                            ? 'bg-green-100 text-green-700'
-                            : voucher.status === 'Draft'
-                              ? 'bg-yellow-100 text-yellow-700'
-                              : 'bg-gray-100 text-gray-700'
+                          ? 'bg-green-100 text-green-700'
+                          : voucher.status === 'Draft'
+                            ? 'bg-yellow-100 text-yellow-700'
+                            : 'bg-gray-100 text-gray-700'
                           }`}
                       >
                         {voucher.status}
@@ -1333,8 +1431,8 @@ const PaymentTab: React.FC = () => {
                       key={customer.id}
                       data-customer-index={index}
                       className={`p-3 rounded-lg cursor-pointer transition-all duration-200 ${index === selectedCustomerIndex
-                          ? 'bg-primary text-primary-foreground'
-                          : 'hover:bg-muted'
+                        ? 'bg-primary text-primary-foreground'
+                        : 'hover:bg-muted'
                         }`}
                       onClick={() => handleCustomerSelect(customer)}
                     >
@@ -1343,8 +1441,8 @@ const PaymentTab: React.FC = () => {
                           <h4 className="font-medium text-sm leading-tight">{customer.customer_name}</h4>
                           <p
                             className={`text-xs mt-1 ${index === selectedCustomerIndex
-                                ? 'text-primary-foreground/80'
-                                : 'text-muted-foreground'
+                              ? 'text-primary-foreground/80'
+                              : 'text-muted-foreground'
                               }`}
                           >
                             <span>Tax ID: {customer.gst || customer.tax_id || 'Not Available'}</span>

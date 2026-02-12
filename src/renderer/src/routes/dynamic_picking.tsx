@@ -26,6 +26,7 @@ const DynamicPickupInterface: React.FC = () => {
         tabs,
         activeTabId,
         warehouses,
+        otherPickers,
 
         openInvoiceTab,
         closeInvoiceTab,
@@ -630,6 +631,7 @@ const DynamicPickupInterface: React.FC = () => {
                         : []
                 }
                 warehouses={warehouses}
+                otherPickers={otherPickers}
                 invoiceNo={activeTab?.invoice.invoiceNo || ''}
                 existingPickSlip={editingPickSlip}
                 onSuccess={() => {

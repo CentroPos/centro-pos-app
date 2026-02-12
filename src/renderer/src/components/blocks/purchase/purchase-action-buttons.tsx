@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@renderer/components/ui/button'
@@ -94,9 +94,6 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
   const [amountDue, setAmountDue] = useState<string>('0.00')
   const amountInputRef = React.useRef<HTMLInputElement>(null)
 
-  const buyingPriceList = currentTab?.buying_price_list || profile?.buying_price_list || 'Standard Buying'
-  const transactionDate = currentTab?.posting_date || new Date().toISOString().slice(0, 10)
-  
   // Get current date helper
   const getCurrentDate = () => {
     const now = new Date()
@@ -105,6 +102,13 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
     const day = String(now.getDate()).padStart(2, '0')
     return `${year}-${month}-${day}`
   }
+
+  const buyingPriceList = currentTab?.buying_price_list || profile?.custom_buying_price_list || 'Standard Buying'
+  const transactionDate = currentTab?.posting_date || new Date().toISOString().slice(0, 10)
+
+  // Check if order is confirmed (docstatus = 1)
+  const docstatus = currentTab?.orderData ? Number(currentTab.orderData.docstatus) : null
+  const isConfirmed = docstatus === 1
 
   // Calculate order total (similar to sales)
   const calculateOrderTotal = useCallback(() => {
@@ -174,12 +178,12 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
     const netAfterIndividualDiscount = untaxedSum - individualDiscountSum
     const globalDiscountAmount = (netAfterIndividualDiscount * globalDiscountPercent) / 100
     const netAfterGlobalDiscount = netAfterIndividualDiscount - globalDiscountAmount
-    
+
     // Get VAT percentage from profile
-    const vatPercentage = Number(profile?.custom_purchase_tax_rate || profile?.custom_tax_rate || 15)
+    const vatPercentage = Number(profile?.custom_purchase_tax_rate || 15)
     const vatCalc = netAfterGlobalDiscount * (vatPercentage / 100)
     const totalRaw = netAfterGlobalDiscount + vatCalc
-    
+
     // Rounding logic
     const roundToNearest = (value: number, step = 0.05) => {
       const rounded = Math.round(value / step) * step
@@ -232,7 +236,7 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
   // Load Amount Due and update Order Amount when Pay dialog opens
   useEffect(() => {
     if (!payOpen) return
-    
+
     let cancelled = false
     const fetchAmountDue = async () => {
       try {
@@ -282,13 +286,13 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
 
   // Define handleConfirmPayClick with useCallback before useEffect that uses it
   const handleConfirmPayClick = useCallback(async () => {
-    if (!currentTab?.purchaseOrderId) {
-      toast.error('Purchase order ID not found')
+    if (!currentTab?.purchaseOrderId || !activeTabId) {
+      toast.error('Purchase order ID or Active Tab not found')
       return
     }
-    
+
     const paidAmount = Number(amount || 0)
-    
+
     // For confirm mode, allow 0 amount (credit purchase)
     // For pay mode, require amount > 0
     if (!isConfirming && (!Number.isFinite(paidAmount) || paidAmount <= 0)) {
@@ -305,37 +309,37 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
 
     try {
       let confirmResponse: any = null
-      
+
       // Only confirm if in confirm mode (not pay mode)
       if (isConfirming) {
         // First confirm the purchase order - ONLY send these 3 fields as per API requirement
         console.log('📦 ===== CONFIRM PURCHASE ORDER API CALL =====')
         console.log('📦 API URL: /api/method/centro_pos_apis.api.purchase.purchase_order_confirmation')
         console.log('📦 Request Method: POST')
-        
+
         const confirmPayload = {
           purchase_order_id: currentTab.purchaseOrderId,
           mode_of_payment: paymentMode,
           paid_amount: paidAmount
         }
-        
+
         console.log('📦 Request Body (ONLY 3 fields):', JSON.stringify(confirmPayload, null, 2))
         console.log('📦 Purchase Order ID:', confirmPayload.purchase_order_id)
         console.log('📦 Payment Mode:', confirmPayload.mode_of_payment)
         console.log('📦 Paid Amount:', confirmPayload.paid_amount)
-        
+
         confirmResponse = await window.electronAPI?.proxy?.request({
           url: '/api/method/centro_pos_apis.api.purchase.purchase_order_confirmation',
           method: 'POST',
           data: confirmPayload
         })
-        
+
         console.log('📦 ===== CONFIRM PURCHASE ORDER API RESPONSE =====')
         console.log('📦 Full Response:', confirmResponse)
         console.log('📦 Response Success:', confirmResponse?.success)
         console.log('📦 Response Status:', confirmResponse?.status)
         console.log('📦 Response Data:', JSON.stringify(confirmResponse?.data, null, 2))
-        
+
         // Check if confirmation was successful
         if (confirmResponse?.success === false || confirmResponse?.status === 400) {
           console.error('❌ Purchase order confirmation failed')
@@ -512,7 +516,7 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement
       const isInputField = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
-      
+
       // Shift+Enter: Trigger Confirm button
       if (e.key === 'Enter' && e.shiftKey) {
         // Allow Shift+Enter even in input fields (common pattern for submitting forms)
@@ -527,12 +531,12 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
       else if (e.key === ' ' && !isInputField) {
         e.preventDefault()
         e.stopPropagation()
-        
+
         // Cycle through payment modes
         const currentIndex = paymentModes.indexOf(paymentMode)
         const nextIndex = (currentIndex + 1) % paymentModes.length
         const nextMode = paymentModes[nextIndex]
-        
+
         console.log('⌨️ Spacebar pressed - cycling payment mode from', paymentMode, 'to', nextMode)
         setPaymentMode(nextMode)
       }
@@ -587,7 +591,7 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
       // Get posting date from store or use transaction date
       const selectedPostingDate = getCurrentTabPostingDate()
       const postingDate = selectedPostingDate || transactionDate || getCurrentDate()
-      
+
       // If rounding is enabled, disable_rounded_total = 0, else 1
       const disable_rounded_total = isRoundingEnabled ? 0 : 1
 
@@ -615,7 +619,7 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
         // Fallback to the exact format from the API example
         payload.taxes_and_charges = 'VAT 15 % Purchase - NAB'
       }
-      
+
       console.log('📦 Final Purchase Tax Template:', payload.taxes_and_charges)
       console.log('📦 Buying Price List:', finalBuyingPriceList)
 
@@ -684,14 +688,14 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
       // Check if response indicates success (explicitly check for true or undefined/not false)
       // Only proceed with ID extraction if success is true or not explicitly false
       const isSuccess = response?.success === true || (response?.success !== false && response?.status !== 400)
-      
+
       if (!isSuccess) {
         // Handle error response
         console.error('❌ Purchase order save failed - response indicates failure')
         console.error('❌ Response Success:', response?.success)
         console.error('❌ Response Status:', response?.status)
         console.error('❌ Full Response:', JSON.stringify(response, null, 2))
-        
+
         // Handle server error messages
         if (response?.data?._server_messages) {
           handleServerErrorMessages(response.data._server_messages, '')
@@ -722,10 +726,10 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
       console.log('🔍 ID Type:', typeof purchaseOrderId)
       console.log('🔍 ID Truthy Check:', !!purchaseOrderId)
 
-      if (purchaseOrderId) {
+      if (purchaseOrderId && activeTabId) {
         console.log('✅ ===== PURCHASE ORDER ID SUCCESSFULLY EXTRACTED =====')
         console.log('✅ Purchase Order ID:', purchaseOrderId)
-        
+
         // Update tab with order data if available
         if (response?.data?.data) {
           updateTabOrderData(activeTabId, response.data.data)
@@ -806,10 +810,6 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
     console.log('🔄 Return button clicked - opening return modal')
     setReturnModalOpen(true)
   }
-
-  // Check if order is confirmed (docstatus = 1)
-  const docstatus = currentTab?.orderData ? Number(currentTab.orderData.docstatus) : null
-  const isConfirmed = docstatus === 1
 
   return (
     <>
@@ -906,7 +906,7 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
               // Check if order is confirmed (docstatus = 1)
               const docstatus = currentTab?.orderData ? Number(currentTab.orderData.docstatus) : null
               const isConfirmed = docstatus === 1
-              
+
               // Pay button should be enabled if:
               // 1. Order is confirmed
               // 2. If there's a purchase invoice, check outstanding amount > 0
@@ -1047,7 +1047,7 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
                     const input = e.currentTarget as HTMLInputElement
                     const cursorPosition = input.selectionStart || 0
                     const valueLength = input.value.length
-                    
+
                     if (
                       (e.key === 'ArrowRight' && cursorPosition === valueLength) ||
                       (e.key === 'ArrowLeft' && cursorPosition === 0) ||
@@ -1179,7 +1179,7 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
                     const input = e.currentTarget as HTMLInputElement
                     const cursorPosition = input.selectionStart || 0
                     const valueLength = input.value.length
-                    
+
                     if (
                       (e.key === 'ArrowRight' && cursorPosition === valueLength) ||
                       (e.key === 'ArrowLeft' && cursorPosition === 0) ||

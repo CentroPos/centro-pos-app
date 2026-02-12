@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@renderer/components/ui/dialog';
 import { Button } from '@renderer/components/ui/button';
-import { InvoiceItem, PickSlip, Warehouse } from '@renderer/types/picking';
+import { InvoiceItem, PickSlip, Warehouse, Picker } from '@renderer/types/picking';
 import { cn } from '@renderer/lib/utils';
 import { Printer, Play, Check, X } from 'lucide-react';
 import {
@@ -21,6 +21,7 @@ interface AssignPickSlipModalProps {
     onClose: () => void;
     selectedItems: InvoiceItem[];
     warehouses: Warehouse[];
+    otherPickers?: Picker[];
     invoiceNo: string;
     existingPickSlip?: PickSlip | null;
     onSuccess?: () => void;
@@ -32,6 +33,7 @@ export function AssignPickSlipModal({
     onClose,
     selectedItems,
     warehouses,
+    otherPickers = [],
     invoiceNo,
     existingPickSlip,
     onSuccess,
@@ -103,7 +105,8 @@ export function AssignPickSlipModal({
                 setSelectedWarehouse(warehouses[0].id);
             }
         }
-    }, [isOpen, warehouses, existingPickSlip]);
+        console.log('SHD => [AssignPickSlipModal] otherPickers:', otherPickers);
+    }, [isOpen, warehouses, existingPickSlip, otherPickers]);
 
     // Reset state on close or open
     useEffect(() => {
@@ -205,7 +208,7 @@ export function AssignPickSlipModal({
         setIsCreating(true);
 
         const warehouse = warehouses.find(w => w.id === selectedWarehouse);
-        const picker = availablePickers.find(p => p.id === selectedPicker);
+        const picker = availablePickers.find(p => p.id === selectedPicker) || otherPickers.find(p => p.id === selectedPicker);
 
         const payloadItems = localItems.map(item => ({
             serial_no: item.slNo,
@@ -276,7 +279,7 @@ export function AssignPickSlipModal({
         try {
             // Use existing picker if already picked, otherwise use selected picker
             const pickerToUse = selectedPicker || createdSlip.pickerId || '';
-            
+
             const payload = {
                 pick_list_id: createdSlip.id,
                 assigned_to: pickerToUse,
@@ -308,7 +311,7 @@ export function AssignPickSlipModal({
                 // Automatically close modal after successful update
                 setTimeout(() => {
                     onClose();
-                }, 500); // Small delay to show success message
+                }, 5000); // Small delay to show success message
             }
         } catch (e: any) {
             console.error("Failed to update pick slip", e);
@@ -541,6 +544,38 @@ export function AssignPickSlipModal({
                                         </div>
                                     )}
                                 </div>
+
+                                {otherPickers.length > 0 && (
+                                    <>
+                                        <div className="w-full h-px bg-slate-100 my-2" />
+                                        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-2">Other Pickers</label>
+                                        <div className="flex flex-wrap gap-2">
+                                            {otherPickers.map((picker) => {
+                                                const isSelected = selectedPicker === picker.id;
+                                                const isPicked = existingPickSlip?.status === 'Picked' || existingPickSlip?.status === 'picked' || existingPickSlip?.status === 'Completed' || createdSlip?.status === 'picked' || createdSlip?.status === 'Picked' || createdSlip?.status === 'Completed';
+
+                                                return (
+                                                    <Button
+                                                        key={picker.id}
+                                                        variant="outline"
+                                                        onClick={() => !isPicked && setSelectedPicker(prev => prev === picker.id ? null : picker.id)}
+                                                        disabled={isPicked}
+                                                        className={cn(
+                                                            "h-8 rounded-full px-4 text-xs font-medium border transition-all",
+                                                            isSelected
+                                                                ? "bg-green-700 hover:bg-green-800 text-white border-green-700 shadow-sm"
+                                                                : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200",
+                                                            isPicked && "opacity-50 cursor-not-allowed"
+                                                        )}
+                                                    >
+                                                        <span className="mr-1">{picker.name}</span>
+                                                        <span className="opacity-70 text-[10px]">({picker.picker_no})</span>
+                                                    </Button>
+                                                );
+                                            })}
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         )}
                     </div>
@@ -660,7 +695,7 @@ export function AssignPickSlipModal({
                                                 console.log('SHD ==> [PRINT] PDF Data URL received, length:', pdfDataUrl.length);
 
                                                 if (window.electronAPI?.print?.printPDF) {
-                                                    await window.electronAPI.print.printPDF(pdfDataUrl);
+                                                    await window.electronAPI.print.printPDF(pdfDataUrl, { autoPrint: false });
                                                 } else {
                                                     console.error("Print API not available");
                                                     toast.error("Print API not available");

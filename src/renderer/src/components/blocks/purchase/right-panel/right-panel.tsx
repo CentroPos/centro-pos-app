@@ -791,6 +791,8 @@ type RightPanelProps = {
   selectedCustomer?: any
   onTabChange?: (tab: string) => void
   activeTab?: 'product' | 'customer' | 'prints' | 'payments' | 'orders'
+  onAddItem?: (item: any) => void
+  onReplaceItem?: (item: any) => void
 }
 
 const RightPanel: React.FC<RightPanelProps> = ({
@@ -798,7 +800,9 @@ const RightPanel: React.FC<RightPanelProps> = ({
   items,
   selectedCustomer,
   onTabChange,
-  activeTab: externalActiveTab
+  activeTab: externalActiveTab,
+  onAddItem,
+  onReplaceItem
 }) => {
   const [internalActiveTab, setInternalActiveTab] = useState<
     'product' | 'customer' | 'prints' | 'payments' | 'orders'
@@ -1572,8 +1576,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
     if (selectedItemId) {
       if (productSubTab === 'purchase-history') {
-          console.log('🔄 Purchase History tab active, fetching purchase history...')
-          fetchPurchaseHistory(selectedItemId, purchaseHistoryPage, purchaseHistorySearch)
+        console.log('🔄 Purchase History tab active, fetching purchase history...')
+        fetchPurchaseHistory(selectedItemId, purchaseHistoryPage, purchaseHistorySearch)
       } else if (productSubTab === 'supplier-history') {
         console.log('🔄 Supplier History tab active, fetching product supplier history...')
         fetchProductSupplierHistory(selectedItemId, supplierHistoryPage, supplierHistorySearch)
@@ -3202,6 +3206,28 @@ const RightPanel: React.FC<RightPanelProps> = ({
                                       <span className="text-gray-400 text-xs">—</span>
                                     )}
                                   </div>
+
+                                  {/* Add Button */}
+                                  <div className="mt-2 flex justify-end">
+                                    <button
+                                      className="px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded border border-blue-200 hover:bg-blue-100 transition-colors"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        if (onAddItem) {
+                                          // Construct item object for adding
+                                          const itemToAdd = {
+                                            item_code: item.item_code || item.item_name, // fallback
+                                            quantity: 1, // Default to 1
+                                            rate: item.unit_price || 0
+                                          }
+                                          onAddItem(itemToAdd)
+                                          toast.success('Item added from history')
+                                        }
+                                      }}
+                                    >
+                                      + Add
+                                    </button>
+                                  </div>
                                 </div>
                               )
                             })}
@@ -3354,6 +3380,28 @@ const RightPanel: React.FC<RightPanelProps> = ({
                                       </span>
                                     </div>
                                   )}
+
+                                  {/* Add Button */}
+                                  <div className="mt-2 flex justify-end">
+                                    <button
+                                      className="px-2 py-1 text-xs bg-emerald-50 text-emerald-600 rounded border border-emerald-200 hover:bg-emerald-100 transition-colors"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        if (onAddItem) {
+                                          // Construct item object for adding
+                                          const itemToAdd = {
+                                            item_code: item.item_code || selectedItemId,
+                                            quantity: 1, // Default to 1
+                                            rate: item.unit_price || item.rate || 0
+                                          }
+                                          onAddItem(itemToAdd)
+                                          toast.success('Item added from history')
+                                        }
+                                      }}
+                                    >
+                                      + Add
+                                    </button>
+                                  </div>
                                 </div>
                               )
                             })}

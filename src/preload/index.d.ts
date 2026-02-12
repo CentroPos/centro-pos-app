@@ -45,7 +45,7 @@ interface CustomElectronAPI {
     onThemeChanged: (callback: (theme: string) => void) => void
   }
   print: {
-    printPDF: (pdfDataUrl: string) => Promise<{ success: boolean; error?: string }>
+    printPDF: (pdfDataUrl: string, options?: { autoPrint?: boolean }) => Promise<{ success: boolean; error?: string }>
     printPDFMain: (pdfDataUrl: string) => Promise<{ success: boolean; error?: string }>
   }
 }

@@ -82,7 +82,7 @@ const proxyAPI = {
 
 // Print API for Electron native printing
 const printAPI = {
-  printPDF: (pdfDataUrl: string) => ipcRenderer.invoke('print-pdf', pdfDataUrl),
+  printPDF: (pdfDataUrl: string, options?: { autoPrint?: boolean }) => ipcRenderer.invoke('print-pdf', pdfDataUrl, options),
   printPDFMain: (pdfDataUrl: string) => ipcRenderer.invoke('print-pdf-main', pdfDataUrl)
 }
 

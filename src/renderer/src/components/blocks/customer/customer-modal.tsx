@@ -501,6 +501,16 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
       <DialogContent
         className="max-w-5xl max-h-[75vh] bg-white m-4 flex flex-col"
         onKeyDown={(e) => {
+          // Handle Shift + N to open create customer view
+          if (e.shiftKey && (e.key === 'N' || e.key === 'n')) {
+            e.preventDefault()
+            e.stopPropagation()
+            if (view === 'search') {
+              setView('create')
+            }
+            return
+          }
+
           // Prevent arrow keys from propagating to background when modal is open
           // Only prevent if the event is NOT from an input field (where we want cursor movement)
           const target = e.target as HTMLElement
@@ -584,10 +594,13 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
                   variant="outline"
                   size="sm"
                   onClick={() => setView('create')}
-                  className="h-7"
+                  className="h-8 gap-2"
                 >
-                  <Plus className="h-3 w-3 mr-1" />
-                  New
+                  <div className="flex items-center">
+                    <Plus className="h-3.5 w-3.5 mr-1 text-slate-600" />
+                    New
+                  </div>
+                  <span className="text-xs bg-gray-200 px-1 rounded text-muted-foreground">Shift+N</span>
                 </Button>
               </div>
             </div>

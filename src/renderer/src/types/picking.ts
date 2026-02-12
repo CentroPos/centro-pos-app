@@ -58,6 +58,10 @@ export interface GeneralInfoResponse {
         picker_no: string;
       }[];
     }[];
+    other_pickers?: {
+      name: string;
+      picker_no: string;
+    }[];
   };
 }
 
@@ -141,19 +145,19 @@ export interface QueueOrder {
 
 
 export interface PickerLogItem {
-    picker_name: string;
-    picker_id: string;
-    items_count: number;
-    pick_slip_id: string;
-    invoice_id: string;
-    customer_name: string;
-    assigned_on: string;
-    assigned_by: string;
-    modified_on: string;
-    modified_by: string;
-    start_date_time: string;
-    end_date_time: string;
-    duration: string;
-    status: 'normal' | 'warn';
-    is_closed: boolean;
+  picker_name: string;
+  picker_id: string;
+  items_count: number;
+  pick_slip_id: string;
+  invoice_id: string;
+  customer_name: string;
+  assigned_on: string;
+  assigned_by: string;
+  modified_on: string;
+  modified_by: string;
+  start_date_time: string;
+  end_date_time: string;
+  duration: string;
+  status: 'normal' | 'warn';
+  is_closed: boolean;
 }

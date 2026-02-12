@@ -150,14 +150,14 @@ function setupAuthHandlers(): void {
     await writePreferences({ ...prefs, apiBaseUrl })
   }
 
-  ;(async () => {
-    const prefs = await readPreferences()
-    if (prefs.apiBaseUrl) {
-      apiBaseUrl = sanitizeBaseUrl(prefs.apiBaseUrl)
-    }
-  })().catch((error) => {
-    console.warn('Failed to load persisted base URL, using default', error)
-  })
+    ; (async () => {
+      const prefs = await readPreferences()
+      if (prefs.apiBaseUrl) {
+        apiBaseUrl = sanitizeBaseUrl(prefs.apiBaseUrl)
+      }
+    })().catch((error) => {
+      console.warn('Failed to load persisted base URL, using default', error)
+    })
 
   // Store auth data securely
   ipcMain.handle('store-auth-data', async (_event, authData) => {
@@ -300,14 +300,14 @@ function setupAuthHandlers(): void {
           // If URL doesn't start with /api, prepend it
           requestPath = requestPath.startsWith('/') ? `/api${requestPath}` : `/api/${requestPath}`
         }
-        
+
         // Ensure apiBaseUrl doesn't have trailing slash
         const baseUrl = apiBaseUrl.endsWith('/') ? apiBaseUrl.slice(0, -1) : apiBaseUrl
-        
+
         // Construct full URL manually to avoid URL constructor issues
         const fullUrl = `${baseUrl}${requestPath}`
         const url = new URL(fullUrl)
-        
+
         console.log('🔍 URL Construction Debug:', {
           apiBaseUrl,
           payloadUrl: payload.url,
@@ -315,7 +315,7 @@ function setupAuthHandlers(): void {
           fullUrl,
           finalUrl: url.toString()
         })
-        
+
         if (payload.params) {
           Object.entries(payload.params).forEach(([k, v]) => url.searchParams.append(k, String(v)))
         }
@@ -354,30 +354,30 @@ function setupAuthHandlers(): void {
 
         // Check if response might be PDF or binary content
         const contentType = response.headers.get('content-type') || ''
-        const mightBePdf = contentType.includes('application/pdf') || 
-                           payload.url.includes('create_order') ||
-                           payload.url.includes('/print_format/') ||
-                           payload.url.includes('/api/method/') && payload.url.includes('print') ||
-                           contentType.includes('application/octet-stream') ||
-                           contentType === '' ||
-                           !contentType.includes('application/json') && !contentType.includes('text/')
-        
+        const mightBePdf = contentType.includes('application/pdf') ||
+          payload.url.includes('create_order') ||
+          payload.url.includes('/print_format/') ||
+          payload.url.includes('/api/method/') && payload.url.includes('print') ||
+          contentType.includes('application/octet-stream') ||
+          contentType === '' ||
+          !contentType.includes('application/json') && !contentType.includes('text/')
+
         let data = {}
         let pdfData: string | null = null
-        
+
         // Always try to detect PDF by reading response body first
         // This handles cases where content-type might not be set correctly
         try {
           const arrayBuffer = await response.arrayBuffer()
           const uint8Array = new Uint8Array(arrayBuffer)
-          
+
           // Check if it's actually a PDF by looking for PDF header
-          const isActualPdf = uint8Array.length > 4 && 
-                             uint8Array[0] === 0x25 && // %
-                             uint8Array[1] === 0x50 && // P
-                             uint8Array[2] === 0x44 && // D
-                             uint8Array[3] === 0x46    // F
-          
+          const isActualPdf = uint8Array.length > 4 &&
+            uint8Array[0] === 0x25 && // %
+            uint8Array[1] === 0x50 && // P
+            uint8Array[2] === 0x44 && // D
+            uint8Array[3] === 0x46    // F
+
           if (isActualPdf) {
             const base64 = Buffer.from(arrayBuffer).toString('base64')
             pdfData = `data:application/pdf;base64,${base64}`
@@ -412,7 +412,7 @@ function setupAuthHandlers(): void {
             data = { error: 'Failed to process response' }
           }
         }
-        
+
         return { success: response.ok, status: response.status, data, pdfData: pdfData || undefined }
       } catch (error: any) {
         return { success: false, status: 500, error: error?.message }
@@ -431,14 +431,18 @@ function setupAuthHandlers(): void {
   })
 
   // Electron native printing handlers
-  ipcMain.handle('print-pdf', async (_event, pdfDataUrl: string) => {
+  // Keep track of print windows to prevent garbage collection
+  const printWindows = new Set<BrowserWindow>()
+
+  ipcMain.handle('print-pdf', async (_event, pdfDataUrl: string, options: { autoPrint?: boolean } = {}) => {
     try {
-      console.log('🖨️ Printing PDF from data URL')
-      
+      const { autoPrint = true } = options
+      console.log(`🖨️ Handling PDF (autoPrint: ${autoPrint})`)
+
       // Create a new window for printing with proper webPreferences for production
       const printWindow = new BrowserWindow({
         show: true,
-        width: 800,
+        width: 800, // Standard letter width approx
         height: 600,
         webPreferences: {
           nodeIntegration: false,
@@ -447,6 +451,14 @@ function setupAuthHandlers(): void {
           allowRunningInsecureContent: true,
           sandbox: false  // Disable sandbox to allow printing
         }
+      })
+
+      // Add to set to prevent GC
+      printWindows.add(printWindow)
+
+      // Remove from set when closed
+      printWindow.on('closed', () => {
+        printWindows.delete(printWindow)
       })
 
       // Disable CSP for print window to allow data URLs
@@ -462,38 +474,44 @@ function setupAuthHandlers(): void {
       // Load the PDF data URL directly
       await printWindow.loadURL(pdfDataUrl)
       console.log('📄 PDF loaded in print window')
-      
+
       // Wait for PDF to fully render - increase timeout for production builds
       await new Promise(resolve => setTimeout(resolve, 1500))
 
-      console.log('🖨️ Opening print dialog...')
-      
-      // Use the correct print approach with callback
-      printWindow.webContents.print({
-        silent: false,            // false = show dialog
-        printBackground: true,    // include background colors/images
-        deviceName: ''            // leave blank to let user choose
-      }, (success, errorType) => {
-        if (!success) {
-          console.log('❌ Print failed:', errorType)
-        } else {
-          console.log('✅ Print job started')
-        }
-        // Close window after print dialog is handled (user cancels or prints)
+      if (autoPrint) {
+        console.log('🖨️ Opening print dialog...')
+
+        // Use the correct print approach with callback
+        printWindow.webContents.print({
+          silent: false,            // false = show dialog
+          printBackground: true,    // include background colors/images
+          deviceName: ''            // leave blank to let user choose
+        }, (success, errorType) => {
+          if (!success) {
+            console.log('❌ Print failed:', errorType)
+          } else {
+            console.log('✅ Print job started')
+          }
+          // Close window after print dialog is handled (user cancels or prints)
+          setTimeout(() => {
+            if (!printWindow.isDestroyed()) {
+              printWindow.close()
+            }
+          }, 1000)
+        })
+
+        // Fallback: Close the print window after a longer delay if still open
         setTimeout(() => {
           if (!printWindow.isDestroyed()) {
             printWindow.close()
           }
-        }, 1000)
-      })
-      
-      // Fallback: Close the print window after a longer delay if still open
-      setTimeout(() => {
-        if (!printWindow.isDestroyed()) {
-          printWindow.close()
-        }
-      }, 10000)
-      
+        }, 10000)
+      } else {
+        console.log('👁️ PDF preview opened (no auto-print)')
+        // Just focus the window
+        printWindow.focus()
+      }
+
       // Return success immediately - the print dialog should open
       return { success: true }
     } catch (error: any) {
@@ -506,7 +524,7 @@ function setupAuthHandlers(): void {
   ipcMain.handle('print-pdf-main', async (_event, pdfDataUrl: string) => {
     try {
       console.log('🖨️ Printing PDF using main window')
-      
+
       const mainWindow = global.mainWindow
       if (!mainWindow || mainWindow.isDestroyed()) {
         throw new Error('Main window not available')
@@ -514,7 +532,7 @@ function setupAuthHandlers(): void {
 
       // Load the PDF in the main window
       await mainWindow.loadURL(pdfDataUrl)
-      
+
       // Wait for the PDF to load
       await new Promise<void>((resolve) => {
         mainWindow.webContents.once('did-finish-load', () => {
@@ -527,7 +545,7 @@ function setupAuthHandlers(): void {
       await new Promise(resolve => setTimeout(resolve, 1000))
 
       console.log('🖨️ Opening print dialog from main window...')
-      
+
       // Print with dialog using main window
       mainWindow.webContents.print({
         silent: false,            // false = show dialog
@@ -540,7 +558,7 @@ function setupAuthHandlers(): void {
           console.log('✅ Print job started from main window')
         }
       })
-      
+
       return { success: true }
     } catch (error: any) {
       console.error('❌ Error printing PDF from main window:', error)
@@ -592,7 +610,7 @@ function setupAuthHandlers(): void {
         }
       }
 
-      console.log(`Session cookie ${name} set for ${domain} (http/https)`) 
+      console.log(`Session cookie ${name} set for ${domain} (http/https)`)
       return true
     } catch (error) {
       console.error('Failed to set session cookie:', error)
@@ -807,7 +825,7 @@ function setupAutoUpdater(): void {
 app.whenReady().then(() => {
   // Set app name for taskbar and window title
   app.setName('Centroerp')
-  
+
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.centroerp')
 

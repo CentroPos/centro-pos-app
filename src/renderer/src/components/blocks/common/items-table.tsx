@@ -1243,6 +1243,12 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   useHotkeys(
     'ctrl+i',
     async () => {
+      // Disable when read-only (confirmed/paid)
+      if (isReadOnly) {
+        console.log('⚠️ Ctrl+I blocked: Order is confirmed/paid (read-only)')
+        return
+      }
+
       console.log('⌨️ Ctrl+I key pressed - showing product list popup')
       if (onAddItemClick && !isProductModalOpen && !isCustomerModalOpen) {
         // If currently editing, save the current value first
@@ -2573,19 +2579,22 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
               </div>
 
               {/* Add Item button sticky at bottom of table card (compact) */}
-              <div className="bg-gray-50 border-t py-1.5 px-3 sticky bottom-0 z-10">
-                <Button
-                  variant="ghost"
-                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 text-sm h-7 py-1"
-                  onClick={() => {
-                    console.log('🖱️ Add item button clicked - opening product modal')
-                    onAddItemClick?.()
-                  }}
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Click or press &apos;Ctrl+I&apos; to add item • Space to switch UOM • ← → to navigate fields • ↑ ↓ to navigate rows
-                </Button>
-              </div>
+              {/* Only show if not read-only */}
+              {!isReadOnly && (
+                <div className="bg-gray-50 border-t py-1.5 px-3 sticky bottom-0 z-10">
+                  <Button
+                    variant="ghost"
+                    className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 text-sm h-7 py-1"
+                    onClick={() => {
+                      console.log('🖱️ Add item button clicked - opening product modal')
+                      onAddItemClick?.()
+                    }}
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Click or press &apos;Ctrl+I&apos; to add item • Space to switch UOM • ← → to navigate fields • ↑ ↓ to navigate rows
+                  </Button>
+                </div>
+              )}
               {/* Invalid UOM Message (not sticky, stays above add button) */}
               {invalidUomMessage && (
                 <div className="px-3 py-2 bg-red-50 border-t border-red-200 mb-2">
