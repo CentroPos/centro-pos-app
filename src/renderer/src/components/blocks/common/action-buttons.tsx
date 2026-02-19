@@ -219,8 +219,11 @@ const ActionButtons: React.FC<Props> = ({
   const [isConfirming, setIsConfirming] = useState(false)
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false)
+  const [showValidationErrors, setShowValidationErrors] = useState(false)
   const [paymentModes, setPaymentModes] = useState<string[]>(['Cash', 'Card', 'UPI', 'Bank'])
   const amountInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({})
+  const modeInputRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({})
+  const prevPaymentsLengthRef = useRef(payments.length)
 
   // Get current tab data
   const {
@@ -413,6 +416,22 @@ const ActionButtons: React.FC<Props> = ({
   useEffect(() => {
     loadPOSProfile()
   }, [])
+
+  // Focus new payment mode when row is added
+  useEffect(() => {
+    if (payments.length > prevPaymentsLengthRef.current) {
+      // Row added
+      const lastPayment = payments[payments.length - 1]
+      // Use setTimeout to allow render to complete
+      setTimeout(() => {
+        const modeTrigger = modeInputRefs.current[lastPayment.id]
+        if (modeTrigger) {
+          modeTrigger.focus()
+        }
+      }, 50)
+    }
+    prevPaymentsLengthRef.current = payments.length
+  }, [payments.length])
 
   // Auto-focus first payment amount input when dialog opens
   useEffect(() => {
@@ -679,6 +698,12 @@ const ActionButtons: React.FC<Props> = ({
 
   const handleSave = async () => {
     if (!currentTab || isSaving) return
+
+    const zeroQtyItem = items.find((it: any) => Number(it.quantity || 0) <= 0)
+    if (zeroQtyItem) {
+      toast.error(`Item ${zeroQtyItem.item_code} has 0 quantity. Please set a valid quantity.`)
+      return
+    }
 
     setIsSaving(true)
 
@@ -1301,6 +1326,13 @@ const ActionButtons: React.FC<Props> = ({
     // Calculate total payment amount for internal logic/status updates
     const paymentAmount = paymentsArray.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0)
     // Set processing state at the very beginning to ensure consistent hook calls
+    const zeroQtyItem = items.find((it: any) => Number(it.quantity || 0) <= 0)
+    if (zeroQtyItem) {
+      toast.error(`Item ${zeroQtyItem.item_code} has 0 quantity. Please set a valid quantity.`)
+      setIsProcessingPayment(false)
+      return
+    }
+
     setIsProcessingPayment(true)
 
     try {
@@ -2051,6 +2083,7 @@ const ActionButtons: React.FC<Props> = ({
     ]) // Reset payments to '0' for confirm mode
     setIsConfirming(true) // Set confirming state
     setOpen('confirm')
+    setShowValidationErrors(false)
   }, [currentTab])
 
   const handlePay = useCallback(() => {
@@ -2067,6 +2100,7 @@ const ActionButtons: React.FC<Props> = ({
     ]) // Reset payments to '0' for pay mode
     setIsConfirming(false) // Reset confirming state
     setOpen('pay')
+    setShowValidationErrors(false)
   }, [currentTab])
 
   const handleReturn = () => {
@@ -2117,12 +2151,10 @@ const ActionButtons: React.FC<Props> = ({
         ) {
           const rowAmount = parseFloat(payment.amount) || 0
           if (rowAmount > 0) {
-            if (!payment.reference_no?.trim()) {
-              toast.error(`Reference Number is required for ${payment.mode} payment`)
-              return
-            }
-            if (!payment.reference_date) {
-              toast.error(`Reference Date is required for ${payment.mode} payment`)
+            if (!payment.reference_no?.trim() || !payment.reference_date) {
+              setShowValidationErrors(true)
+              if (!payment.reference_no?.trim()) toast.error(`Reference Number is required for ${payment.mode} payment`)
+              else if (!payment.reference_date) toast.error(`Reference Date is required for ${payment.mode} payment`)
               return
             }
           }
@@ -2146,6 +2178,7 @@ const ActionButtons: React.FC<Props> = ({
       ])
       setDate(getCurrentDate())
       setIsConfirming(false)
+      setShowValidationErrors(false)
     } catch (error) {
       // Errors are already handled in handleOrderConfirmation
       // Just ensure state is reset
@@ -2441,8 +2474,8 @@ const ActionButtons: React.FC<Props> = ({
               <div key={payment.id} className="p-4 rounded-lg border-2 bg-gray-50 relative group">
                 <div
                   className={`grid grid-cols-1 ${payment.mode === 'Cash' || (profile as any)?.custom_autogenerate_bank_references
-                      ? 'md:grid-cols-[100px_1fr]'
-                      : 'md:grid-cols-[100px_1.2fr_1.8fr_140px]'
+                    ? 'md:grid-cols-[100px_1fr]'
+                    : 'md:grid-cols-[100px_1.2fr_1.8fr_140px]'
                     } gap-3`}
                 >
                   <div>
@@ -2460,7 +2493,12 @@ const ActionButtons: React.FC<Props> = ({
                         setPayments(newPayments)
                       }}
                     >
-                      <SelectTrigger className="w-full bg-white">
+                      <SelectTrigger
+                        ref={(el) => {
+                          modeInputRefs.current[payment.id] = el
+                        }}
+                        className="w-full bg-white"
+                      >
                         <SelectValue placeholder="Select mode" />
                       </SelectTrigger>
                       <SelectContent className="bg-white">
@@ -2517,7 +2555,7 @@ const ActionButtons: React.FC<Props> = ({
                             newPayments[index].reference_no = e.target.value
                             setPayments(newPayments)
                           }}
-                          className="bg-white border-2 focus:border-blue-500"
+                          className={`bg-white border-2 focus:border-blue-500 ${showValidationErrors && !payment.reference_no?.trim() ? 'border-red-500 ring-red-500 focus:border-red-500' : ''}`}
                           placeholder="Required"
                           required
                         />
@@ -2534,7 +2572,7 @@ const ActionButtons: React.FC<Props> = ({
                             newPayments[index].reference_date = e.target.value
                             setPayments(newPayments)
                           }}
-                          className="bg-white border-2 focus:border-blue-500"
+                          className={`bg-white border-2 focus:border-blue-500 ${showValidationErrors && !payment.reference_date ? 'border-red-500 ring-red-500 focus:border-red-500' : ''}`}
                           required
                         />
                       </div>
@@ -2546,6 +2584,7 @@ const ActionButtons: React.FC<Props> = ({
                     onClick={() => {
                       setPayments(payments.filter((_, i) => i !== index))
                       delete amountInputRefs.current[payment.id]
+                      delete modeInputRefs.current[payment.id]
                     }}
                     className="absolute -top-2 -right-2 p-1 bg-red-100 text-red-600 rounded-full hover:bg-red-200 transition-colors shadow-sm"
                     title="Remove Payment"
@@ -2570,7 +2609,7 @@ const ActionButtons: React.FC<Props> = ({
                   }
                 ])
               }}
-              className="w-full border-dashed flex items-center gap-2 hover:bg-gray-50"
+              className="w-full border-dashed flex items-center gap-2 hover:bg-gray-50 focus-visible:ring-0 focus-visible:ring-offset-0"
             >
               <PlusCircle className="w-4 h-4" />
               Add Payment

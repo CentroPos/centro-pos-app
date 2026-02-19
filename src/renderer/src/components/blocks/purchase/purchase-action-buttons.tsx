@@ -517,13 +517,13 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
       const target = e.target as HTMLElement
       const isInputField = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
 
-      // Shift+Enter: Trigger Confirm button
-      if (e.key === 'Enter' && e.shiftKey) {
-        // Allow Shift+Enter even in input fields (common pattern for submitting forms)
+      // Shift+Enter or Ctrl+Enter: Trigger Confirm button
+      if ((e.key === 'Enter' && e.shiftKey) || (e.key === 'Enter' && e.ctrlKey)) {
+        // Allow Shift+Enter or Ctrl+Enter even in input fields (common pattern for submitting forms)
         if (!isConfirmingProcessing && !isProcessingPayment) {
           e.preventDefault()
           e.stopPropagation()
-          console.log('⌨️ Shift+Enter pressed - triggering Confirm/Pay')
+          console.log('⌨️ Shortcut (Shift+Enter or Ctrl+Enter) pressed - triggering Confirm/Pay')
           handleConfirmPayClick()
         }
       }
@@ -574,6 +574,12 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
     }
     if (items.length === 0) {
       toast.error('Please add at least one item')
+      return
+    }
+
+    const zeroQtyItem = items.find((it) => Number(it.quantity || 0) <= 0)
+    if (zeroQtyItem) {
+      toast.error(`Item ${zeroQtyItem.item_code} has 0 quantity. Please set a valid quantity.`)
       return
     }
 

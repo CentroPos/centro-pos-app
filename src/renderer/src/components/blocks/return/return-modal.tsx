@@ -46,7 +46,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
   const storedInvoiceNumber = getCurrentTabInvoiceNumber()
   const currencySymbol = profile?.custom_currency_symbol || profile?.currency_symbol || profile?.currency || 'SAR'
   const [invoiceNumber, setInvoiceNumber] = useState('')
-  
+
   // Log invoice number state
   console.log('📋 [ReturnModal] Invoice number state:', {
     storedInvoiceNumber,
@@ -65,10 +65,10 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
   const [selectedItems, setSelectedItems] = useState<{ [key: string]: { selected: boolean; qty: number; originalQty: number; itemCode: string; originalSalesInvoiceItem: string } }>({})
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedWarehouse, setSelectedWarehouse] = useState<string>('')
-  
+
   // Get allowed warehouses from profile
   const allowedWarehouses = profile?.allowed_warehouses || []
-  
+
   // Calculate selected items count
   const selectedItemsCount = Object.values(selectedItems).filter(item => item.selected).length
 
@@ -80,7 +80,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
       currentTabInvoiceNumber: currentTab?.invoiceNumber,
       orderDataLinkedInvoices: currentTab?.orderData?.linked_invoices
     })
-    
+
     if (!isOpen) {
       console.log('📋 [ReturnModal] Modal closing, clearing invoice number')
       setInvoiceNumber('')
@@ -118,7 +118,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
       setSelectedWarehouse(allowedWarehouses[0].name)
     }
   }, [isOpen, allowedWarehouses, selectedWarehouse])
-  
+
   // Also watch for invoice number updates while modal is open
   useEffect(() => {
     if (isOpen) {
@@ -148,10 +148,10 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
     setLoading(true)
     try {
       console.log('🔍 Fetching return availability for invoice:', invoiceId)
-      
+
       // Get order_id - first try from current tab, then fetch from invoice if needed
       let orderId = currentTab?.orderId
-      
+
       if (!orderId) {
         // Fetch invoice to get the order reference
         try {
@@ -159,7 +159,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
             method: 'GET',
             url: `/api/resource/Sales Invoice/${invoiceId}`
           })
-          
+
           if (invoiceResponse?.data) {
             const invoice = invoiceResponse.data
             let actualInvoice = invoice
@@ -167,11 +167,11 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
               actualInvoice = invoice.data
             }
             // Get order_id from invoice (could be in items or as a reference)
-            orderId = actualInvoice?.items?.[0]?.against_sales_order || 
-                     actualInvoice?.items?.[0]?.sales_order || 
-                     actualInvoice?.against_sales_order ||
-                     actualInvoice?.sales_order ||
-                     invoiceId // Fallback to invoiceId if no order reference found
+            orderId = actualInvoice?.items?.[0]?.against_sales_order ||
+              actualInvoice?.items?.[0]?.sales_order ||
+              actualInvoice?.against_sales_order ||
+              actualInvoice?.sales_order ||
+              invoiceId // Fallback to invoiceId if no order reference found
             console.log('🔍 Fetched order_id from invoice:', orderId)
           } else {
             orderId = invoiceId // Fallback to invoiceId
@@ -181,9 +181,9 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
           orderId = invoiceId // Fallback to invoiceId
         }
       }
-      
+
       console.log('🔍 Using order_id for return availability:', orderId)
-      
+
       const response = await window.electronAPI?.proxy?.request({
         method: 'GET',
         url: '/api/method/centro_pos_apis.api.order.get_return_availability',
@@ -197,7 +197,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
 
       if (response?.data?.data && Array.isArray(response.data.data)) {
         const items = response.data.data
-        
+
         // Fetch order details to get linked_invoices and customer name
         let invoiceDetails = {
           name: invoiceId,
@@ -207,7 +207,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
           total_order_qty: undefined as number | undefined,
           total_unique_items: undefined as number | undefined
         }
-        
+
         try {
           const orderDetailsResponse = await window.electronAPI?.proxy?.request({
             method: 'GET',
@@ -216,15 +216,15 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
               sales_order_id: orderId
             }
           })
-          
+
           if (orderDetailsResponse?.data?.data) {
             const orderData = orderDetailsResponse.data.data
             console.log('📋 Order details fetched for invoice info:', orderData)
             console.log('📋 Linked invoices:', orderData.linked_invoices)
-            
+
             // Get customer name from order data
             const customerName = orderData.customer_name || 'N/A'
-            
+
             // Extract invoice details from linked_invoices
             const linkedInvoices = orderData.linked_invoices
             const firstInvoice =
@@ -309,15 +309,15 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
   // key is original_sales_invoice_item (or item_code as fallback)
   const handleItemSelect = (key: string, selected: boolean) => {
     // Find the item by original_sales_invoice_item or item_code
-    const item = invoiceData?.items?.find((it: InvoiceItem) => 
+    const item = invoiceData?.items?.find((it: InvoiceItem) =>
       (it.original_sales_invoice_item && it.original_sales_invoice_item === key) ||
       (!it.original_sales_invoice_item && it.item_code === key)
     )
-    
+
     // If trying to select, check if returnable_qty is 0
     if (selected) {
       const returnableQty = typeof item?.returnable_qty === 'number' ? item.returnable_qty : 0
-      
+
       if (returnableQty === 0) {
         // Show error message and prevent selection
         toast.error('Cannot select item with zero returnable quantity', {
@@ -326,15 +326,15 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
         return
       }
     }
-    
+
     setSelectedItems(prev => {
       const currentItem = prev[key]
       // Get returnable_qty from the item in invoiceData
       const returnableQty = typeof item?.returnable_qty === 'number' ? item.returnable_qty : (currentItem?.originalQty ?? 0)
       return {
-      ...prev,
-      [key]: {
-        ...prev[key],
+        ...prev,
+        [key]: {
+          ...prev[key],
           selected,
           originalQty: returnableQty,
           itemCode: item?.item_code || currentItem?.itemCode || '',
@@ -350,21 +350,21 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
   // Handle select all checkbox
   const handleSelectAll = (checked: boolean) => {
     if (!invoiceData) return
-    
+
     // If trying to select all, check if any items have returnable_qty = 0
     if (checked) {
       const itemsWithZeroQty = invoiceData.items.filter((item: InvoiceItem) => {
         const returnableQty = typeof item.returnable_qty === 'number' ? item.returnable_qty : 0
         return returnableQty === 0
       })
-      
+
       if (itemsWithZeroQty.length > 0) {
         toast.error(`Cannot select ${itemsWithZeroQty.length} item(s) with zero returnable quantity`, {
           position: 'bottom-right'
         })
       }
     }
-    
+
     setSelectedItems(prev => {
       const updated: { [key: string]: { selected: boolean; qty: number; originalQty: number; itemCode: string; originalSalesInvoiceItem: string } } = { ...prev }
       invoiceData.items.forEach((item: InvoiceItem) => {
@@ -403,7 +403,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
     // Convert to number and ensure it's not negative
     const numericQty = parseFloat(qty.toString()) || 0
     const validQty = Math.max(0, numericQty)
-    
+
     setSelectedItems(prev => ({
       ...prev,
       [key]: {
@@ -422,6 +422,16 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
 
     // Get selected items with quantities
     // Include sales_invoice_item (original_sales_invoice_item) in the API call
+    // Check for selected items with 0 quantity
+    const selectedZeroQtyItems = Object.entries(selectedItems)
+      .filter(([, itemData]) => itemData.selected && (Number(itemData.qty) <= 0))
+
+    if (selectedZeroQtyItems.length > 0) {
+      const firstItem = selectedZeroQtyItems[0][1]
+      toast.error(`Please set a valid quantity for item ${firstItem.itemCode}`)
+      return
+    }
+
     const itemsToReturn = Object.entries(selectedItems)
       .filter(([, itemData]) => itemData.selected && itemData.qty > 0)
       .map(([, itemData]) => ({
@@ -459,7 +469,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
         if (pdfUrl && currentTab) {
           updateTabInstantPrintUrl(currentTab.id, pdfUrl)
         }
-        
+
         // Clear cached customer insights to trigger refresh in right panel
         // Don't update _lastKnownStatus yet - let the right panel detect the change
         if (currentTab?.orderData?._relatedData && currentTab?.id) {
@@ -475,7 +485,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
           updateTabOrderData(currentTab.id, updatedOrderData)
           console.log('🔄 Cleared cached customer insights after return to trigger refresh')
         }
-        
+
         toast.success('Return order processed successfully!', { duration: 2000 })
         // After successful return, fetch latest order details to refresh status immediately
         try {
@@ -484,7 +494,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
           const latestTab = activeTabId ? store.tabs.find(t => t.id === activeTabId) : (currentTab || store.getCurrentTab())
           const latestOrderId = latestTab?.orderId
           const tabId = latestTab?.id || activeTabId
-          
+
           if (latestOrderId && tabId) {
             console.log('🔄 Fetching order details after return for order:', latestOrderId, 'tabId:', tabId)
             const res = await window.electronAPI?.proxy?.request({
@@ -504,16 +514,16 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                 main_status: orderData.main_status,
                 zatca_status: orderData.zatca_status
               })
-              
+
               // Update order data
               updateTabOrderData(tabId, orderData)
-              
+
               // Extract and update invoice-related fields from linked_invoices
               const linkedInvoices = orderData.linked_invoices
               let invoiceNumber: string | null = null
               let invoiceStatus: string | null = null
               let invoiceCustomReverseStatus: string | null = null
-              
+
               if (linkedInvoices) {
                 if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
                   const firstInvoice = linkedInvoices[0]
@@ -526,7 +536,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                   invoiceCustomReverseStatus = linkedInvoices.custom_reverse_status || null
                 }
               }
-              
+
               // Update invoice fields if we have invoice data
               if (invoiceNumber) {
                 console.log('📋 Updating invoice fields after return:', {
@@ -540,7 +550,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                 console.log('📋 No invoice number found, clearing invoice fields')
                 updateTabInvoiceNumber(tabId, null, null, null)
               }
-              
+
               console.log('✅ Order details and invoice fields updated after return')
             } else {
               console.warn('⚠️ No order data received from API after return')
@@ -648,11 +658,10 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                         key={warehouse.name}
                         type="button"
                         onClick={() => setSelectedWarehouse(warehouse.name)}
-                        className={`px-4 py-2 rounded-full text-sm font-medium transition-all border ${
-                          selectedWarehouse === warehouse.name
+                        className={`px-4 py-2 rounded-full text-sm font-medium transition-all border ${selectedWarehouse === warehouse.name
                             ? 'bg-green-700 hover:bg-green-800 text-white border-green-700 shadow-sm'
                             : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
-                        }`}
+                          }`}
                       >
                         {warehouse.name}
                       </button>
@@ -685,7 +694,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                     )
                   })()}
                 </div>
-                
+
                 {/* Search Box */}
                 <div className="space-y-2">
                   <Input
@@ -696,16 +705,16 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                     className="w-1/2 font-sans border-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                   />
                 </div>
-                
+
                 <Tabs defaultValue="items" className="flex-1 flex flex-col overflow-hidden min-h-0 relative">
                   <TabsList className="grid w-full grid-cols-2 bg-gray-100 p-1 rounded-lg flex-shrink-0">
-                    <TabsTrigger 
+                    <TabsTrigger
                       value="items"
                       className="data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm font-sans"
                     >
                       Items
                     </TabsTrigger>
-                    <TabsTrigger 
+                    <TabsTrigger
                       value="selected"
                       className="data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm font-sans relative"
                     >
@@ -717,14 +726,14 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                       )}
                     </TabsTrigger>
                   </TabsList>
-                  
+
                   {/* Items Tab */}
                   <TabsContent value="items" className="mt-2 flex-1 flex flex-col overflow-hidden min-h-0 data-[state=inactive]:hidden !relative">
                     <div className="border-2 border-gray-200 rounded-lg overflow-hidden bg-white flex-1 flex flex-col min-h-0">
                       <div className="overflow-y-auto overflow-x-hidden flex-1 min-h-0">
                         <Table className="w-full">
-                    <TableHeader className="sticky top-0 bg-gray-100 z-10">
-                      <TableRow className="bg-gray-100 border-b-2 border-gray-200">
+                          <TableHeader className="sticky top-0 bg-gray-100 z-10">
+                            <TableRow className="bg-gray-100 border-b-2 border-gray-200">
                               <TableHead className="w-16 font-sans font-semibold text-gray-700">
                                 <Checkbox
                                   checked={areAllItemsSelected()}
@@ -732,57 +741,57 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                                 />
                               </TableHead>
                               <TableHead className="font-sans font-semibold text-gray-700">Item Code</TableHead>
-                        <TableHead className="font-sans font-semibold text-gray-700">Item Name</TableHead>
-                        <TableHead className="font-sans font-semibold text-gray-700">UOM</TableHead>
-                        <TableHead className="text-right font-sans font-semibold text-gray-700">Rate</TableHead>
-                        <TableHead className="text-right font-sans font-semibold text-gray-700">Returnable Qty</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {invoiceData.items
-                        .filter((item) => {
-                          if (!searchQuery.trim()) return true
-                          const searchLower = searchQuery.toLowerCase().trim()
-                          const itemCode = (item.item_code || '').toLowerCase()
-                          const itemName = (item.item_name || '').toLowerCase()
-                          return itemCode.includes(searchLower) || itemName.includes(searchLower)
-                        })
-                        .map((item, index) => {
-                        // Safely extract item data with fallbacks
-                        const itemCode = item.item_code || `item-${index}`
-                        const itemName = item.item_name || 'Unknown Item'
-                        const uom = item.uom || 'Nos'
-                        const rate = typeof item.rate === 'number' ? item.rate : 0
-                        const returnableQty = typeof item.returnable_qty === 'number' ? item.returnable_qty : 0
-                        // Use original_sales_invoice_item as key for selection, fallback to item_code
-                        const selectionKey = item.original_sales_invoice_item || itemCode
-                        
-                        return (
-                          <TableRow key={index} className="hover:bg-gray-50 border-b border-gray-100">
-                            <TableCell className="py-3">
-                              <Checkbox
-                                checked={selectedItems[selectionKey]?.selected || false}
-                                onCheckedChange={(checked) => 
-                                  handleItemSelect(selectionKey, checked as boolean)
-                                }
-                              />
-                            </TableCell>
-                            <TableCell className="font-medium font-sans text-gray-800 text-xs whitespace-nowrap" style={{ fontSize: '0.75rem' }}>{itemCode}</TableCell>
-                                  <TableCell className="font-sans text-gray-700 text-xs max-w-[300px]" style={{ fontSize: '0.75rem', wordBreak: 'break-word', overflowWrap: 'break-word', lineHeight: '1.4' }} title={itemName}>
-                                    <div className="line-clamp-2">{itemName}</div>
-                                  </TableCell>
-                                  <TableCell className="font-sans text-gray-700 text-left whitespace-nowrap">{uom}</TableCell>
-                                  <TableCell className="text-right font-sans text-gray-700 whitespace-nowrap">{rate.toFixed(2)}</TableCell>
-                                  <TableCell className="text-right font-sans text-gray-700 whitespace-nowrap">{returnableQty}</TableCell>
-                                </TableRow>
-                              )
-                            })}
+                              <TableHead className="font-sans font-semibold text-gray-700">Item Name</TableHead>
+                              <TableHead className="font-sans font-semibold text-gray-700">UOM</TableHead>
+                              <TableHead className="text-right font-sans font-semibold text-gray-700">Rate</TableHead>
+                              <TableHead className="text-right font-sans font-semibold text-gray-700">Returnable Qty</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {invoiceData.items
+                              .filter((item) => {
+                                if (!searchQuery.trim()) return true
+                                const searchLower = searchQuery.toLowerCase().trim()
+                                const itemCode = (item.item_code || '').toLowerCase()
+                                const itemName = (item.item_name || '').toLowerCase()
+                                return itemCode.includes(searchLower) || itemName.includes(searchLower)
+                              })
+                              .map((item, index) => {
+                                // Safely extract item data with fallbacks
+                                const itemCode = item.item_code || `item-${index}`
+                                const itemName = item.item_name || 'Unknown Item'
+                                const uom = item.uom || 'Nos'
+                                const rate = typeof item.rate === 'number' ? item.rate : 0
+                                const returnableQty = typeof item.returnable_qty === 'number' ? item.returnable_qty : 0
+                                // Use original_sales_invoice_item as key for selection, fallback to item_code
+                                const selectionKey = item.original_sales_invoice_item || itemCode
+
+                                return (
+                                  <TableRow key={index} className="hover:bg-gray-50 border-b border-gray-100">
+                                    <TableCell className="py-3">
+                                      <Checkbox
+                                        checked={selectedItems[selectionKey]?.selected || false}
+                                        onCheckedChange={(checked) =>
+                                          handleItemSelect(selectionKey, checked as boolean)
+                                        }
+                                      />
+                                    </TableCell>
+                                    <TableCell className="font-medium font-sans text-gray-800 text-xs whitespace-nowrap" style={{ fontSize: '0.75rem' }}>{itemCode}</TableCell>
+                                    <TableCell className="font-sans text-gray-700 text-xs max-w-[300px]" style={{ fontSize: '0.75rem', wordBreak: 'break-word', overflowWrap: 'break-word', lineHeight: '1.4' }} title={itemName}>
+                                      <div className="line-clamp-2">{itemName}</div>
+                                    </TableCell>
+                                    <TableCell className="font-sans text-gray-700 text-left whitespace-nowrap">{uom}</TableCell>
+                                    <TableCell className="text-right font-sans text-gray-700 whitespace-nowrap">{rate.toFixed(2)}</TableCell>
+                                    <TableCell className="text-right font-sans text-gray-700 whitespace-nowrap">{returnableQty}</TableCell>
+                                  </TableRow>
+                                )
+                              })}
                           </TableBody>
                         </Table>
                       </div>
                     </div>
                   </TabsContent>
-                  
+
                   {/* Selected Items Tab */}
                   <TabsContent value="selected" className="mt-2 flex-1 flex flex-col overflow-hidden min-h-0 data-[state=inactive]:hidden !relative">
                     <div className="border-2 border-gray-200 rounded-lg overflow-hidden bg-white flex-1 flex flex-col min-h-0">
@@ -804,7 +813,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                                 const selectionKey = item.original_sales_invoice_item || item.item_code || ''
                                 const isSelected = selectedItems[selectionKey]?.selected === true
                                 if (!isSelected) return false
-                                
+
                                 // Apply search filter
                                 if (!searchQuery.trim()) return true
                                 const searchLower = searchQuery.toLowerCase().trim()
@@ -822,7 +831,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                                 const selectionKey = item.original_sales_invoice_item || itemCode
                                 const returnableQty = typeof item.returnable_qty === 'number' ? item.returnable_qty : (selectedItems[selectionKey]?.originalQty ?? 0)
                                 const returnQty = selectedItems[selectionKey]?.qty ?? returnableQty
-                                
+
                                 return (
                                   <TableRow key={index} className="hover:bg-gray-50 border-b border-gray-100">
                                     <TableCell className="font-medium font-sans text-gray-800 text-xs whitespace-nowrap" style={{ fontSize: '0.75rem' }}>{itemCode}</TableCell>
@@ -832,45 +841,45 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                                     <TableCell className="font-sans text-gray-700 text-left whitespace-nowrap">{uom}</TableCell>
                                     <TableCell className="text-right font-sans text-gray-700 whitespace-nowrap">{rate.toFixed(2)}</TableCell>
                                     <TableCell className="text-right font-sans text-gray-700 whitespace-nowrap">{returnableQty}</TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex justify-end">
-                                <Input
-                                  type="number"
-                                  min="0"
+                                    <TableCell className="text-right">
+                                      <div className="flex justify-end">
+                                        <Input
+                                          type="number"
+                                          min="0"
                                           max={returnableQty}
                                           value={returnQty.toString()}
-                                  onChange={(e) => {
-                                    const inputValue = e.target.value
-                                    // Allow empty string for clearing, or parse as number
-                                    if (inputValue === '') {
-                                      handleQuantityChange(selectionKey, 0)
-                                    } else {
-                                      const numericValue = parseFloat(inputValue)
-                                      if (!isNaN(numericValue)) {
-                                        handleQuantityChange(selectionKey, numericValue)
-                                      }
-                                    }
-                                  }}
-                                  onBlur={(e) => {
-                                    // Ensure we have a valid number on blur
-                                    const value = parseFloat(e.target.value) || 0
+                                          onChange={(e) => {
+                                            const inputValue = e.target.value
+                                            // Allow empty string for clearing, or parse as number
+                                            if (inputValue === '') {
+                                              handleQuantityChange(selectionKey, 0)
+                                            } else {
+                                              const numericValue = parseFloat(inputValue)
+                                              if (!isNaN(numericValue)) {
+                                                handleQuantityChange(selectionKey, numericValue)
+                                              }
+                                            }
+                                          }}
+                                          onBlur={(e) => {
+                                            // Ensure we have a valid number on blur
+                                            const value = parseFloat(e.target.value) || 0
                                             // Ensure value doesn't exceed returnable qty
                                             const validValue = Math.min(value, returnableQty)
                                             handleQuantityChange(selectionKey, validValue)
-                                  }}
+                                          }}
                                           className="w-20 text-right font-sans border-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                                  placeholder="0"
-                                />
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        )
-                      })}
+                                          placeholder="0"
+                                        />
+                                      </div>
+                                    </TableCell>
+                                  </TableRow>
+                                )
+                              })}
                             {invoiceData.items.filter((item) => {
                               const selectionKey = item.original_sales_invoice_item || item.item_code || ''
                               const isSelected = selectedItems[selectionKey]?.selected === true
                               if (!isSelected) return false
-                              
+
                               // Apply search filter
                               if (!searchQuery.trim()) return true
                               const searchLower = searchQuery.toLowerCase().trim()
@@ -878,18 +887,18 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                               const itemName = (item.item_name || '').toLowerCase()
                               return itemCode.includes(searchLower) || itemName.includes(searchLower)
                             }).length === 0 && (
-                              <TableRow>
-                                <TableCell colSpan={6} className="text-center py-8 text-gray-500 font-sans">
-                                  {searchQuery.trim() 
-                                    ? 'No selected items match your search.'
-                                    : 'No items selected. Please select items from the "Items" tab.'}
-                                </TableCell>
-                              </TableRow>
-                            )}
-                    </TableBody>
-                    </Table>
-                  </div>
-                </div>
+                                <TableRow>
+                                  <TableCell colSpan={6} className="text-center py-8 text-gray-500 font-sans">
+                                    {searchQuery.trim()
+                                      ? 'No selected items match your search.'
+                                      : 'No items selected. Please select items from the "Items" tab.'}
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
                   </TabsContent>
                 </Tabs>
               </div>
