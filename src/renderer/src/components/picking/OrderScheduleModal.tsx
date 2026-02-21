@@ -10,6 +10,7 @@ import { Textarea } from '@renderer/components/ui/textarea';
 import { cn } from '@renderer/lib/utils';
 import { Invoice, ScheduleDetails } from '@renderer/types/picking';
 import { Zap, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { formatDate, formatTime } from '@renderer/lib/date-utils';
 
 interface OrderScheduleModalProps {
     isOpen: boolean;
@@ -90,7 +91,7 @@ export function OrderScheduleModal({
             date1.getFullYear() === date2.getFullYear();
     };
 
-    const formatDate = (date: Date, format: 'EEE' | 'd' | 'MMM') => {
+    const formatCalendarDate = (date: Date, format: 'EEE' | 'd' | 'MMM') => {
         const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -197,10 +198,10 @@ export function OrderScheduleModal({
                             </div>
                             <div className="text-right flex flex-col items-end">
                                 <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                                    {invoice.invoiceDate ? new Date(invoice.invoiceDate).toLocaleDateString('en-GB') : ''}
+                                    {formatDate(invoice.invoiceDate)}
                                 </span>
                                 <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                                    {invoice.invoiceDate ? new Date(invoice.invoiceDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : ''}
+                                    {formatTime(invoice.invoiceDate)}
                                 </span>
                             </div>
                         </div>
@@ -290,13 +291,13 @@ export function OrderScheduleModal({
                                             )}
                                         >
                                             <span className="text-[9px] font-medium uppercase leading-tight opacity-80">
-                                                {formatDate(day, 'EEE')}
+                                                {formatCalendarDate(day, 'EEE')}
                                             </span>
                                             <span className="text-sm font-bold mt-0.5 leading-none">
-                                                {formatDate(day, 'd')}
+                                                {formatCalendarDate(day, 'd')}
                                             </span>
                                             <span className="text-[9px] mt-0.5 leading-tight">
-                                                {formatDate(day, 'MMM')}
+                                                {formatCalendarDate(day, 'MMM')}
                                             </span>
                                         </button>
                                     ))}

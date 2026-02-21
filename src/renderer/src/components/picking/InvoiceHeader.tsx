@@ -1,5 +1,6 @@
 import { Invoice, ScheduleDetails } from '@renderer/types/picking';
 import { Calendar, Clock, StickyNote, Zap } from 'lucide-react';
+import { formatDate, formatTime } from '@renderer/lib/date-utils';
 
 interface InvoiceHeaderProps {
     invoice: Invoice;
@@ -85,7 +86,7 @@ export function InvoiceHeader({
                             {schedule.type === 'scheduled' && schedule.dateTime && (
                                 <div className="flex items-center gap-1.5 text-xs text-foreground font-medium pl-1">
                                     <Clock className="w-3 h-3 text-muted-foreground" />
-                                    {new Date(schedule.dateTime).toLocaleDateString()} {new Date(schedule.dateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    {formatDate(schedule.dateTime)} {formatTime(schedule.dateTime)}
                                 </div>
                             )}
 

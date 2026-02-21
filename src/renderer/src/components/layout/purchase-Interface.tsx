@@ -101,7 +101,14 @@ const PurchaseInterface: React.FC = () => {
               onRemoveItem={removeItem}
               selectedItemId={selectedItemId}
               selectItem={handleItemSelect}
-              onAddItemClick={() => setProductModalOpen(true)}
+              onAddItemClick={() => {
+                if (!supplier) {
+                  toast.error('Select supplier before selecting items')
+                  setSupplierModalOpen(true)
+                  return
+                }
+                setProductModalOpen(true)
+              }}
               shouldStartEditing={shouldStartEditing}
               onEditingStarted={() => setShouldStartEditing(false)}
               onSaveCompleted={saveCompleted}

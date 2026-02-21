@@ -9,6 +9,7 @@ import { toast } from 'sonner'
 import { usePurchaseTabStore } from '@renderer/store/usePurchaseTabStore'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 import { useHotkeys } from 'react-hotkeys-hook'
+import { formatDate, formatTime } from '@renderer/lib/date-utils'
 import PaymentTab from '../../payment/payment-tab'
 import MultiWarehousePopup from '../../common/multi-warehouse-popup'
 
@@ -3661,14 +3662,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       <div className="text-xs text-gray-600">
                         Last Payment{' '}
                         {customerInsights?.last_payment_datetime
-                          ? `| ${new Date(customerInsights.last_payment_datetime).toLocaleDateString(
-                            'en-US',
-                            {
-                              day: '2-digit',
-                              month: 'short',
-                              year: 'numeric'
-                            }
-                          )}`
+                          ? `| ${formatDate(customerInsights.last_payment_datetime)}`
                           : ''}
                       </div>
                       <div className="font-bold text-green-600">
@@ -4396,11 +4390,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                               )}
                             </div>
                             <div className="text-gray-600 text-xs">
-                              {order.creation_datetime ? new Date(order.creation_datetime).toLocaleDateString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                                year: 'numeric'
-                              }) : '—'}
+                              {formatDate(order.creation_datetime)}
                             </div>
                           </div>
                           <div className="flex justify-between items-center mb-2">
@@ -4425,10 +4415,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                               {order.status || '—'}
                             </span>
                             <span className="text-gray-500 text-xs">
-                              {order.creation_datetime ? new Date(order.creation_datetime).toLocaleTimeString('en-US', {
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              }) : '—'}
+                              {formatTime(order.creation_datetime)}
                             </span>
                           </div>
                         </div>

@@ -68,7 +68,7 @@ export function AssignWarehousesModal({
                     deliveryOp = newList[existingIdx];
                     newList.splice(existingIdx, 1);
                 } else {
-                    // Create new operation
+                    // Creation of new operation
                     deliveryOp = {
                         warehouseId: selectedWH.id,
                         warehouseName: selectedWH.name,
@@ -151,6 +151,20 @@ export function AssignWarehousesModal({
         if (isFirstLineDelivery) return;
         if (isDone) return;
 
+        // Check for invalid "All Selected" state BEFORE toggling
+        const willBeChecked = !operationsList[index].isCustomerPickup;
+        // Only enforce rule if we have a Delivery Warehouse selected (which is index 0 usually, or selectedDeliveryWarehouse state)
+        if (willBeChecked && selectedDeliveryWarehouse) {
+            // Check if all OTHER rows are already checked
+            const otherRows = operationsList.filter((_, i) => i !== index);
+            const allOthersChecked = otherRows.every(op => op.isCustomerPickup);
+
+            if (allOthersChecked) {
+                toast.error("Cannot select all warehouses. At least one warehouse must be unselected for transfer.");
+                return;
+            }
+        }
+
         setOperationsList(prev => {
             const newList = [...prev];
             // Toggle the target row
@@ -163,8 +177,21 @@ export function AssignWarehousesModal({
     const isValid = useMemo(() => {
         // Allow assign if at least one warehouse is selected (including delivery warehouse)
         const hasSelection = operationsList.some(op => op.isCustomerPickup);
-        return hasSelection;
-    }, [operationsList]);
+
+        if (!hasSelection) return false;
+
+        // Validation: If Delivery Warehouse is selected, at least one other warehouse MUST be unselected (for transfer)
+        if (selectedDeliveryWarehouse) {
+            // Check if ALL source warehouses are selected for pickup
+            // Source warehouses are all except the first one (Delivery)
+            const sourceOps = operationsList.slice(1);
+            const allSourcesSelected = sourceOps.length > 0 && sourceOps.every(op => op.isCustomerPickup);
+
+            if (allSourcesSelected) return false;
+        }
+
+        return true;
+    }, [operationsList, selectedDeliveryWarehouse]);
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>

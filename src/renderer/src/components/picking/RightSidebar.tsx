@@ -3,6 +3,7 @@ import { cn } from '@renderer/lib/utils';
 import { OrderQueueTab } from './OrderQueueTab';
 import { SalesTab } from './SalesTab';
 import { PickerLogTab } from './PickerLogTab';
+import { formatDateTime } from '@renderer/lib/date-utils';
 
 interface RightSidebarProps {
     activeTab: 'details' | 'sales' | 'queue' | 'picker-log';
@@ -155,14 +156,7 @@ export function RightSidebar({
                                     // }
                                     // ----------------------------------
 
-                                    /* Helper to format date: DD/MM/YYYY hh:mm AM/PM */
-                                    const formatDateTime = (date?: Date) => {
-                                        if (!date) return { date: '-', time: '-' };
-                                        const d = new Date(date);
-                                        const dateStr = d.toLocaleDateString('en-GB'); // DD/MM/YYYY
-                                        const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true });
-                                        return { date: dateStr, time: timeStr };
-                                    };
+
 
                                     const isDraft = slip.status === 'Not Started' || slip.status === 'not-started';
                                     const isStarted = slip.status === 'In Process' || slip.status === 'in-progress';

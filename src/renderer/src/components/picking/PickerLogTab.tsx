@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { cn } from '@renderer/lib/utils';
 import { PickerLogItem, Invoice } from '@renderer/types/picking';
 import { Search, RefreshCw, User, Clock, RotateCcw, Box, FileText } from 'lucide-react';
+import { formatDate, formatTime, formatFullDateTime } from '@renderer/lib/date-utils';
 import { Input } from '@renderer/components/ui/input';
 import { Button } from '@renderer/components/ui/button';
 import {
@@ -143,14 +144,11 @@ export function PickerLogTab({ onSelectInvoice }: PickerLogTabProps) {
     // Unique picker names for filter
     const pickerNames = Array.from(new Set(logs.map(item => item.picker_name)));
 
-    const formatTime = (dateStr: string) => {
-        if (!dateStr) return '';
-        const d = new Date(dateStr);
-        if (isNaN(d.getTime())) return dateStr;
-        return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    const formatTimeHelper = (dateStr: string) => {
+        return formatTime(dateStr);
     };
 
-    const formatDate = (dateStr: string) => {
+    const formatDateHelper = (dateStr: string) => {
         if (!dateStr) return '';
         const d = new Date(dateStr);
         if (isNaN(d.getTime())) return dateStr;
@@ -162,14 +160,11 @@ export function PickerLogTab({ onSelectInvoice }: PickerLogTabProps) {
         if (datePart.getTime() === today.getTime()) {
             return 'Today';
         }
-        return d.toLocaleDateString('en-GB');
+        return formatDate(d);
     };
 
     const formatFooterDateTime = (dateStr: string) => {
-        if (!dateStr) return '';
-        const d = new Date(dateStr);
-        if (isNaN(d.getTime())) return dateStr;
-        return d.toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+        return formatFullDateTime(dateStr);
     };
 
     const handleItemClick = (item: PickerLogItem) => {
@@ -313,7 +308,7 @@ export function PickerLogTab({ onSelectInvoice }: PickerLogTabProps) {
                                                             Free
                                                         </span>
                                                     )}
-                                                    <p className="text-[11px] font-bold text-gray-900 whitespace-nowrap">{formatDate(item.start_date_time)}</p>
+                                                    <p className="text-[11px] font-bold text-gray-900 whitespace-nowrap">{formatDateHelper(item.start_date_time)}</p>
                                                 </div>
                                             </div>
 
@@ -322,7 +317,7 @@ export function PickerLogTab({ onSelectInvoice }: PickerLogTabProps) {
                                                 <span className="text-xs text-gray-600 font-medium truncate pl-5" title={item.customer_name}>
                                                     {item.customer_name}
                                                 </span>
-                                                <p className="text-[10px] text-gray-500 whitespace-nowrap shrink-0">{formatTime(item.start_date_time)}</p>
+                                                <p className="text-[10px] text-gray-500 whitespace-nowrap shrink-0">{formatTimeHelper(item.start_date_time)}</p>
                                             </div>
 
                                             {/* Row 3: Pick Slip (Left) & Items/Duration (Right) */}

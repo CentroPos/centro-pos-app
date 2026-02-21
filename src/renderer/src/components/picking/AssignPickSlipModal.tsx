@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@renderer/components/ui/dialog';
 import { Button } from '@renderer/components/ui/button';
-import { InvoiceItem, PickSlip, Warehouse, Picker } from '@renderer/types/picking';
+import { InvoiceItem, PickSlip, Warehouse } from '@renderer/types/picking';
 import { cn } from '@renderer/lib/utils';
 import { Printer, Play, Check, X } from 'lucide-react';
 import {
@@ -21,7 +21,6 @@ interface AssignPickSlipModalProps {
     onClose: () => void;
     selectedItems: InvoiceItem[];
     warehouses: Warehouse[];
-    otherPickers?: Picker[];
     invoiceNo: string;
     existingPickSlip?: PickSlip | null;
     onSuccess?: () => void;
@@ -33,7 +32,6 @@ export function AssignPickSlipModal({
     onClose,
     selectedItems,
     warehouses,
-    otherPickers = [],
     invoiceNo,
     existingPickSlip,
     onSuccess,
@@ -105,8 +103,7 @@ export function AssignPickSlipModal({
                 setSelectedWarehouse(warehouses[0].id);
             }
         }
-        console.log('SHD => [AssignPickSlipModal] otherPickers:', otherPickers);
-    }, [isOpen, warehouses, existingPickSlip, otherPickers]);
+    }, [isOpen, warehouses, existingPickSlip]);
 
     // Reset state on close or open
     useEffect(() => {
@@ -203,12 +200,55 @@ export function AssignPickSlipModal({
     };
 
     // API: Assign Pick Slip (Create)
+    const handlePrintSlip = async (url: string) => {
+        if (!url) {
+            toast.error("No print URL available");
+            return;
+        }
+
+        try {
+            console.log('SHD ==> [PRINT] Fetching PDF from:', url);
+
+            // Use proxy API as seen in right-panel.tsx
+            // It returns { success: boolean, pdfData: string (base64 data url), ... }
+            const res = await window.electronAPI?.proxy?.request({
+                url: url,
+                method: 'GET'
+            });
+
+            console.log('SHD ==> [PRINT RESPONSE]', res);
+
+            if (res?.pdfData) {
+                const pdfDataUrl = res.pdfData;
+                console.log('SHD ==> [PRINT] PDF Data URL received, length:', pdfDataUrl.length);
+
+                if (window.electronAPI?.print?.printPDF) {
+                    await window.electronAPI.print.printPDF(pdfDataUrl, { autoPrint: false });
+                } else {
+                    console.error("Print API not available");
+                    toast.error("Print API not available");
+                }
+            } else {
+                console.error("No PDF data in response");
+                toast.error("Failed to load PDF data");
+            }
+
+        } catch (error) {
+            console.error("Print failed", error);
+            toast.error("Failed to print pick slip");
+        }
+    };
+
+    // API: Assign Pick Slip (Create)
     const handleAssign = async () => {
         if (!selectedWarehouse) return;
         setIsCreating(true);
 
         const warehouse = warehouses.find(w => w.id === selectedWarehouse);
-        const picker = availablePickers.find(p => p.id === selectedPicker) || otherPickers.find(p => p.id === selectedPicker);
+
+        // Find picker from ALL warehouses, not just availablePickers (which is restricted to selectedWarehouse)
+        const allPickers = warehouses.flatMap(w => w.pickers);
+        const picker = allPickers.find(p => p.id === selectedPicker);
 
         const payloadItems = localItems.map(item => ({
             serial_no: item.slNo,
@@ -232,6 +272,11 @@ export function AssignPickSlipModal({
             const data = res?.data?.data;
             if (data) {
                 toast.success(data.message || "Pick slip assigned successfully");
+
+                // Auto-print assignment
+                if (data.picking_slip_url) {
+                    await handlePrintSlip(data.picking_slip_url);
+                }
 
                 const newSlip: PickSlip = {
                     id: data.picking_no,
@@ -514,68 +559,81 @@ export function AssignPickSlipModal({
                         </div>
 
                         {selectedWarehouse && (
-                            <div className="space-y-2">
-                                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Select Picker (Optional)</label>
-                                <div className="flex flex-wrap gap-2">
-                                    {availablePickers.length > 0 ? availablePickers.map((picker) => {
-                                        const isSelected = selectedPicker === picker.id;
-                                        const isPicked = existingPickSlip?.status === 'Picked' || existingPickSlip?.status === 'picked' || existingPickSlip?.status === 'Completed' || createdSlip?.status === 'picked' || createdSlip?.status === 'Picked' || createdSlip?.status === 'Completed';
-                                        return (
-                                            <Button
-                                                key={picker.id}
-                                                variant="outline"
-                                                onClick={() => !isPicked && setSelectedPicker(prev => prev === picker.id ? null : picker.id)}
-                                                disabled={isPicked}
-                                                className={cn(
-                                                    "h-8 rounded-full px-4 text-xs font-medium border transition-all",
-                                                    isSelected
-                                                        ? "bg-green-700 hover:bg-green-800 text-white border-green-700 shadow-sm"
-                                                        : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200",
-                                                    isPicked && "opacity-50 cursor-not-allowed"
-                                                )}
-                                            >
-                                                <span className="mr-1">{picker.name}</span>
-                                                <span className="opacity-70 text-[10px]">({picker.picker_no})</span>
-                                            </Button>
-                                        );
-                                    }) : (
-                                        <div className="text-xs text-muted-foreground italic px-2">
-                                            No pickers available in this warehouse.
-                                        </div>
-                                    )}
+                            <div className="space-y-4">
+                                {/* Current Warehouse Pickers */}
+                                <div className="space-y-2">
+                                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                        {warehouses.find(w => w.id === selectedWarehouse)?.name} Pickers
+                                    </label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {availablePickers.length > 0 ? availablePickers.map((picker) => {
+                                            const isSelected = selectedPicker === picker.id;
+                                            const isPicked = existingPickSlip?.status === 'Picked' || existingPickSlip?.status === 'picked' || existingPickSlip?.status === 'Completed' || createdSlip?.status === 'picked' || createdSlip?.status === 'Picked' || createdSlip?.status === 'Completed';
+                                            return (
+                                                <Button
+                                                    key={picker.id}
+                                                    variant="outline"
+                                                    onClick={() => !isPicked && setSelectedPicker(prev => prev === picker.id ? null : picker.id)}
+                                                    disabled={isPicked}
+                                                    className={cn(
+                                                        "h-8 rounded-full px-4 text-xs font-medium border transition-all",
+                                                        isSelected
+                                                            ? "bg-green-700 hover:bg-green-800 text-white border-green-700 shadow-sm"
+                                                            : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200",
+                                                        isPicked && "opacity-50 cursor-not-allowed"
+                                                    )}
+                                                >
+                                                    <span className="mr-1">{picker.name}</span>
+                                                    <span className="opacity-70 text-[10px]">({picker.picker_no})</span>
+                                                </Button>
+                                            );
+                                        }) : (
+                                            <div className="text-xs text-muted-foreground italic px-2">
+                                                No pickers available in this warehouse.
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
 
-                                {otherPickers.length > 0 && (
-                                    <>
-                                        <div className="w-full h-px bg-slate-100 my-2" />
-                                        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-2">Other Pickers</label>
-                                        <div className="flex flex-wrap gap-2">
-                                            {otherPickers.map((picker) => {
-                                                const isSelected = selectedPicker === picker.id;
-                                                const isPicked = existingPickSlip?.status === 'Picked' || existingPickSlip?.status === 'picked' || existingPickSlip?.status === 'Completed' || createdSlip?.status === 'picked' || createdSlip?.status === 'Picked' || createdSlip?.status === 'Completed';
+                                {/* Other Pickers Section */}
+                                {(() => {
+                                    const otherPickers = warehouses
+                                        .filter(w => w.id !== selectedWarehouse && !w.is_delivery_warehouse)
+                                        .flatMap(w => w.pickers.map(p => ({ ...p, warehouseName: w.name })));
 
-                                                return (
-                                                    <Button
-                                                        key={picker.id}
-                                                        variant="outline"
-                                                        onClick={() => !isPicked && setSelectedPicker(prev => prev === picker.id ? null : picker.id)}
-                                                        disabled={isPicked}
-                                                        className={cn(
-                                                            "h-8 rounded-full px-4 text-xs font-medium border transition-all",
-                                                            isSelected
-                                                                ? "bg-green-700 hover:bg-green-800 text-white border-green-700 shadow-sm"
-                                                                : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200",
-                                                            isPicked && "opacity-50 cursor-not-allowed"
-                                                        )}
-                                                    >
-                                                        <span className="mr-1">{picker.name}</span>
-                                                        <span className="opacity-70 text-[10px]">({picker.picker_no})</span>
-                                                    </Button>
-                                                );
-                                            })}
+                                    if (otherPickers.length === 0) return null;
+
+                                    return (
+                                        <div className="space-y-2 pt-2 border-t border-dashed">
+                                            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Other Pickers</label>
+                                            <div className="flex flex-wrap gap-2">
+                                                {otherPickers.map((picker) => {
+                                                    const isSelected = selectedPicker === picker.id;
+                                                    const isPicked = existingPickSlip?.status === 'Picked' || existingPickSlip?.status === 'picked' || existingPickSlip?.status === 'Completed' || createdSlip?.status === 'picked' || createdSlip?.status === 'Picked' || createdSlip?.status === 'Completed';
+
+                                                    return (
+                                                        <Button
+                                                            key={picker.id}
+                                                            variant="outline"
+                                                            onClick={() => !isPicked && setSelectedPicker(prev => prev === picker.id ? null : picker.id)}
+                                                            disabled={isPicked}
+                                                            className={cn(
+                                                                "h-8 rounded-full px-4 text-xs font-medium border transition-all",
+                                                                isSelected
+                                                                    ? "bg-blue-600 hover:bg-blue-700 text-white border-blue-600 shadow-sm"
+                                                                    : "bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200",
+                                                                isPicked && "opacity-50 cursor-not-allowed"
+                                                            )}
+                                                        >
+                                                            <span className="mr-1">{picker.name}</span>
+                                                            <span className="opacity-70 text-[10px]">({picker.warehouseName})</span>
+                                                        </Button>
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
-                                    </>
-                                )}
+                                    );
+                                })()}
                             </div>
                         )}
                     </div>
@@ -676,43 +734,7 @@ export function AssignPickSlipModal({
                             <Button
                                 variant="default"
                                 className="bg-slate-700 hover:bg-slate-800 text-white"
-                                onClick={async () => {
-                                    if (createdSlip?.print_url) {
-                                        try {
-                                            console.log('SHD ==> [PRINT] Fetching PDF from:', createdSlip.print_url);
-
-                                            // Use proxy API as seen in right-panel.tsx
-                                            // It returns { success: boolean, pdfData: string (base64 data url), ... }
-                                            const res = await window.electronAPI?.proxy?.request({
-                                                url: createdSlip.print_url,
-                                                method: 'GET'
-                                            });
-
-                                            console.log('SHD ==> [PRINT RESPONSE]', res);
-
-                                            if (res?.pdfData) {
-                                                const pdfDataUrl = res.pdfData;
-                                                console.log('SHD ==> [PRINT] PDF Data URL received, length:', pdfDataUrl.length);
-
-                                                if (window.electronAPI?.print?.printPDF) {
-                                                    await window.electronAPI.print.printPDF(pdfDataUrl, { autoPrint: false });
-                                                } else {
-                                                    console.error("Print API not available");
-                                                    toast.error("Print API not available");
-                                                }
-                                            } else {
-                                                console.error("No PDF data in response");
-                                                toast.error("Failed to load PDF data");
-                                            }
-
-                                        } catch (error) {
-                                            console.error("Print failed", error);
-                                            toast.error("Failed to print pick slip");
-                                        }
-                                    } else {
-                                        toast.error("No print URL available");
-                                    }
-                                }}
+                                onClick={() => handlePrintSlip(createdSlip?.print_url || '')}
                                 disabled={!createdSlip?.print_url}
                             >
                                 <Printer className="w-4 h-4 mr-1" />

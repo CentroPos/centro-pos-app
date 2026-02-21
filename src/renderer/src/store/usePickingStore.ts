@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { Invoice, InvoiceItem, PickSlip, WarehouseOperation, Warehouse, ScheduleDetails, WarehouseDetails, Picker } from '@renderer/types/picking'
+import { Invoice, InvoiceItem, PickSlip, WarehouseOperation, Warehouse, ScheduleDetails, WarehouseDetails } from '@renderer/types/picking'
 import { toast } from 'sonner'
 
 interface InvoiceTab {
@@ -16,7 +16,6 @@ interface PickingState {
   // Data Cache
   invoices: Invoice[] // Only fetched invoices
   warehouses: Warehouse[]
-  otherPickers: Picker[]
 
   // UI State
   tabs: InvoiceTab[]
@@ -40,7 +39,6 @@ interface PickingState {
 export const usePickingStore = create<PickingState>((set, get) => ({
   invoices: [],
   warehouses: [],
-  otherPickers: [],
   tabs: [],
   activeTabId: null,
   warehouseOperations: [],
@@ -190,19 +188,7 @@ export const usePickingStore = create<PickingState>((set, get) => ({
         }))
       }));
 
-      // Check multiple possible paths for other_pickers in case of API structure variations
-      const rawOtherPickers = res?.data?.data?.other_pickers || res?.data?.other_pickers || [];
-      console.log('SHD => [fetchGeneralInfo] Other Pickers Raw:', rawOtherPickers);
-
-      const otherPickers: Picker[] = rawOtherPickers.map((p: any) => ({
-        id: p.picker_no,
-        name: p.name,
-        picker_no: p.picker_no
-      }));
-
-      console.log('SHD => [fetchGeneralInfo] Other Pickers Mapped:', otherPickers);
-
-      set({ warehouses, otherPickers });
+      set({ warehouses });
 
     } catch (e) {
       console.error("Failed to fetch general info", e);

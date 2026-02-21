@@ -11,6 +11,9 @@ import { dirname } from 'path'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
+// Force en-GB locale for consistent date formatting (dd/mm/yyyy)
+app.commandLine.appendSwitch('lang', 'en-GB')
+
 // Get icon path - use white version (JPG from project root)
 // In development: __dirname points to out/main, so go up to project root
 // In production: use resources folder

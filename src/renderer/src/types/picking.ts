@@ -58,10 +58,6 @@ export interface GeneralInfoResponse {
         picker_no: string;
       }[];
     }[];
-    other_pickers?: {
-      name: string;
-      picker_no: string;
-    }[];
   };
 }
 

@@ -547,7 +547,14 @@ const POSInterface: React.FC = () => {
               selectItem={handleItemSelect}
               shouldStartEditing={shouldStartEditing}
               onEditingStarted={() => setShouldStartEditing(false)}
-              onAddItemClick={() => setOpen(true)}
+              onAddItemClick={() => {
+                if (!selectedCustomer) {
+                  toast.error('Select customer before selecting items')
+                  setIsCustomerModalOpen(true)
+                  return
+                }
+                setOpen(true)
+              }}
               onSaveCompleted={saveCompleted}
               isProductModalOpen={open}
               isCustomerModalOpen={isCustomerModalOpen}

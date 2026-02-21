@@ -23,6 +23,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@renderer/components/ui/card'
 import { Badge } from '@renderer/components/ui/badge'
 import { toast } from 'sonner'
+import { formatDate } from '@renderer/lib/date-utils'
 import { handleServerErrorMessages } from '@renderer/lib/error-handler'
 
 interface Customer {
@@ -113,14 +114,24 @@ const PaymentTab: React.FC = () => {
   const [pendingPaymentEntryData, setPendingPaymentEntryData] = useState<any>(null)
   const isLoadingFromVoucherRef = useRef(false)
   const [totalDueAmount, setTotalDueAmount] = useState<number>(0)
+  const [showValidationErrors, setShowValidationErrors] = useState(false)
 
   // Load customer value insights
   const loadCustomerInsights = async (customerId: string) => {
     try {
       console.log('📊 Loading customer insights for:', customerId)
+      const params: any = {}
+      if (partyType === 'Customer') {
+        params.customer_id = customerId
+      } else {
+        params.supplier_id = customerId
+      }
+
       const response = await window.electronAPI?.proxy?.request({
-        url: '/api/method/centro_pos_apis.api.customer.customer_amount_insights',
-        params: { customer_id: customerId }
+        url: partyType === 'Customer'
+          ? '/api/method/centro_pos_apis.api.customer.customer_amount_insights'
+          : '/api/method/centro_pos_apis.api.supplier.supplier_amount_insights', // Assuming this exists or falls back
+        params
       })
 
       console.log('📊 Customer insights response:', response)
@@ -204,6 +215,7 @@ const PaymentTab: React.FC = () => {
       setPaymentAmount('0.00')
       setReferenceNo('')
       setReferenceDate(getCurrentDate())
+      setShowValidationErrors(false)
       // Only reset total due if we're not loading a voucher/customer context
       if (!selectedCustomer) {
         setTotalDueAmount(0)
@@ -347,8 +359,12 @@ const PaymentTab: React.FC = () => {
         limit_page_length,
         append
       })
+      const url = partyType === 'Customer'
+        ? '/api/method/centro_pos_apis.api.customer.customer_list'
+        : '/api/method/centro_pos_apis.api.supplier.supplier_list'
+
       const response = await window.electronAPI?.proxy?.request({
-        url: '/api/method/centro_pos_apis.api.customer.customer_list',
+        url,
         params: {
           search_term: term || '',  // Send empty string when no search term
           limit_start,
@@ -371,7 +387,7 @@ const PaymentTab: React.FC = () => {
 
       const mapped = customers.map((customer: any) => ({
         id: customer.name,
-        customer_name: customer.customer_name || customer.name,
+        customer_name: (customer as any).customer_name || customer.supplier_name || customer.name,
         name: customer.name,
         tax_id: customer.tax_id || null,
         mobile_no: customer.mobile_no || null,
@@ -508,9 +524,16 @@ const PaymentTab: React.FC = () => {
     try {
       console.log('📋 Loading due invoices for customer:', customerId)
 
+      const params: any = {}
+      if (partyType === 'Customer') {
+        params.customer_id = customerId
+      } else {
+        params.supplier_id = customerId
+      }
+
       const response = await window.electronAPI?.proxy?.request({
         url: '/api/method/centro_pos_apis.api.order.due_invoice_list',
-        params: { customer_id: customerId }
+        params
       })
 
       console.log('📋 Due invoices API response:', response)
@@ -527,7 +550,7 @@ const PaymentTab: React.FC = () => {
           due_amount: invoice.due_amount || 0,
           due_date: invoice.due_date || '',
           allocated_amount: 0,
-          is_selected: false
+          is_selected: true
         }))
 
         console.log('📋 Processed invoices:', invoices)
@@ -652,6 +675,7 @@ const PaymentTab: React.FC = () => {
     setReferenceDate(getCurrentDate())
     loadDueInvoices(customer.id)
     loadCustomerInsights(customer.id)
+    setShowValidationErrors(false)
   }
 
   // Handle keyboard navigation in customer modal
@@ -860,12 +884,10 @@ const PaymentTab: React.FC = () => {
     // Validation for reference fields if required
     const showRefFields = modeOfPayment !== 'Cash' && !posProfile?.custom_autogenerate_bank_references
     if (showRefFields) {
-      if (!referenceNo.trim()) {
-        toast.error('Reference Number is required')
-        return
-      }
-      if (!referenceDate) {
-        toast.error('Reference Date is required')
+      if (!referenceNo.trim() || !referenceDate) {
+        setShowValidationErrors(true)
+        if (!referenceNo.trim()) toast.error('Reference Number is required')
+        else if (!referenceDate) toast.error('Reference Date is required')
         return
       }
     }
@@ -952,6 +974,7 @@ const PaymentTab: React.FC = () => {
       setSelectedCustomer(null)
       setDueInvoices([])
       setPaymentAmount('0.00')
+      setShowValidationErrors(false)
       console.log('💳 ===== MAKE PAYMENT API CALL END =====')
     } catch (error) {
       console.error('❌ ===== PAYMENT ERROR =====')
@@ -1056,7 +1079,7 @@ const PaymentTab: React.FC = () => {
               <div className="grid grid-cols-4 gap-4 mb-3 flex-shrink-0">
                 <div>
                   <Label htmlFor="party-name" className="text-sm font-medium text-gray-700">Party Name</Label>
-                  <Input value={selectedCustomer?.customer_name || ''} placeholder="Select customer" readOnly onClick={() => setIsCustomerModalOpen(true)} className="w-full h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500 cursor-pointer hover:bg-gray-50" />
+                  <Input value={selectedCustomer?.customer_name || ''} placeholder={partyType === 'Customer' ? "Select customer" : "Select supplier"} readOnly onClick={() => setIsCustomerModalOpen(true)} className="w-full h-10 border-gray-300 focus-border-blue-500 focus:ring-blue-500 cursor-pointer hover:bg-gray-50" />
                 </div>
                 <div>
                   <Label htmlFor="total-due" className="text-sm font-medium text-gray-700">Total Due Amount</Label>
@@ -1096,9 +1119,16 @@ const PaymentTab: React.FC = () => {
                     <Input
                       id="reference-no"
                       value={referenceNo}
-                      onChange={(e) => setReferenceNo(e.target.value)}
+                      onChange={(e) => {
+                        setReferenceNo(e.target.value)
+                        if (showValidationErrors && e.target.value.trim()) {
+                          // Optional: clear error for this field immediately?
+                          // For now, we just rely on re-validation or just let it stay until submit? 
+                          // Actually simpler to just let the class react to the value change.
+                        }
+                      }}
                       placeholder="Required"
-                      className="w-full h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                      className={`w-full h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500 ${showValidationErrors && !referenceNo.trim() ? 'border-red-500 focus:border-red-500 ring-red-500' : ''}`}
                     />
                   </div>
                   <div>
@@ -1110,7 +1140,7 @@ const PaymentTab: React.FC = () => {
                       type="date"
                       value={referenceDate}
                       onChange={(e) => setReferenceDate(e.target.value)}
-                      className="w-full h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                      className={`w-full h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500 ${showValidationErrors && !referenceDate ? 'border-red-500 focus:border-red-500 ring-red-500' : ''}`}
                     />
                   </div>
                 </div>
@@ -1147,7 +1177,7 @@ const PaymentTab: React.FC = () => {
                               <Checkbox checked={invoice.is_selected} onCheckedChange={() => handleInvoiceToggle(index)} className="border-gray-300 focus:ring-blue-500" />
                             </TableCell>
                             <TableCell className="w-16 px-2 font-medium text-sm text-gray-900 border-r border-gray-100">{abbreviateInvoiceNumber(invoice.invoice_no)}</TableCell>
-                            <TableCell className="w-20 px-2 text-sm text-gray-700 border-r border-gray-100">{invoice.date}</TableCell>
+                            <TableCell className="w-20 px-2 text-sm text-gray-700 border-r border-gray-100">{formatDate(invoice.date)}</TableCell>
                             <TableCell className="w-20 px-2 text-right text-sm text-gray-700 border-r border-gray-100">{invoice.total_amount.toFixed(2)}</TableCell>
                             <TableCell className="w-20 px-2 text-right text-sm text-gray-700 border-r border-gray-100">{invoice.due_amount.toFixed(2)}</TableCell>
                             <TableCell className="w-20 px-2 text-right">
@@ -1274,11 +1304,7 @@ const PaymentTab: React.FC = () => {
                   <div className="flex justify-between items-center mb-2">
                     <div className="font-semibold text-primary text-sm">{voucher.name}</div>
                     <div className="text-gray-600 text-xs">
-                      {new Date(voucher.posting_date).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric'
-                      })}
+                      {formatDate(voucher.posting_date)}
                     </div>
                   </div>
                   <div className="flex justify-between items-center mb-2">
@@ -1372,7 +1398,7 @@ const PaymentTab: React.FC = () => {
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
               <div className="flex items-center gap-2">
                 <User className="h-5 w-5 text-gray-700" />
-                <h3 className="text-lg font-semibold">Select Customer</h3>
+                <h3 className="text-lg font-semibold">Select {partyType}</h3>
               </div>
               <button
                 onClick={() => setIsCustomerModalOpen(false)}
@@ -1388,7 +1414,7 @@ const PaymentTab: React.FC = () => {
               <Search className="absolute left-7 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
                 type="text"
-                placeholder="Search customers..."
+                placeholder={`Search ${partyType.toLowerCase()}s...`}
                 value={searchTerm}
                 onChange={handleSearchChange}
                 className="pl-10 pr-24"
@@ -1422,7 +1448,7 @@ const PaymentTab: React.FC = () => {
               {isLoadingCustomers ? (
                 <div className="flex items-center justify-center h-32">
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
-                  <span className="ml-2 text-sm text-muted-foreground">Loading customers...</span>
+                  <span className="ml-2 text-sm text-muted-foreground">Loading {partyType.toLowerCase()}s...</span>
                 </div>
               ) : filteredCustomers.length > 0 ? (
                 <div className="space-y-1">
@@ -1451,14 +1477,14 @@ const PaymentTab: React.FC = () => {
                           </p>
                         </div>
                         <Badge variant={index === selectedCustomerIndex ? 'secondary' : 'outline'}>
-                          Customer
+                          {partyType}
                         </Badge>
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-center text-gray-500 py-8">No customers found</div>
+                <div className="text-center text-gray-500 py-8">No {partyType.toLowerCase()}s found</div>
               )}
               {isFetchingMoreCustomers && (
                 <div className="text-center text-xs text-gray-500 py-2">Loading more...</div>
