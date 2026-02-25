@@ -101,6 +101,9 @@ function createWindow(): void {
   global.mainWindow = mainWindow
 }
 
+// Keep track of print windows globally to prevent garbage collection
+const printWindows = new Set<BrowserWindow>()
+
 // Auth IPC Handlers
 function setupAuthHandlers(): void {
   // In-memory session data (mirrors server.js behavior)
@@ -434,13 +437,12 @@ function setupAuthHandlers(): void {
   })
 
   // Electron native printing handlers
-  // Keep track of print windows to prevent garbage collection
-  const printWindows = new Set<BrowserWindow>()
 
   ipcMain.handle('print-pdf', async (_event, pdfDataUrl: string, options: { autoPrint?: boolean } = {}) => {
     try {
       const { autoPrint = true } = options
-      console.log(`🖨️ Handling PDF (autoPrint: ${autoPrint})`)
+      const windowId = Date.now()
+      console.log(`🖨️ Handling PDF [ID: ${windowId}] (autoPrint: ${autoPrint})`)
 
       // Create a new window for printing with proper webPreferences for production
       const printWindow = new BrowserWindow({
@@ -458,10 +460,16 @@ function setupAuthHandlers(): void {
 
       // Add to set to prevent GC
       printWindows.add(printWindow)
+      console.log(`🖨️ Window [ID: ${windowId}] added to printWindows Set. Current size: ${printWindows.size}`)
 
       // Remove from set when closed
       printWindow.on('closed', () => {
         printWindows.delete(printWindow)
+        console.log(`🖨️ Window [ID: ${windowId}] closed and removed from Set. Remaining: ${printWindows.size}`)
+      })
+
+      printWindow.on('close', (e) => {
+        console.log(`🖨️ Window [ID: ${windowId}] received 'close' event`)
       })
 
       // Disable CSP for print window to allow data URLs
@@ -495,20 +503,7 @@ function setupAuthHandlers(): void {
           } else {
             console.log('✅ Print job started')
           }
-          // Close window after print dialog is handled (user cancels or prints)
-          setTimeout(() => {
-            if (!printWindow.isDestroyed()) {
-              printWindow.close()
-            }
-          }, 1000)
         })
-
-        // Fallback: Close the print window after a longer delay if still open
-        setTimeout(() => {
-          if (!printWindow.isDestroyed()) {
-            printWindow.close()
-          }
-        }, 10000)
       } else {
         console.log('👁️ PDF preview opened (no auto-print)')
         // Just focus the window

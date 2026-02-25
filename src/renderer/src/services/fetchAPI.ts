@@ -1,5 +1,5 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios'
-import { toast } from 'sonner'
+import { showErrorPopup } from '@renderer/lib/error-handler'
 import ElectronAuthStore from './electron-auth-store'
 import { getApiBaseUrl } from '@renderer/config/production'
 
@@ -100,7 +100,7 @@ api.interceptors.response.use(
     // Handle network errors
     if (!error.response) {
       console.error('Network request failed:', error)
-      toast.error('Network error. Please check your connection.')
+      showErrorPopup('Network connection issue. Please check your internet connection and the server status.', 'Network Error')
       return Promise.reject(error)
     }
 
@@ -108,7 +108,7 @@ api.interceptors.response.use(
 
     // Handle 401 unauthorized
     if (status === 401) {
-      toast.error(data?.error || 'Unauthorized. Please login again.')
+      showErrorPopup(data?.error || 'Unauthorized. Please login again.', 'Session Error')
       // Use ElectronStorage instead of localStorage for consistency
       await authStore.clearAuthData()
 
@@ -117,7 +117,7 @@ api.interceptors.response.use(
 
     // Handle session expiry
     if (data?.error === 'Session expired. Please login again.') {
-      toast.error('Session expired. Please login again.')
+      showErrorPopup('Session expired. Please login again.', 'Session Expired')
       setTimeout(() => authStore.clearAuthData(), 5000)
     }
 

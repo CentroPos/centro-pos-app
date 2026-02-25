@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Plus, Search, User } from 'lucide-react'
 import { toast } from 'sonner'
-import { handleServerErrorMessages } from '@renderer/lib/error-handler'
+import { handleError } from '@renderer/lib/error-handler'
 
 import {
   Dialog,
@@ -79,8 +79,7 @@ const SupplierModal: React.FC<SupplierModalProps> = ({ open, onClose, onSelect }
       setSuppliers(list as Supplier[])
       setSelectedIndex(list.length > 0 ? 0 : -1)
     } catch (e: any) {
-      console.error('❌ Failed to fetch suppliers', e)
-      toast.error(e?.message || 'Failed to fetch suppliers')
+      handleError(e, 'Failed to fetch suppliers')
       setSuppliers([])
       setSelectedIndex(-1)
     } finally {
@@ -155,11 +154,10 @@ const SupplierModal: React.FC<SupplierModalProps> = ({ open, onClose, onSelect }
         onSelect(newSupplierForSelect)
         onClose()
       } else {
-        handleServerErrorMessages(response?.data?._server_messages, '')
+        handleError(response?.data?._server_messages || 'Failed to create supplier')
       }
     } catch (err: any) {
-      console.error('Create supplier error:', err)
-      toast.error(err?.message || 'Failed to create supplier')
+      handleError(err, 'Failed to create supplier')
     } finally {
       setIsCreatingSupplier(false)
     }

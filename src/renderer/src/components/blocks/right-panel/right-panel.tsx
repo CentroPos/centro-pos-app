@@ -498,7 +498,7 @@ const PrintsTabContent: React.FC = () => {
 
       if (pdfDataUrl) {
         // Use the print function with silent error handling
-        const result = await window.electronAPI?.print.printPDF(pdfDataUrl)
+        const result = await window.electronAPI?.print.printPDF(pdfDataUrl, { autoPrint: false })
         console.log('🖨️ Print result:', result)
 
         if (result?.success) {
@@ -646,8 +646,9 @@ const PrintsTabContent: React.FC = () => {
                     </Select>
                   </div>
                 )}
-                <button
+                <Button
                   type="button"
+                  variant="tab-blue"
                   onClick={handlePrint}
                   onKeyDown={(e) => {
                     // Prevent Enter key from triggering print
@@ -656,7 +657,7 @@ const PrintsTabContent: React.FC = () => {
                       e.stopPropagation()
                     }
                   }}
-                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center gap-2"
+                  className="px-4 py-2 font-medium transition-all duration-300 flex items-center gap-2"
                   title="Print with Printer Selection"
                   disabled={
                     isInstantPrintActive
@@ -673,7 +674,7 @@ const PrintsTabContent: React.FC = () => {
                   </svg>
                   Print
                   <span className="text-xs opacity-80 bg-white/20 px-2 py-1 rounded-lg">Ctrl+Shift+P</span>
-                </button>
+                </Button>
               </div>
 
               {/* PDF Preview */}

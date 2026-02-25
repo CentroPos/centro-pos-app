@@ -38,6 +38,10 @@ interface PurchaseTab {
   globalDiscountPercent?: number
   isRoundingEnabled?: boolean
   instantPrintUrl?: string | null
+  purchaseOrderPrintUrl?: string | null
+  purchaseInvoicePrintUrl?: string | null
+  returnInvoicePrintUrl?: string | null
+  invoiceNumber?: string | null
 }
 
 interface PurchaseTabStore {
@@ -54,9 +58,10 @@ interface PurchaseTabStore {
   setTabEdited: (tabId: string, isEdited: boolean) => void
 
   updateTabSupplier: (tabId: string, supplier: PurchaseTab['supplier']) => void
+  updateTabCustomer: (tabId: string, customer: any) => void
   updateTabMeta: (tabId: string, updates: Partial<Pick<PurchaseTab, 'posting_date' | 'internal_note' | 'buying_price_list'>>) => void
-
   addItemToTab: (tabId: string, item: any) => void
+  addItemsToTab: (tabId: string, items: any[]) => void
   removeItemFromTab: (tabId: string, itemCode: string) => void
   removeItemFromTabByIndex: (tabId: string, index: number) => void
   updateItemInTab: (tabId: string, itemCode: string, updates: any) => void
@@ -83,9 +88,13 @@ interface PurchaseTabStore {
 
   // Instant Print methods
   updateTabInstantPrintUrl: (tabId: string, url: string | null) => void
+  setPurchaseOrderPrintUrl: (tabId: string, url: string | null) => void
+  setPurchaseInvoicePrintUrl: (tabId: string, url: string | null) => void
+  setReturnInvoicePrintUrl: (tabId: string, url: string | null) => void
 
   // Duplicate tab method
   duplicateCurrentTab: () => boolean
+  updateTabStatus: (tabId: string, status: PurchaseTab['status']) => void
 }
 
 export const usePurchaseTabStore = create<PurchaseTabStore>()(
@@ -173,7 +182,23 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
         // Check if already open
         const existing = state.tabs.find(t => t.purchaseOrderId === purchaseOrderId || t.orderId === purchaseOrderId)
         if (existing) {
-          set({ activeTabId: existing.id })
+          // Even if existing, update with fresh orderData if provided
+          if (orderData) {
+            const pdfUrl = orderData?.pdf_download_url || orderData?.data?.pdf_download_url
+            const docstatus = Number(orderData.docstatus)
+
+            set((s) => ({
+              tabs: s.tabs.map(t => t.id === existing.id ? {
+                ...t,
+                orderData,
+                purchaseOrderPrintUrl: (docstatus === 0 && pdfUrl) ? pdfUrl : t.purchaseOrderPrintUrl,
+                purchaseInvoicePrintUrl: (docstatus === 1 && pdfUrl) ? pdfUrl : t.purchaseInvoicePrintUrl
+              } : t),
+              activeTabId: existing.id
+            }))
+          } else {
+            set({ activeTabId: existing.id })
+          }
           return
         }
 
@@ -218,12 +243,12 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
           status: tabStatus,
           supplier: orderData?.supplier_name
             ? {
-                name: orderData.supplier_name,
-                supplier_id: orderData.supplier || orderData.supplier_id,
-                mobile_no: orderData.mobile_no,
-                email: orderData.email,
-                tax_id: orderData.tax_id
-              }
+              name: orderData.supplier_name,
+              supplier_id: orderData.supplier || orderData.supplier_id,
+              mobile_no: orderData.mobile_no,
+              email: orderData.email,
+              tax_id: orderData.tax_id
+            }
             : null,
           items: mappedItems,
           isEdited: false,
@@ -232,7 +257,21 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
           po_date: orderData?.po_date || null,
           internal_note: orderData?.custom_internal_note || orderData?.internal_note || null,
           buying_price_list: orderData?.buying_price_list || 'Standard Buying',
-          is_reserved: orderData?.is_reserved !== undefined ? Number(orderData.is_reserved) : 1
+          is_reserved: orderData?.is_reserved !== undefined ? Number(orderData.is_reserved) : 1,
+          instantPrintUrl: orderData?.pdf_download_url || orderData?.data?.pdf_download_url || null,
+          purchaseOrderPrintUrl: (tabStatus === 'draft' && (orderData?.pdf_download_url || orderData?.data?.pdf_download_url)) || null,
+          purchaseInvoicePrintUrl: (tabStatus === 'confirmed' && (orderData?.pdf_download_url || orderData?.data?.pdf_download_url)) || null,
+          invoiceNumber: (() => {
+            const linkedInvoices = orderData?.linked_invoices
+            if (linkedInvoices) {
+              if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
+                return linkedInvoices[0]?.name || null
+              } else if (typeof linkedInvoices === 'object' && !Array.isArray(linkedInvoices)) {
+                return (linkedInvoices as any).name || null
+              }
+            }
+            return orderData?.purchase_invoice_no || null
+          })()
         }
 
         set((s) => ({
@@ -260,7 +299,29 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
 
       updateTabOrderData: (tabId: string, orderData: any) => {
         set((state) => ({
-          tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, orderData } : tab))
+          tabs: state.tabs.map((tab) => {
+            if (tab.id !== tabId) return tab
+            const docstatus = Number(orderData.docstatus)
+            const pdfUrl = orderData?.pdf_download_url || orderData?.data?.pdf_download_url
+            return {
+              ...tab,
+              orderData,
+              instantPrintUrl: pdfUrl || tab.instantPrintUrl,
+              purchaseOrderPrintUrl: (docstatus === 0 && pdfUrl) ? pdfUrl : tab.purchaseOrderPrintUrl,
+              purchaseInvoicePrintUrl: (docstatus === 1 && pdfUrl) ? pdfUrl : tab.purchaseInvoicePrintUrl,
+              invoiceNumber: (() => {
+                const linkedInvoices = orderData?.linked_invoices
+                if (linkedInvoices) {
+                  if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
+                    return linkedInvoices[0]?.name || null
+                  } else if (typeof linkedInvoices === 'object' && !Array.isArray(linkedInvoices)) {
+                    return (linkedInvoices as any).name || null
+                  }
+                }
+                return orderData?.purchase_invoice_no || null
+              })()
+            }
+          })
         }))
       },
 
@@ -276,6 +337,12 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
         }))
       },
 
+      updateTabCustomer: (tabId: string, customer: any) => {
+        set((state) => ({
+          tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, customer, isEdited: true } : tab))
+        }))
+      },
+
       updateTabMeta: (tabId: string, updates) => {
         set((state) => ({
           tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, ...updates, isEdited: true } : tab))
@@ -286,6 +353,13 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
         set((state) => ({
           tabs: state.tabs.map((tab) =>
             tab.id === tabId ? { ...tab, items: [...tab.items, item], isEdited: true } : tab
+          )
+        }))
+      },
+      addItemsToTab: (tabId: string, items: any[]) => {
+        set((state) => ({
+          tabs: state.tabs.map((tab) =>
+            tab.id === tabId ? { ...tab, items: [...tab.items, ...items], isEdited: true } : tab
           )
         }))
       },
@@ -434,6 +508,24 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
         }))
       },
 
+      setPurchaseOrderPrintUrl: (tabId: string, url: string | null) => {
+        set((state) => ({
+          tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, purchaseOrderPrintUrl: url } : tab))
+        }))
+      },
+
+      setPurchaseInvoicePrintUrl: (tabId: string, url: string | null) => {
+        set((state) => ({
+          tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, purchaseInvoicePrintUrl: url } : tab))
+        }))
+      },
+
+      setReturnInvoicePrintUrl: (tabId: string, url: string | null) => {
+        set((state) => ({
+          tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, returnInvoicePrintUrl: url } : tab))
+        }))
+      },
+
       // Duplicate current tab
       duplicateCurrentTab: () => {
         const state = get()
@@ -489,6 +581,11 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
           activeTabId: duplicatedTab.id
         }))
         return true
+      },
+      updateTabStatus: (tabId: string, status: PurchaseTab['status']) => {
+        set((state) => ({
+          tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, status } : tab))
+        }))
       }
     }),
     {

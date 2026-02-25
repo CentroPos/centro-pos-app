@@ -43,9 +43,10 @@ type Props = {
   isErrorBoxFocused?: boolean
   onEditingStateChange?: (isEditing: boolean) => void
   errorItems?: string[]
+  onClearItemError?: (itemCode: string) => void
 }
 
-const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem, shouldStartEditing = false, onEditingStarted, onAddItemClick, onSaveCompleted, isProductModalOpen = false, isCustomerModalOpen = false, isErrorBoxFocused = false, onEditingStateChange, errorItems = [] }) => {
+const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem, shouldStartEditing = false, onEditingStarted, onAddItemClick, onSaveCompleted, isProductModalOpen = false, isCustomerModalOpen = false, isErrorBoxFocused = false, onEditingStateChange, errorItems = [], onClearItemError }) => {
   const { getCurrentTabItems, activeTabId, updateItemInTab, updateItemInTabByIndex, getCurrentTab, setTabEdited, removeItemFromTabByIndex, updateTabOtherDetails, updateTabReservation, getCurrentTabReservation, updateTabCustomer, updateTabPostingDate, updateTabOrderData } = usePOSTabStore();
   const items = getCurrentTabItems();
   const [tableSearch, setTableSearch] = useState('')
@@ -1067,6 +1068,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     }
 
     updateItemAndMarkEdited(selectedItemId, { [activeField]: finalValue })
+
+    // Clear error for this item if quantity was changed
+    if (activeField === 'quantity' && selectedItemId) {
+      onClearItemError?.(selectedItemId)
+    }
 
     // Don't auto-navigate - let user use arrow keys for navigation
     // Just save the value and stay in current field
@@ -2116,6 +2122,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                       // Use updateItemInTabByIndex with the actual index to handle duplicates
                                       updateItemInTabByIndex(activeTabId, index, { quantity: numValue })
                                       setTabEdited(activeTabId, true)
+
+                                      // Clear item error when quantity changes
+                                      if (item.item_code) {
+                                        onClearItemError?.(item.item_code)
+                                      }
 
                                       // Clear warehouse-allocated status when quantity changes
                                       if (selectedItemId && warehouseAllocatedItems.has(selectedItemId)) {

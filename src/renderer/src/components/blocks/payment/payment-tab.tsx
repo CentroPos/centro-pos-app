@@ -24,7 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@renderer/components/u
 import { Badge } from '@renderer/components/ui/badge'
 import { toast } from 'sonner'
 import { formatDate } from '@renderer/lib/date-utils'
-import { handleServerErrorMessages } from '@renderer/lib/error-handler'
+import { handleError } from '@renderer/lib/error-handler'
 
 interface Customer {
   id: string
@@ -404,7 +404,7 @@ const PaymentTab: React.FC = () => {
     } catch (error) {
       if (requestId !== latestCustomerReq.current) return
       console.error('Error loading customers:', error)
-      toast.error('Failed to load customers')
+      handleError(error, 'Failed to load customers')
       setCustomers([])
       setFilteredCustomers([])
       setCustomerHasMore(false)
@@ -508,11 +508,11 @@ const PaymentTab: React.FC = () => {
         setVoucherViewData(paymentData)
         setIsVoucherViewModalOpen(true)
       } else {
-        toast.error('Failed to load payment voucher details')
+        handleError(response?.data?._server_messages || 'Failed to load payment voucher details')
       }
     } catch (error) {
       console.error('📋 Error loading payment voucher details:', error)
-      toast.error('Failed to load payment voucher details')
+      handleError(error, 'Failed to load payment voucher details')
     } finally {
       setLoading(false)
     }
@@ -654,11 +654,7 @@ const PaymentTab: React.FC = () => {
       console.error('📋 Error response:', (error as any)?.response)
       console.error('📋 Error data:', (error as any)?.response?.data)
 
-      if ((error as any)?.response?.data?.message) {
-        toast.error((error as any).response.data.message)
-      } else {
-        toast.error('Failed to load due invoices')
-      }
+      handleError(error, 'Failed to load due invoices')
 
       setDueInvoices([])
     } finally {
@@ -966,7 +962,7 @@ const PaymentTab: React.FC = () => {
         console.log('❌ Response:', response)
         console.log('❌ ===== END PAYMENT FAILED =====')
         // Handle server error messages
-        handleServerErrorMessages(response?.data?._server_messages, '')
+        handleError(response?.data?._server_messages || 'Failed to process payment')
         return
       }
 
@@ -985,39 +981,7 @@ const PaymentTab: React.FC = () => {
       console.error('❌ Error stack:', (error as any)?.stack)
       console.error('❌ ===== END PAYMENT ERROR =====')
 
-      // Check if this is a server message error that was already handled
-      const errorMessage = (error as any)?.message || 'Please try again.'
-
-      // If the error message contains validation errors or server messages,
-      // it means the error was already handled by handleServerErrorMessages
-      if (
-        errorMessage.includes('Multiple validation errors') ||
-        errorMessage.includes('Failed to process payment') ||
-        errorMessage.includes('Missing mandatory fields') ||
-        errorMessage.includes('Invalid format or value for') ||
-        errorMessage.includes('Buyer ID Type') ||
-        errorMessage.includes('Pincode must be') ||
-        errorMessage.includes('VAT Number') ||
-        errorMessage.includes('Building Number') ||
-        errorMessage.includes('customer_id_type_for_zatca') ||
-        errorMessage.includes('tax_id') ||
-        errorMessage.includes('building_number') ||
-        errorMessage.includes('Validation Error') ||
-        errorMessage.includes('exactly 5 digits') ||
-        errorMessage.includes('exactly 15 digits') ||
-        errorMessage.includes("must be 'CRN' or 'OTH'")
-      ) {
-        // Server messages were already handled, don't show generic error
-        console.log('🔍 Server messages already handled, skipping generic error display')
-        console.log('🔍 Error message that was handled:', errorMessage)
-      } else {
-        // Show generic error for other types of errors
-        if ((error as any)?.response?.data?.message) {
-          toast.error((error as any).response.data.message)
-        } else {
-          toast.error('Failed to process payment')
-        }
-      }
+      handleError(error, 'Failed to process payment. Please try again.')
     } finally {
       setLoading(false)
     }

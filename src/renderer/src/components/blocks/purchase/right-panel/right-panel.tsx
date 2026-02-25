@@ -28,6 +28,9 @@ const PrintsTabContent: React.FC = () => {
   const [pdfPreviews, setPdfPreviews] = useState<Record<string, string>>({})
   const [activePrintTab, setActivePrintTab] = useState<string>('')
   const [instantPrintPreview, setInstantPrintPreview] = useState<string>('')
+  const [poPrintPreview, setPoPrintPreview] = useState<string>('')
+  const [piPrintPreview, setPiPrintPreview] = useState<string>('')
+  const [prPrintPreview, setPrPrintPreview] = useState<string>('')
   const [refreshKey, setRefreshKey] = useState(0)
   const prevOrderIdRef = useRef<string | null>(null)
   const prevInstantPrintUrlForSelectionRef = useRef<string | null>(null)
@@ -163,33 +166,50 @@ const PrintsTabContent: React.FC = () => {
     }
   }
 
-  // Load instant print preview when URL is available
+  // Load categorized print previews
   useEffect(() => {
-    const instantPrintUrl = currentTab?.instantPrintUrl
-    if (instantPrintUrl) {
-      // Use proxy API which handles authentication, CORS, and PDF conversion
-      window.electronAPI?.proxy
-        .request({
-          url: instantPrintUrl,
+    const loadPreview = async (url: string | null | undefined, setter: (val: string) => void) => {
+      if (!url) {
+        setter('')
+        return
+      }
+      try {
+        console.log('🖨️ loadPreview (direct GET):', url)
+
+        const response = await window.electronAPI?.proxy.request({
+          url,
           method: 'GET'
         })
-        .then((response) => {
-          if (response?.success && response?.pdfData && isMountedRef.current) {
-            // response.pdfData is already a full data URL, just append zoom parameter
-            const dataUrl = `${response.pdfData}#zoom=fit`
-            setInstantPrintPreview(dataUrl)
-            console.log('📄 Instant print preview loaded')
-          }
-        })
-        .catch((error) => {
-          console.log('📄 Error loading instant print preview:', error)
-        })
-    } else {
-      if (isMountedRef.current) {
-        setInstantPrintPreview('')
+
+        if (response?.success && response?.pdfData && isMountedRef.current) {
+          setter(`${response.pdfData}#zoom=fit`)
+          console.log('✅ Categorized preview loaded via direct GET')
+        } else {
+          console.log('❌ Failed to load categorized preview via direct GET', response)
+        }
+      } catch (error) {
+        console.log('📄 Error loading preview (direct GET):', error)
       }
     }
-  }, [currentTab?.instantPrintUrl, refreshKey])
+
+    console.log('🖨️ PrintsTabContent: Triggering preview loads', {
+      instant: !!currentTab?.instantPrintUrl,
+      po: !!currentTab?.purchaseOrderPrintUrl,
+      pi: !!currentTab?.purchaseInvoicePrintUrl,
+      pr: !!currentTab?.returnInvoicePrintUrl
+    })
+
+    loadPreview(currentTab?.instantPrintUrl, setInstantPrintPreview)
+    loadPreview(currentTab?.purchaseOrderPrintUrl, setPoPrintPreview)
+    loadPreview(currentTab?.purchaseInvoicePrintUrl, setPiPrintPreview)
+    loadPreview(currentTab?.returnInvoicePrintUrl, setPrPrintPreview)
+  }, [
+    currentTab?.instantPrintUrl,
+    currentTab?.purchaseOrderPrintUrl,
+    currentTab?.purchaseInvoicePrintUrl,
+    currentTab?.returnInvoicePrintUrl,
+    refreshKey
+  ])
 
   // Set active tab when instant print URL is available or printItems change
   useEffect(() => {
@@ -435,8 +455,11 @@ const PrintsTabContent: React.FC = () => {
 
   // Load PDF preview for selected format (MUST be before any conditional returns)
   useEffect(() => {
-    const isInstantPrintActive = activePrintTab === 'instant-print'
-    if (isInstantPrintActive) return
+    const isStaticTab = activePrintTab === 'instant-print' ||
+      activePrintTab === 'purchase-order' ||
+      activePrintTab === 'purchase-invoice' ||
+      activePrintTab === 'return-invoice'
+    if (isStaticTab) return
 
     const selectedItem = printItems.find((item) => getItemKey(item) === activePrintTab)
 
@@ -455,6 +478,10 @@ const PrintsTabContent: React.FC = () => {
 
   // Calculate values needed for useHotkeys (MUST be before any conditional returns)
   const isInstantPrintActive = activePrintTab === 'instant-print'
+  const isStaticTab = isInstantPrintActive ||
+    activePrintTab === 'purchase-order' ||
+    activePrintTab === 'purchase-invoice' ||
+    activePrintTab === 'return-invoice'
   const selectedItem = printItems.find((item) => getItemKey(item) === activePrintTab)
   const activeItemKey = selectedItem ? getItemKey(selectedItem) : ''
   const activeFormatUrl = selectedItem
@@ -462,8 +489,12 @@ const PrintsTabContent: React.FC = () => {
     : ''
   const activePreviewKey =
     selectedItem && activeFormatUrl ? `${activeItemKey}-${activeFormatUrl}` : ''
-  const isPrintEnabled = isInstantPrintActive
-    ? !!instantPrintPreview
+
+  const isPrintEnabled = isStaticTab
+    ? (isInstantPrintActive ? !!instantPrintPreview :
+      activePrintTab === 'purchase-order' ? !!poPrintPreview :
+        activePrintTab === 'purchase-invoice' ? !!piPrintPreview :
+          activePrintTab === 'return-invoice' ? !!prPrintPreview : false)
     : !!(activePreviewKey && (pdfPreviews[activePreviewKey] || pdfPreviewsCache.current[activePreviewKey]))
 
   // Handle print action (MUST be before any conditional returns)
@@ -472,6 +503,12 @@ const PrintsTabContent: React.FC = () => {
       let pdfDataUrl = ''
       if (isInstantPrintActive) {
         pdfDataUrl = instantPrintPreview
+      } else if (activePrintTab === 'purchase-order') {
+        pdfDataUrl = poPrintPreview
+      } else if (activePrintTab === 'purchase-invoice') {
+        pdfDataUrl = piPrintPreview
+      } else if (activePrintTab === 'return-invoice') {
+        pdfDataUrl = prPrintPreview
       } else if (selectedItem) {
         const previewKey = activePreviewKey
         pdfDataUrl = previewKey ? pdfPreviews[previewKey] : ''
@@ -496,7 +533,7 @@ const PrintsTabContent: React.FC = () => {
 
       if (pdfDataUrl) {
         // Use the print function with silent error handling
-        const result = await window.electronAPI?.print.printPDF(pdfDataUrl)
+        const result = await window.electronAPI?.print.printPDF(pdfDataUrl, { autoPrint: false })
         console.log('🖨️ Print result:', result)
 
         if (result?.success) {
@@ -563,9 +600,13 @@ const PrintsTabContent: React.FC = () => {
   }
 
   // Debug logging
-  console.log('🖨️ PrintsTabContent render - printItems:', printItems)
-  console.log('🖨️ PrintsTabContent render - printItems type:', typeof printItems)
-  console.log('🖨️ PrintsTabContent render - printItems is array:', Array.isArray(printItems))
+  console.log('🖨️ PrintsTabContent render - activePrintTab:', activePrintTab)
+  console.log('🖨️ PrintsTabContent render - Previews available:', {
+    instant: !!instantPrintPreview,
+    po: !!poPrintPreview,
+    pi: !!piPrintPreview,
+    pr: !!prPrintPreview
+  })
   console.log('🖨️ PrintsTabContent render - printItems length:', printItems?.length)
 
   return (
@@ -599,6 +640,41 @@ const PrintsTabContent: React.FC = () => {
             >
               Instant Print
             </button>
+            {/* Categorized Static Tabs */}
+            {currentTab?.purchaseOrderPrintUrl && (
+              <button
+                className={`px-4 py-3 font-bold text-sm border-b-2 whitespace-nowrap transition-all ${activePrintTab === 'purchase-order'
+                  ? 'border-blue-500 bg-blue-50 text-blue-700'
+                  : 'text-gray-500 hover:text-black hover:bg-white/40 border-transparent'
+                  }`}
+                onClick={() => setActivePrintTab('purchase-order')}
+              >
+                Purchase Order
+              </button>
+            )}
+            {currentTab?.purchaseInvoicePrintUrl && (
+              <button
+                className={`px-4 py-3 font-bold text-sm border-b-2 whitespace-nowrap transition-all ${activePrintTab === 'purchase-invoice'
+                  ? 'border-blue-500 bg-blue-50 text-blue-700'
+                  : 'text-gray-500 hover:text-black hover:bg-white/40 border-transparent'
+                  }`}
+                onClick={() => setActivePrintTab('purchase-invoice')}
+              >
+                Purchase Invoice
+              </button>
+            )}
+            {currentTab?.returnInvoicePrintUrl && (
+              <button
+                className={`px-4 py-3 font-bold text-sm border-b-2 whitespace-nowrap transition-all ${activePrintTab === 'return-invoice'
+                  ? 'border-blue-500 bg-blue-50 text-blue-700'
+                  : 'text-gray-500 hover:text-black hover:bg-white/40 border-transparent'
+                  }`}
+                onClick={() => setActivePrintTab('return-invoice')}
+              >
+                Return Invoice
+              </button>
+            )}
+
             {/* Dynamic Tabs from API */}
             {printItems.map((item, index) => {
               const itemKey = getItemKey(item)
@@ -619,31 +695,34 @@ const PrintsTabContent: React.FC = () => {
           </div>
 
           {/* Selected Tab Content */}
-          {(isInstantPrintActive || selectedItem) && (
+          {(isStaticTab || selectedItem) && (
             <div className="flex-1 flex flex-col overflow-hidden">
               <div className="flex items-center justify-end mb-3 gap-3">
-                {!isInstantPrintActive && selectedItem && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                      Print Format
-                    </span>
-                    <Select
-                      value={activeFormatUrl}
-                      onValueChange={(value) => handleFormatChange(activeItemKey, value)}
-                    >
-                      <SelectTrigger className="w-48 h-9 text-sm max-w-48 [&_[data-slot=select-value]]:truncate [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:flex-1">
-                        <SelectValue placeholder="Select format" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {getFormatList(selectedItem).map((format: any) => (
-                          <SelectItem key={format.url} value={format.url}>
-                            {format.format_name || 'Default'}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
+                {!(isInstantPrintActive ||
+                  activePrintTab === 'purchase-order' ||
+                  activePrintTab === 'purchase-invoice' ||
+                  activePrintTab === 'return-invoice') && selectedItem && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        Print Format
+                      </span>
+                      <Select
+                        value={activeFormatUrl}
+                        onValueChange={(value) => handleFormatChange(activeItemKey, value)}
+                      >
+                        <SelectTrigger className="w-48 h-9 text-sm max-w-48 [&_[data-slot=select-value]]:truncate [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:flex-1">
+                          <SelectValue placeholder="Select format" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {getFormatList(selectedItem).map((format: any) => (
+                            <SelectItem key={format.url} value={format.url}>
+                              {format.format_name || 'Default'}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 <button
                   type="button"
                   onClick={handlePrint}
@@ -657,8 +736,11 @@ const PrintsTabContent: React.FC = () => {
                   className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center gap-2"
                   title="Print with Printer Selection"
                   disabled={
-                    isInstantPrintActive
-                      ? !instantPrintPreview
+                    isInstantPrintActive || activePrintTab === 'purchase-order' || activePrintTab === 'purchase-invoice' || activePrintTab === 'return-invoice'
+                      ? (activePrintTab === 'instant-print' ? !instantPrintPreview :
+                        activePrintTab === 'purchase-order' ? !poPrintPreview :
+                          activePrintTab === 'purchase-invoice' ? !piPrintPreview :
+                            activePrintTab === 'return-invoice' ? !prPrintPreview : true)
                       : !(activePreviewKey && (pdfPreviews[activePreviewKey] || pdfPreviewsCache.current[activePreviewKey]))
                   }
                 >
@@ -677,97 +759,98 @@ const PrintsTabContent: React.FC = () => {
               {/* PDF Preview */}
               <div className="bg-gray-50 rounded border p-3 flex-1 overflow-hidden flex flex-col">
                 <div className="bg-white rounded border overflow-hidden flex-1" style={{ display: 'flex', flexDirection: 'column' }}>
-                  {isInstantPrintActive ? (
-                    instantPrintPreview ? (
-                      <iframe
-                        src={instantPrintPreview}
-                        className="w-full h-full border-0"
-                        style={{ minHeight: '100%', minWidth: '100%' }}
-                        title="Instant Print"
-                        onLoad={() => console.log('📄 Instant Print PDF preview loaded')}
-                      />
-                    ) : currentTab?.instantPrintUrl ? (
-                      <div className="flex items-center justify-center h-full">
-                        <div className="text-center">
-                          <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                            <svg
-                              className="w-6 h-6 text-gray-400 animate-spin"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                            >
-                              <circle
-                                className="opacity-25"
-                                cx="12"
-                                cy="12"
-                                r="10"
-                                stroke="currentColor"
-                                strokeWidth="4"
-                              ></circle>
-                              <path
-                                className="opacity-75"
-                                fill="currentColor"
-                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                              ></path>
-                            </svg>
+                  {/* PDF Preview rendering based on active tab */}
+                  {(() => {
+                    const isInstant = activePrintTab === 'instant-print'
+                    const isPO = activePrintTab === 'purchase-order'
+                    const isPI = activePrintTab === 'purchase-invoice'
+                    const isRI = activePrintTab === 'return-invoice'
+
+                    const previewToSet = isInstant ? instantPrintPreview :
+                      isPO ? poPrintPreview :
+                        isPI ? piPrintPreview :
+                          isRI ? prPrintPreview : null
+
+                    if (isInstant || isPO || isPI || isRI) {
+                      if (previewToSet) {
+                        return (
+                          <iframe
+                            src={previewToSet}
+                            className="w-full h-full border-0"
+                            style={{ minHeight: '100%', minWidth: '100%' }}
+                            title={activePrintTab}
+                            onLoad={() => console.log(`📄 PDF preview loaded for ${activePrintTab}`)}
+                          />
+                        )
+                      } else {
+                        const urlToHandle = isInstant ? currentTab?.instantPrintUrl :
+                          isPO ? currentTab?.purchaseOrderPrintUrl :
+                            isPI ? currentTab?.purchaseInvoicePrintUrl :
+                              isRI ? currentTab?.returnInvoicePrintUrl : null
+
+                        if (urlToHandle) {
+                          return (
+                            <div className="flex items-center justify-center h-full">
+                              <div className="text-center">
+                                <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                                  <svg className="w-6 h-6 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                  </svg>
+                                </div>
+                                <p className="text-sm text-gray-500">Loading preview...</p>
+                              </div>
+                            </div>
+                          )
+                        } else {
+                          return (
+                            <div className="flex items-center justify-center h-full">
+                              <div className="text-center">
+                                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                  <i className="fas fa-print text-2xl text-gray-400"></i>
+                                </div>
+                                <h3 className="text-lg font-semibold text-gray-600 mb-2">No Print Available</h3>
+                                <p className="text-sm text-gray-500">Print will be available after creating, updating, confirming, paying, or returning an order.</p>
+                              </div>
+                            </div>
+                          )
+                        }
+                      }
+                    } else if (selectedItem) {
+                      if (activePreviewKey && pdfPreviews[activePreviewKey]) {
+                        return (
+                          <iframe
+                            src={pdfPreviews[activePreviewKey]}
+                            className="w-full h-full border-0"
+                            style={{ minHeight: '100%', minWidth: '100%' }}
+                            title={selectedItem.report_title}
+                            onLoad={() => console.log('📄 PDF preview loaded:', selectedItem.report_title)}
+                          />
+                        )
+                      } else {
+                        return (
+                          <div className="flex items-center justify-center h-full">
+                            <div className="text-center">
+                              <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                                <svg className="w-6 h-6 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                              </div>
+                              <p className="text-sm text-gray-500">Loading preview...</p>
+                              <button
+                                onClick={() => loadPDFPreview(selectedItem, activeFormatUrl)}
+                                className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline"
+                              >
+                                Click to load preview
+                              </button>
+                            </div>
                           </div>
-                          <p className="text-sm text-gray-500">Loading preview...</p>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-center h-full">
-                        <div className="text-center">
-                          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <i className="fas fa-print text-2xl text-gray-400"></i>
-                          </div>
-                          <h3 className="text-lg font-semibold text-gray-600 mb-2">No Print Available</h3>
-                          <p className="text-sm text-gray-500">Print will be available after creating, updating, confirming, paying, or returning an order.</p>
-                        </div>
-                      </div>
-                    )
-                  ) : selectedItem ? (
-                    activePreviewKey && pdfPreviews[activePreviewKey] ? (
-                      <iframe
-                        src={pdfPreviews[activePreviewKey]}
-                        className="w-full h-full border-0"
-                        style={{ minHeight: '100%', minWidth: '100%' }}
-                        title={selectedItem.report_title}
-                        onLoad={() => console.log('📄 PDF preview loaded:', selectedItem.report_title)}
-                      />
-                    ) : (
-                      <div className="flex items-center justify-center h-full">
-                        <div className="text-center">
-                          <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                            <svg
-                              className="w-6 h-6 text-gray-400 animate-spin"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                            >
-                              <circle
-                                className="opacity-25"
-                                cx="12"
-                                cy="12"
-                                r="10"
-                                stroke="currentColor"
-                                strokeWidth="4"
-                              ></circle>
-                              <path
-                                className="opacity-75"
-                                fill="currentColor"
-                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                              ></path>
-                            </svg>
-                          </div>
-                          <p className="text-sm text-gray-500">Loading preview...</p>
-                          <button
-                            onClick={() => loadPDFPreview(selectedItem, activeFormatUrl)}
-                            className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline"
-                          >
-                            Click to load preview
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  ) : null}
+                        )
+                      }
+                    }
+                    return null
+                  })()}
                 </div>
               </div>
             </div>

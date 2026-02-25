@@ -37,10 +37,11 @@ interface PurchaseReturnModalProps {
   isOpen: boolean
   onClose: () => void
   onReturnSuccess?: () => void
+  onNavigateToPrints?: () => void
 }
 
-const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClose, onReturnSuccess }) => {
-  const { getCurrentTab, updateTabOrderData, activeTabId } = usePurchaseTabStore()
+const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClose, onReturnSuccess, onNavigateToPrints }) => {
+  const { getCurrentTab, updateTabOrderData, activeTabId, updateTabInstantPrintUrl, setReturnInvoicePrintUrl } = usePurchaseTabStore()
   const { profile } = usePOSProfileStore()
   const currentTab = getCurrentTab()
   const currencySymbol = profile?.custom_currency_symbol || profile?.currency_symbol || profile?.currency || 'SAR'
@@ -50,7 +51,7 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
   const [returnLoading, setReturnLoading] = useState(false)
   const [selectedItems, setSelectedItems] = useState<{ [key: string]: { selected: boolean; qty: number; originalQty: number; itemCode: string; originalPurchaseInvoiceItem: string } }>({})
   const [searchQuery, setSearchQuery] = useState('')
-  
+
   // Calculate selected items count
   const selectedItemsCount = Object.values(selectedItems).filter(item => item.selected).length
 
@@ -62,7 +63,7 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
       setSearchQuery('')
       setLoading(false)
       setReturnLoading(false)
-      
+
       // Try to get purchase invoice from order data
       if (currentTab?.orderData?.linked_invoices) {
         const linkedInvoices = currentTab.orderData.linked_invoices
@@ -85,13 +86,13 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
     setLoading(true)
     try {
       console.log('🔍 Fetching purchase return availability for purchase order:', currentTab?.purchaseOrderId)
-      
+
       const purchaseOrderId = currentTab?.purchaseOrderId
       if (!purchaseOrderId) {
         toast.error('Purchase order ID not found')
         return
       }
-      
+
       const response = await window.electronAPI?.proxy?.request({
         method: 'GET',
         url: '/api/method/centro_pos_apis.api.purchase.get_purchase_return_availability',
@@ -104,7 +105,7 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
 
       if (response?.data?.data && Array.isArray(response.data.data)) {
         const items = response.data.data
-        
+
         // Fetch purchase order details to get supplier name and invoice info
         let invoiceDetails = {
           name: invoiceId,
@@ -114,7 +115,7 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
           total_order_qty: undefined as number | undefined,
           total_unique_items: undefined as number | undefined
         }
-        
+
         try {
           const orderDetailsResponse = await window.electronAPI?.proxy?.request({
             method: 'GET',
@@ -123,14 +124,14 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
               purchase_order_id: purchaseOrderId
             }
           })
-          
+
           if (orderDetailsResponse?.data?.data) {
             const orderData = orderDetailsResponse.data.data
             console.log('📋 Purchase order details fetched for invoice info:', orderData)
-            
+
             // Get supplier name from order data
             const supplierName = orderData.supplier_name || 'N/A'
-            
+
             // Extract invoice details from linked_invoices
             const linkedInvoices = orderData.linked_invoices
             const firstInvoice =
@@ -161,7 +162,7 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
         } catch (orderError) {
           console.warn('⚠️ Could not fetch purchase order details:', orderError)
         }
-        
+
         const invoiceData: InvoiceData = {
           ...invoiceDetails,
           items: items.map((item: any) => ({
@@ -177,9 +178,9 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
             returnable_qty: Number(item.returnable_qty || 0)
           }))
         }
-        
+
         setInvoiceData(invoiceData)
-        
+
         // Initialize selected items with checkboxes unchecked and returnable quantities
         // Use original_purchase_invoice_item as key to avoid multi-select issues with duplicate item codes
         const initialSelectedItems: { [key: string]: { selected: boolean; qty: number; originalQty: number; itemCode: string; originalPurchaseInvoiceItem: string } } = {}
@@ -198,7 +199,7 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
           }
         })
         setSelectedItems(initialSelectedItems)
-        
+
         console.log('✅ Purchase invoice data loaded:', invoiceData)
       } else {
         toast.error('No returnable items found for this purchase invoice.', { duration: 5000 })
@@ -221,21 +222,22 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
       }, 500)
       return () => clearTimeout(timeoutId)
     }
+    return () => { }
   }, [invoiceNumber, isOpen])
 
   // Handle item selection checkbox
   // key is original_purchase_invoice_item (or item_code as fallback)
   const handleItemSelect = (key: string, selected: boolean) => {
     // Find the item by original_purchase_invoice_item or item_code
-    const item = invoiceData?.items?.find((it: InvoiceItem) => 
+    const item = invoiceData?.items?.find((it: InvoiceItem) =>
       (it.original_purchase_invoice_item && it.original_purchase_invoice_item === key) ||
       (!it.original_purchase_invoice_item && it.item_code === key)
     )
-    
+
     // If trying to select, check if returnable_qty is 0
     if (selected) {
       const returnableQty = typeof item?.returnable_qty === 'number' ? item.returnable_qty : 0
-      
+
       if (returnableQty === 0) {
         // Show error message and prevent selection
         toast.error('Cannot select item with zero returnable quantity', {
@@ -244,7 +246,7 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
         return
       }
     }
-    
+
     setSelectedItems(prev => {
       const currentItem = prev[key]
       // Get returnable_qty from the item in invoiceData
@@ -268,21 +270,21 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
   // Handle select all checkbox
   const handleSelectAll = (checked: boolean) => {
     if (!invoiceData) return
-    
+
     // If trying to select all, check if any items have returnable_qty = 0
     if (checked) {
       const itemsWithZeroQty = invoiceData.items.filter((item: InvoiceItem) => {
         const returnableQty = typeof item.returnable_qty === 'number' ? item.returnable_qty : 0
         return returnableQty === 0
       })
-      
+
       if (itemsWithZeroQty.length > 0) {
         toast.error(`Cannot select ${itemsWithZeroQty.length} item(s) with zero returnable quantity`, {
           position: 'bottom-right'
         })
       }
     }
-    
+
     setSelectedItems(prev => {
       const updated: { [key: string]: { selected: boolean; qty: number; originalQty: number; itemCode: string; originalPurchaseInvoiceItem: string } } = { ...prev }
       invoiceData.items.forEach((item: InvoiceItem) => {
@@ -321,7 +323,7 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
     // Convert to number and ensure it's not negative
     const numericQty = parseFloat(qty.toString()) || 0
     const validQty = Math.max(0, numericQty)
-    
+
     setSelectedItems(prev => ({
       ...prev,
       [key]: {
@@ -371,7 +373,7 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
 
       if (response?.data || response?.success) {
         toast.success('Purchase return processed successfully!', { duration: 2000 })
-        
+
         // Refresh purchase order data after return
         if (activeTabId && currentTab?.purchaseOrderId) {
           try {
@@ -388,7 +390,18 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
             console.error('❌ Failed to refresh purchase order data:', refreshError)
           }
         }
-        
+
+        // Extract pdf_download_url from response
+        const pdfUrl = response.data?.data?.pdf_download_url || response.data?.pdf_download_url
+        if (pdfUrl && activeTabId) {
+          console.log('🖨️ Purchase Return Invoice PDF URL found:', pdfUrl)
+          updateTabInstantPrintUrl(activeTabId, pdfUrl)
+          // Also update the specific Return Invoice Print URL
+          setReturnInvoicePrintUrl(activeTabId, pdfUrl)
+          // Also navigate to prints tab
+          onNavigateToPrints?.()
+        }
+
         onReturnSuccess?.()
         onClose()
       } else {
@@ -494,7 +507,7 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
                     )
                   })()}
                 </div>
-                
+
                 {/* Search Box */}
                 <div className="space-y-2">
                   <Input
@@ -505,16 +518,16 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
                     className="w-1/2 font-sans border-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                   />
                 </div>
-                
+
                 <Tabs defaultValue="items" className="flex-1 flex flex-col overflow-hidden min-h-0 relative">
                   <TabsList className="grid w-full grid-cols-2 bg-gray-100 p-1 rounded-lg flex-shrink-0">
-                    <TabsTrigger 
+                    <TabsTrigger
                       value="items"
                       className="data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm font-sans"
                     >
                       Items
                     </TabsTrigger>
-                    <TabsTrigger 
+                    <TabsTrigger
                       value="selected"
                       className="data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm font-sans relative"
                     >
@@ -526,7 +539,7 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
                       )}
                     </TabsTrigger>
                   </TabsList>
-                  
+
                   {/* Items Tab */}
                   <TabsContent value="items" className="mt-2 flex-1 flex flex-col overflow-hidden min-h-0 data-[state=inactive]:hidden !relative">
                     <div className="border-2 border-gray-200 rounded-lg overflow-hidden bg-white flex-1 flex flex-col min-h-0">
@@ -565,13 +578,13 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
                                 const returnableQty = typeof item.returnable_qty === 'number' ? item.returnable_qty : 0
                                 // Use original_purchase_invoice_item as key for selection, fallback to item_code
                                 const selectionKey = item.original_purchase_invoice_item || itemCode
-                                
+
                                 return (
                                   <TableRow key={index} className="hover:bg-gray-50 border-b border-gray-100">
                                     <TableCell className="py-3">
                                       <Checkbox
                                         checked={selectedItems[selectionKey]?.selected || false}
-                                        onCheckedChange={(checked) => 
+                                        onCheckedChange={(checked) =>
                                           handleItemSelect(selectionKey, checked as boolean)
                                         }
                                       />
@@ -591,7 +604,7 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
                       </div>
                     </div>
                   </TabsContent>
-                  
+
                   {/* Selected Items Tab */}
                   <TabsContent value="selected" className="mt-2 flex-1 flex flex-col overflow-hidden min-h-0 data-[state=inactive]:hidden !relative">
                     <div className="border-2 border-gray-200 rounded-lg overflow-hidden bg-white flex-1 flex flex-col min-h-0">
@@ -613,7 +626,7 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
                                 const selectionKey = item.original_purchase_invoice_item || item.item_code || ''
                                 const isSelected = selectedItems[selectionKey]?.selected === true
                                 if (!isSelected) return false
-                                
+
                                 // Apply search filter
                                 if (!searchQuery.trim()) return true
                                 const searchLower = searchQuery.toLowerCase().trim()
@@ -631,7 +644,7 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
                                 const selectionKey = item.original_purchase_invoice_item || itemCode
                                 const returnableQty = typeof item.returnable_qty === 'number' ? item.returnable_qty : (selectedItems[selectionKey]?.originalQty ?? 0)
                                 const returnQty = selectedItems[selectionKey]?.qty ?? returnableQty
-                                
+
                                 return (
                                   <TableRow key={index} className="hover:bg-gray-50 border-b border-gray-100">
                                     <TableCell className="font-medium font-sans text-gray-800 text-xs whitespace-nowrap" style={{ fontSize: '0.75rem' }}>{itemCode}</TableCell>
@@ -679,7 +692,7 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
                               const selectionKey = item.original_purchase_invoice_item || item.item_code || ''
                               const isSelected = selectedItems[selectionKey]?.selected === true
                               if (!isSelected) return false
-                              
+
                               // Apply search filter
                               if (!searchQuery.trim()) return true
                               const searchLower = searchQuery.toLowerCase().trim()
@@ -687,14 +700,14 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
                               const itemName = (item.item_name || '').toLowerCase()
                               return itemCode.includes(searchLower) || itemName.includes(searchLower)
                             }).length === 0 && (
-                              <TableRow>
-                                <TableCell colSpan={6} className="text-center py-8 text-gray-500 font-sans">
-                                  {searchQuery.trim() 
-                                    ? 'No selected items match your search.'
-                                    : 'No items selected. Please select items from the "Items" tab.'}
-                                </TableCell>
-                              </TableRow>
-                            )}
+                                <TableRow>
+                                  <TableCell colSpan={6} className="text-center py-8 text-gray-500 font-sans">
+                                    {searchQuery.trim()
+                                      ? 'No selected items match your search.'
+                                      : 'No items selected. Please select items from the "Items" tab.'}
+                                  </TableCell>
+                                </TableRow>
+                              )}
                           </TableBody>
                         </Table>
                       </div>

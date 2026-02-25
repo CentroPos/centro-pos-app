@@ -57,6 +57,11 @@ const POSInterface: React.FC = () => {
     setInsufficientStockErrors([])
   }
 
+  // Handle clearing a specific item error
+  const handleClearItemError = (itemCode: string) => {
+    setInsufficientStockErrors((prev) => prev.filter((error) => error.itemCode !== itemCode))
+  }
+
   // Handle closing ZATCA responses
   const handleCloseZatcaResponses = () => {
     setZatcaResponses([])
@@ -548,11 +553,6 @@ const POSInterface: React.FC = () => {
               shouldStartEditing={shouldStartEditing}
               onEditingStarted={() => setShouldStartEditing(false)}
               onAddItemClick={() => {
-                if (!selectedCustomer) {
-                  toast.error('Select customer before selecting items')
-                  setIsCustomerModalOpen(true)
-                  return
-                }
                 setOpen(true)
               }}
               onSaveCompleted={saveCompleted}
@@ -561,11 +561,12 @@ const POSInterface: React.FC = () => {
               isErrorBoxFocused={isErrorBoxFocused}
               onEditingStateChange={setIsItemTableEditing}
               errorItems={insufficientStockErrors.map(error => error.itemCode).filter(Boolean)}
+              onClearItemError={handleClearItemError}
             />
 
             {/* Fixed bottom: Discount/Summary section */}
             <DiscountSection
-              errors={insufficientStockErrors}
+              errors={[]}
               onCloseErrors={handleCloseInsufficientStockErrors}
               onErrorBoxFocusChange={setIsErrorBoxFocused}
               onFocusItem={handleFocusItem}

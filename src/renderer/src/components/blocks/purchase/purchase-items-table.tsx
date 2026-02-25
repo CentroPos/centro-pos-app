@@ -2,7 +2,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/u
 import { Input } from '@renderer/components/ui/input'
 import { Textarea } from '@renderer/components/ui/textarea'
 import { Search as SearchIcon, Plus, X, RefreshCcw } from 'lucide-react'
-import { Checkbox } from '@renderer/components/ui/checkbox'
+
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@renderer/components/ui/dialog'
 import { Button } from '@renderer/components/ui/button'
 import {
@@ -46,10 +46,10 @@ type Props = {
 }
 
 const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem, shouldStartEditing = false, onEditingStarted, onAddItemClick, onSaveCompleted, isProductModalOpen = false, isCustomerModalOpen = false, isErrorBoxFocused = false, onEditingStateChange, errorItems = [] }) => {
-  const { getCurrentTabItems, activeTabId, updateItemInTab, updateItemInTabByIndex, getCurrentTab, setTabEdited, removeItemFromTabByIndex, updateTabOtherDetails, updateTabReservation, getCurrentTabReservation, updateTabPostingDate, updateTabOrderData } = usePurchaseTabStore();
+  const { getCurrentTabItems, activeTabId, updateItemInTab, updateItemInTabByIndex, getCurrentTab, setTabEdited, removeItemFromTabByIndex, updateTabOtherDetails, updateTabPostingDate, updateTabOrderData, updateTabCustomer } = usePurchaseTabStore();
   const items = getCurrentTabItems();
   const [tableSearch, setTableSearch] = useState('')
-  const isReserved = getCurrentTabReservation()
+
   const filteredItems = items.filter((it) => {
     const term = tableSearch.trim().toLowerCase()
     if (!term) return true
@@ -216,10 +216,13 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     if (field === 'item_description' && !allowLabelEditing) {
       field = 'quantity'
     }
-    // Block editing for items added from purchase receipt (linked via pr_item_id / fromReceipt)
+    // Block editing for items added from purchase receipt (linked via pr_item_id / fromReceipt), except quantity
     const receiptCheckItem = selectedRowIndex >= 0 && selectedRowIndex < filteredItems.length ? filteredItems[selectedRowIndex] : items.find((i: any) => i.item_code === itemCode)
     if (receiptCheckItem && (receiptCheckItem.fromReceipt === true || (receiptCheckItem.pr_item_id && String(receiptCheckItem.pr_item_id).trim() !== ''))) {
-      return
+      if (field !== 'quantity') {
+        setIsEditing(false)
+        return
+      }
     }
     selectItem(itemCode)
     setActiveField(field)
@@ -746,7 +749,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
             { min: Number(d.min_price ?? 0), max: Number(d.max_price ?? 0) }
           ])
         )
-  const storeState = usePurchaseTabStore.getState()
+        const storeState = usePurchaseTabStore.getState()
         const activeTabItems =
           storeState.tabs.find((tab) => tab.id === storeState.activeTabId)?.items || []
         const existingItem =
@@ -1583,10 +1586,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         internal_note: orderData.custom_internal_note || orderData.internal_note || null
       })
 
-      // Update reservation status
-      if (orderData.is_reserved !== undefined) {
-        updateTabReservation(activeTabId, Number(orderData.is_reserved))
-      }
+
 
       // Preserve _relatedData when updating orderData
       const enrichedOrderData = {
@@ -1701,25 +1701,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                 Other Details
               </TabsTrigger>
             </TabsList>
-            {activeTabId && (
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="reservation-checkbox"
-                  checked={isReserved === 1}
-                  onCheckedChange={(checked) => {
-                    if (activeTabId) {
-                      updateTabReservation(activeTabId, checked ? 1 : 0)
-                    }
-                  }}
-                />
-                <label
-                  htmlFor="reservation-checkbox"
-                  className="text-sm font-medium text-gray-700 cursor-pointer"
-                >
-                  Reservation
-                </label>
-              </div>
-            )}
+            {/* Reservation option removed for purchase section */}
           </div>
           <div className="flex items-center justify-end gap-2 w-auto min-w-[400px]">
             {/* Invoice and Order Info */}
@@ -2013,7 +1995,6 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             data-field="quantity"
                             onClick={(e) => {
                               e.stopPropagation()
-                              if (item.fromReceipt === true || (item.pr_item_id && String(item.pr_item_id).trim() !== '')) return
                               console.log('🖱️ Quantity cell clicked:', item.item_code, 'isReadOnly:', isReadOnly)
                               if (!isReadOnly) {
                                 // Always reset editing state first, regardless of current state

@@ -95,23 +95,27 @@ const DynamicPickupInterface: React.FC = () => {
             const warehouseAssigned = data.is_warehouse_assigned || false;
 
             // Map Items
-            const mappedItems: InvoiceItem[] = rawItems.map((item: any, index: number) => ({
-                id: item.serial_no ? String(item.serial_no) : `${item.item_code}-${index}`,
-                slNo: item.serial_no || index + 1,
-                itemName: item.item_name,
-                itemCode: item.item_code,
-                itemPartNo: item.item_part_no,
-                category: item.item_category || 'General',
-                uom: item.uom,
-                quantity: item.quantity,
-                packingNo: item.picking_no || '-',
-                isAssigned: !!item.picking_no, // Basic check, might be updated by pick slips logic
-                status: item.picking_no ? 'assigned' : 'pending',
-                pickSlipId: item.picking_no,
-                onHand: 0,
-                inProcessQty: 0,
-                assignedTo: '' // Will be filled from pick slips
-            })).filter(item => {
+            const mappedItems: InvoiceItem[] = rawItems.map((item: any, index: number) => {
+                const slNo = Number(item.inv_sl_no || item.serial_no || item.sl_no || item.idx || (index + 1));
+                const backendName = item.name || item.id || String(slNo);
+                return {
+                    id: backendName,
+                    slNo: slNo,
+                    itemName: item.item_name,
+                    itemCode: item.item_code,
+                    itemPartNo: item.item_part_no,
+                    category: item.item_category || 'General',
+                    uom: item.uom,
+                    quantity: item.quantity,
+                    packingNo: '-',
+                    isAssigned: false,
+                    status: 'pending',
+                    pickSlipId: undefined,
+                    onHand: 0,
+                    inProcessQty: 0,
+                    assignedTo: ''
+                };
+            }).filter(item => {
                 // Filter out specific unwanted test data as requested
                 if (item.itemName.includes('Samsung') && item.itemCode === 'item-00002') return false;
                 // Filter out items without valid quantity if needed, but sticking to specific request for now
@@ -127,10 +131,35 @@ const DynamicPickupInterface: React.FC = () => {
                 warehouseName: p.warehouse,
                 pickerId: '', // p.assigned_to is name? or ID? Assuming name for now or we match with pickers list
                 pickerName: p.assigned_to,
-                items: (p.items || []).map((pi: any) => ({
-                    ...mappedItems.find(mi => mi.itemCode === pi.item_code) || {},
-                    quantity: pi.quantity
-                } as InvoiceItem)),
+                items: (p.items || []).map((pi: any) => {
+                    const matchName = pi.name || pi.item_row_name || pi.row_name;
+
+                    const candidateItems = mappedItems.filter(mi => mi.itemCode === pi.item_code);
+                    let matchedItem: InvoiceItem | undefined = undefined;
+
+                    if (candidateItems.length > 0) {
+                        matchedItem = candidateItems.find(mi => matchName && mi.id === matchName);
+
+                        if (!matchedItem && pi.inv_sl_no) {
+                            matchedItem = candidateItems.find(mi => Number(mi.slNo) === Number(pi.inv_sl_no));
+                        }
+
+                        if (!matchedItem) {
+                            matchedItem = candidateItems.find(mi => mi.quantity === pi.quantity);
+                        }
+
+                        if (!matchedItem) {
+                            matchedItem = candidateItems[0];
+                        }
+                    }
+
+                    return {
+                        ...(matchedItem || {}),
+                        quantity: pi.quantity,
+                        slNo: matchedItem ? matchedItem.slNo : (pi.inv_sl_no || pi.serial_no || 0),
+                        id: matchName || matchedItem?.id || ''
+                    } as InvoiceItem;
+                }),
                 status: p.status, // "Draft", etc.
                 startTime: p.start_date_time ? new Date(p.start_date_time) : undefined,
                 endTime: p.end_date_time ? new Date(p.end_date_time) : undefined,
@@ -168,15 +197,38 @@ const DynamicPickupInterface: React.FC = () => {
             } : undefined;
 
             // Updated items assignment status from pick slips
-            // (If an item is in a pick slip, it's assigned)
+            const assignedIds = new Set<string>();
             pickSlips.forEach(slip => {
                 slip.items.forEach(pi => {
-                    const item = mappedItems.find(i => i.itemCode === pi.itemCode);
+                    const candidateItems = mappedItems.filter(
+                        i => i.itemCode === pi.itemCode && !assignedIds.has(i.id)
+                    );
+
+                    let item: InvoiceItem | undefined;
+
+                    if (candidateItems.length > 0) {
+                        item = candidateItems.find(i => pi.id && i.id === pi.id);
+
+                        if (!item) {
+                            item = candidateItems.find(i => Number(i.slNo) === Number(pi.slNo));
+                        }
+
+                        if (!item) {
+                            item = candidateItems.find(i => i.quantity === pi.quantity);
+                        }
+
+                        if (!item) {
+                            item = candidateItems[0];
+                        }
+                    }
+
                     if (item) {
+                        assignedIds.add(item.id);
                         item.isAssigned = true;
                         item.status = 'assigned';
                         item.assignedTo = slip.pickerName;
                         item.pickSlipId = slip.id;
+                        item.packingNo = slip.slipNo;
                     }
                 });
             });

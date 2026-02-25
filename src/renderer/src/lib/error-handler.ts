@@ -168,22 +168,22 @@ export function showStackedErrorPopups(errors: ParsedError[]) {
       toast.error(error.message, {
         duration: 8000, // Show for 8 seconds
         description: error.title !== 'Error' ? error.title : undefined,
-        position: 'bottom-right', // Changed to bottom-right for stacking from bottom
         style: {
-          marginBottom: `${index * 12}px`, // Small margin between each popup (12px spacing)
-          marginRight: '0px', // No horizontal offset
-          maxWidth: '400px', // Consistent width
-          minWidth: '300px', // Minimum width for readability
-          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)', // Card-like shadow
-          border: '1px solid #ef4444', // Red border to match error theme
-          borderRadius: '8px', // Rounded corners like cards
-          zIndex: 1000 + index, // Ensure proper stacking order
-          position: 'fixed', // Fixed positioning for better control
-          bottom: `${20 + (index * 12)}px`, // Fixed bottom position with small offset
-          right: '20px', // Fixed right position
-          opacity: '1', // Ensure always visible
-          visibility: 'visible', // Ensure always visible
-          pointerEvents: 'auto' // Ensure clickable
+          position: 'fixed',
+          top: `${50 + (index * 2)}%`, // Offset slightly from center for stacking
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          maxWidth: '450px', 
+          minWidth: '300px', 
+          fontSize: '14px', 
+          fontWeight: 'normal', 
+          padding: '16px', 
+          textAlign: 'center', 
+          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+          border: '1px solid #ef4444', 
+          borderRadius: '8px', 
+          zIndex: 10000 + index,
+          pointerEvents: 'auto'
         }
         // Removed action button - using only the corner close symbol
       })
@@ -210,6 +210,16 @@ function makeErrorUserFriendly(message: string): string {
            'What to do:\n' +
            '• The warehouse may have been deleted or renamed\n' +
            '• Contact your administrator to check warehouse settings'
+  }
+
+  // Generic validation error often used for stock
+  if (message.includes('Item validation failed.')) {
+    return 'Not enough stock available'
+  }
+
+  // Stock unavailable error
+  if (message.includes('Global Stock Unavailable') || message.includes('Insufficient stock')) {
+    return 'Not enough stock available for this item.'
   }
   
   // Return original message if no transformation needed
@@ -305,22 +315,23 @@ export function handleServerErrorMessages(
     toast.error(combinedMessage, {
       duration: isDetailedMessage ? 12000 : 8000, // Show longer for detailed messages
       description: title !== 'Error' ? title : undefined,
-      position: 'bottom-right',
       style: {
         position: 'fixed',
-        bottom: '20px',
-        right: '20px',
-        opacity: '1',
-        visibility: 'visible',
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
         pointerEvents: 'auto',
-        maxWidth: '550px',
-        minWidth: '400px',
+        maxWidth: '550px', 
+        minWidth: '400px', 
+        fontSize: '14px', 
+        fontWeight: 'normal', 
+        padding: '20px', 
+        textAlign: 'center', 
         boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-        border: '1px solid #ef4444',
-        borderRadius: '8px',
-        whiteSpace: 'pre-line', // Allow line breaks in the message
-        fontSize: '14px',
-        lineHeight: '1.5'
+        border: '1px solid #ef4444', 
+        borderRadius: '8px', 
+        whiteSpace: 'pre-line',
+        lineHeight: '1.5' 
       }
     })
     
@@ -333,4 +344,102 @@ export function handleServerErrorMessages(
       throw new Error(fallbackMessage)
     }
   }
+}
+/**
+ * Formats an error message to be more readable
+ */
+function formatMessage(message: string): { mainMessage: string; details: string } {
+  const cleanMessage = message
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<ul>/gi, '\n')
+    .replace(/<\/ul>/gi, '')
+    .replace(/<li>/gi, '• ')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/\n\s*\n/g, '\n')
+    .trim()
+
+  const lines = cleanMessage.split('\n')
+  const mainMessage = lines[0] || message
+  const details = lines.slice(1).join('\n').trim()
+
+  return { mainMessage, details }
+}
+
+/**
+ * Show a large, centered user-friendly error popup
+ */
+export function showErrorPopup(message: string, title?: string) {
+  const { mainMessage, details } = formatMessage(message)
+  const friendlyMessage = makeErrorUserFriendly(mainMessage)
+  const combinedMessage = details ? `${friendlyMessage}\n\n${details}` : friendlyMessage
+  const isDetailedMessage = combinedMessage.includes('What to do:') || combinedMessage.split('\n').length > 3
+
+  toast.error(combinedMessage, {
+    duration: isDetailedMessage ? 12000 : 8000,
+    description: title && title !== 'Error' ? title : undefined,
+    style: {
+      position: 'fixed',
+      top: '50%',
+      left: '50%',
+      transform: 'translate(-50%, -50%)',
+      pointerEvents: 'auto',
+      maxWidth: '550px',
+      minWidth: '400px',
+      fontSize: '14px',
+      fontWeight: 'normal',
+      padding: '20px',
+      textAlign: 'center',
+      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+      border: '1px solid #ef4444',
+      borderRadius: '8px',
+      whiteSpace: 'pre-line',
+      lineHeight: '1.5',
+      zIndex: 99999
+    }
+  })
+}
+
+/**
+ * Unified error handler for all types of errors (Backend, Axios, string, Error object)
+ */
+export function handleError(error: any, fallbackMessage: string = 'An unexpected error occurred') {
+  console.error('Unified Error Handler caught:', error)
+
+  // Check if it's a server message with _server_messages
+  const serverMessages = error?.response?.data?._server_messages || error?._server_messages || error?.data?._server_messages
+  if (serverMessages) {
+    try {
+      handleServerErrorMessages(serverMessages)
+      return
+    } catch (e) {
+      console.warn('Failed to handle server messages, falling back to standard error handling')
+    }
+  }
+
+  // Extract message from various error formats
+  let message = ''
+  let title = 'Error'
+
+  if (typeof error === 'string') {
+    message = error
+  } else if (error instanceof Error) {
+    message = error.message
+  } else if (error?.message) {
+    message = error.message
+    title = error.title || 'Error'
+  } else if (error?.error) {
+    message = error.error
+  } else {
+    message = fallbackMessage
+  }
+
+  // Handle network errors specifically
+  if (error?.code === 'ERR_NETWORK' || error?.message?.includes('Network Error')) {
+    showErrorPopup('Network connection issue. Please check your internet connection and the server status.', 'Network Error')
+    return
+  }
+
+  // Finally show the popup
+  showErrorPopup(message, title)
 }

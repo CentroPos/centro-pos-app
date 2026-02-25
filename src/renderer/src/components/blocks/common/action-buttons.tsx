@@ -20,7 +20,7 @@ import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 import { toast } from 'sonner'
 import { PlusCircle, Trash } from 'lucide-react'
 import ReturnModal from '../return/return-modal'
-import { handleServerErrorMessages } from '@renderer/lib/error-handler'
+import { handleError } from '@renderer/lib/error-handler'
 
 type Payment = {
   mode: string
@@ -56,26 +56,6 @@ type Props = {
   ) => void
 }
 
-// Helper function to format HTML content for display
-const formatErrorMessage = (message: string): { mainMessage: string; details: string } => {
-  // Remove HTML tags and format the content
-  const cleanMessage = message
-    .replace(/<br\s*\/?>/gi, '\n') // Convert <br> to newlines
-    .replace(/<ul>/gi, '\n') // Convert <ul> to newline
-    .replace(/<\/ul>/gi, '') // Remove </ul>
-    .replace(/<li>/gi, '• ') // Convert <li> to bullet points
-    .replace(/<\/li>/gi, '\n') // Convert </li> to newlines
-    .replace(/<[^>]*>/g, '') // Remove any remaining HTML tags
-    .replace(/\n\s*\n/g, '\n') // Remove multiple consecutive newlines
-    .trim()
-
-  // Split into main message and details
-  const lines = cleanMessage.split('\n')
-  const mainMessage = lines[0] || message
-  const details = lines.slice(1).join('\n').trim()
-
-  return { mainMessage, details }
-}
 
 // Helper function to parse server messages and extract insufficient stock errors
 const parseInsufficientStockErrors = (
@@ -140,7 +120,7 @@ const parseInsufficientStockErrors = (
               const itemCode = itemCodeMatch ? itemCodeMatch[1] : ''
 
               errors.push({
-                message: `Item: ${messageWithoutPrefix}`,
+                message: `Not enough stock for Item: ${itemCode}`,
                 title: messageObj.title || 'Stock Unavailable',
                 indicator: messageObj.indicator || 'red',
                 itemCode: itemCode
@@ -155,7 +135,7 @@ const parseInsufficientStockErrors = (
             const itemCode = itemCodeMatch ? itemCodeMatch[1] : ''
 
             errors.push({
-              message: `Item: ${messageWithoutPrefix}`,
+              message: `Not enough stock for Item: ${itemCode}`,
               title: messageObj.title || 'Stock Error',
               indicator: messageObj.indicator || 'red',
               itemCode: itemCode
@@ -169,7 +149,7 @@ const parseInsufficientStockErrors = (
             const itemCode = itemCodeMatch ? itemCodeMatch[1] : ''
 
             errors.push({
-              message: messageWithoutPrefix,
+              message: 'Not enough stock available for this item.',
               title: messageObj.title || 'Stock Error',
               indicator: messageObj.indicator || 'red',
               itemCode: itemCode
@@ -223,6 +203,8 @@ const ActionButtons: React.FC<Props> = ({
   const [paymentModes, setPaymentModes] = useState<string[]>(['Cash', 'Card', 'UPI', 'Bank'])
   const amountInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({})
   const modeInputRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({})
+  const refNoInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({})
+  const refDateInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({})
   const prevPaymentsLengthRef = useRef(payments.length)
 
   // Get current tab data
@@ -433,21 +415,21 @@ const ActionButtons: React.FC<Props> = ({
     prevPaymentsLengthRef.current = payments.length
   }, [payments.length])
 
+  const paymentsRef = useRef(payments)
+  useEffect(() => {
+    paymentsRef.current = payments
+  }, [payments])
+
   // Auto-focus first payment amount input when dialog opens
   useEffect(() => {
     if (open) {
       // Focus function
       const focusFirstPayment = () => {
-        const firstPaymentId = payments[0]?.id
-        if (firstPaymentId && amountInputRefs.current[firstPaymentId]) {
-          const input = amountInputRefs.current[firstPaymentId]
-          input?.focus()
-          input?.select()
-          // Ensure focus is actually set
-          if (document.activeElement !== input) {
-            input?.focus()
-            input?.select()
-          }
+        const currentPayments = paymentsRef.current
+        const firstPaymentId = currentPayments[0]?.id
+        if (firstPaymentId && modeInputRefs.current[firstPaymentId]) {
+          const btn = modeInputRefs.current[firstPaymentId]
+          btn?.focus()
         }
       }
 
@@ -460,9 +442,14 @@ const ActionButtons: React.FC<Props> = ({
         focusFirstPayment()
       }, 250)
 
+      const timer3 = setTimeout(() => {
+        focusFirstPayment()
+      }, 500)
+
       return () => {
         clearTimeout(timer1)
         clearTimeout(timer2)
+        clearTimeout(timer3)
       }
     }
     return undefined
@@ -1068,7 +1055,7 @@ const ActionButtons: React.FC<Props> = ({
                   onInsufficientStockErrors?.(allErrors)
                 }
                 // Show server messages in toast popup
-                handleServerErrorMessages(response.data._server_messages, '')
+                toast.error("Not enough stock available")
                 return
               }
             } catch (parseError) {
@@ -1083,7 +1070,8 @@ const ActionButtons: React.FC<Props> = ({
 
           // Handle server error messages in toast popup (only if present)
           if (response?.data?._server_messages) {
-            handleServerErrorMessages(response.data._server_messages, '')
+            toast.error('Not enough stock available')
+            return
           }
         }
       } else {
@@ -1207,7 +1195,7 @@ const ActionButtons: React.FC<Props> = ({
                   onInsufficientStockErrors?.(allErrors)
                 }
                 // Show server messages in toast popup
-                handleServerErrorMessages(response.data._server_messages, '')
+                toast.error("Not enough stock available")
                 return
               }
             } catch (parseError) {
@@ -1222,60 +1210,15 @@ const ActionButtons: React.FC<Props> = ({
 
           // Handle server error messages in toast popup (only if present)
           if (response?.data?._server_messages) {
-            handleServerErrorMessages(response.data._server_messages, '')
+            toast.error('Not enough stock available')
+            return
           }
         }
       }
     } catch (error) {
       console.error('❌ Error saving order:', error)
 
-      // Check if this is a server message error that was already handled
-      const errorMessage = (error as any)?.message || 'Please try again.'
-
-      // If the error message contains validation errors or server messages,
-      // it means the error was already handled by handleServerErrorMessages
-      if (
-        errorMessage.includes('Multiple validation errors') ||
-        errorMessage.includes('Failed to update order') ||
-        errorMessage.includes('Failed to create order') ||
-        errorMessage.includes('Missing mandatory fields') ||
-        errorMessage.includes('Invalid format or value for') ||
-        errorMessage.includes('Buyer ID Type') ||
-        errorMessage.includes('Pincode must be') ||
-        errorMessage.includes('VAT Number') ||
-        errorMessage.includes('Building Number') ||
-        errorMessage.includes('customer_id_type_for_zatca') ||
-        errorMessage.includes('tax_id') ||
-        errorMessage.includes('building_number') ||
-        errorMessage.includes('Validation Error') ||
-        errorMessage.includes('exactly 5 digits') ||
-        errorMessage.includes('exactly 15 digits') ||
-        errorMessage.includes("must be 'CRN' or 'OTH'")
-      ) {
-        // Server messages were already handled, don't show generic error
-        console.log('🔍 Server messages already handled, skipping generic error display')
-        console.log('🔍 Error message that was handled:', errorMessage)
-      } else {
-        // Show generic error for other types of errors
-        const isBackendError = errorMessage !== 'Please try again.'
-
-        // Format the error message properly
-        const { mainMessage, details } = formatErrorMessage(errorMessage)
-
-        // Format the error message for better display
-        const displayMessage = isBackendError
-          ? `Backend Error: ${mainMessage}`
-          : `Failed to save order: ${mainMessage}`
-
-        toast.error(displayMessage, {
-          duration: 8000, // Longer duration for backend errors
-          description:
-            details ||
-            (isBackendError
-              ? 'Please check the order details and try again.'
-              : 'An unexpected error occurred. Please try again.')
-        })
-      }
+      handleError(error, 'Failed to save order. Please try again.')
     } finally {
       setIsSaving(false)
       // Refresh order details so status badges and linked invoice info update immediately
@@ -1503,9 +1446,7 @@ const ActionButtons: React.FC<Props> = ({
                 updateTabInstantPrintUrl(currentTab.id, pdfUrl)
               }
             } else {
-              handleServerErrorMessages(paymentEntryResponse?.data?._server_messages, '')
-              // If one payment fails, we might want to continue or break. For now, let's toast and continue.
-              toast.error(`Failed to create payment entry for ${payment.mode}`)
+              handleError(paymentEntryResponse?.data?._server_messages || `Failed to create payment entry for ${payment.mode}`)
             }
           }
 
@@ -1547,7 +1488,7 @@ const ActionButtons: React.FC<Props> = ({
           console.error('💳 Error Response Status:', paymentError?.response?.status)
           console.error('💳 Server Messages:', paymentError?.response?.data?._server_messages)
           console.error('💳 ===== END ERROR =====')
-          handleServerErrorMessages(paymentError?.response?.data?._server_messages, '')
+          handleError(paymentError?.response?.data?._server_messages || paymentError, 'Failed to create payment entry. Please try again.')
           return
         }
       }
@@ -1934,7 +1875,7 @@ const ActionButtons: React.FC<Props> = ({
         console.log('❌ Response:', response)
 
         // Handle server error messages
-        handleServerErrorMessages(response?.data?._server_messages, '')
+        toast.error('Not enough stock available')
         return
       }
     } catch (error) {
@@ -1944,52 +1885,7 @@ const ActionButtons: React.FC<Props> = ({
       console.error('❌ Error stack:', (error as any)?.stack)
       console.log('❌ ===== ORDER CONFIRMATION CATCH ERROR END =====')
 
-      // Check if this is a server message error that was already handled
-      const errorMessage = (error as any)?.message || 'Please try again.'
-
-      // If the error message contains validation errors or server messages,
-      // it means the error was already handled by handleServerErrorMessages
-      if (
-        errorMessage.includes('Multiple validation errors') ||
-        errorMessage.includes('Failed to confirm order') ||
-        errorMessage.includes('Missing mandatory fields') ||
-        errorMessage.includes('Invalid format or value for') ||
-        errorMessage.includes('Buyer ID Type') ||
-        errorMessage.includes('Pincode must be') ||
-        errorMessage.includes('VAT Number') ||
-        errorMessage.includes('Building Number') ||
-        errorMessage.includes('customer_id_type_for_zatca') ||
-        errorMessage.includes('tax_id') ||
-        errorMessage.includes('building_number') ||
-        errorMessage.includes('Validation Error') ||
-        errorMessage.includes('exactly 5 digits') ||
-        errorMessage.includes('exactly 15 digits') ||
-        errorMessage.includes("must be 'CRN' or 'OTH'")
-      ) {
-        // Server messages were already handled, don't show generic error
-        console.log('🔍 Server messages already handled, skipping generic error display')
-        console.log('🔍 Error message that was handled:', errorMessage)
-      } else {
-        // Show generic error for other types of errors
-        const isBackendError = errorMessage !== 'Please try again.'
-
-        // Format the error message properly
-        const { mainMessage, details } = formatErrorMessage(errorMessage)
-
-        // Format the error message for better display
-        const displayMessage = isBackendError
-          ? `Backend Error: ${mainMessage}`
-          : `Failed to confirm order: ${mainMessage}`
-
-        toast.error(displayMessage, {
-          duration: 8000, // Longer duration for backend errors
-          description:
-            details ||
-            (isBackendError
-              ? 'Please check the order details and try again.'
-              : 'An unexpected error occurred. Please try again.')
-        })
-      }
+      handleError(error, 'Failed to confirm order. Please try again.')
     } finally {
       console.log('🔄 Setting isProcessingPayment to false')
       setIsProcessingPayment(false)
@@ -2196,8 +2092,8 @@ const ActionButtons: React.FC<Props> = ({
       const target = e.target as HTMLElement
       const isInputField = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
 
-      // Shift+Enter: Trigger Confirm button
-      if (e.key === 'Enter' && e.shiftKey) {
+      // Shift+Enter or Ctrl+Enter: Trigger Confirm button
+      if ((e.key === 'Enter' && e.shiftKey) || (e.key === 'Enter' && e.ctrlKey)) {
         // Allow Shift+Enter even in input fields (common pattern for submitting forms)
         if (!isProcessingPayment) {
           e.preventDefault()
@@ -2309,7 +2205,8 @@ const ActionButtons: React.FC<Props> = ({
             {/* Save Button - Always show, disable based on conditions */}
             <Button
               data-testid="save-button"
-              className="px-2 py-1 bg-gradient-to-r from-yellow-400 to-yellow-500 text-white font-medium rounded-lg hover:shadow-lg transition-all duration-300 flex items-center gap-1.5 text-[9px] disabled:opacity-50 disabled:cursor-not-allowed"
+              variant="tab-yellow"
+              className="px-4 py-2 font-medium transition-all duration-300 flex items-center gap-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={!currentUserPrivileges?.sales || currentTab?.status === 'confirmed' || currentTab?.status === 'paid' || !currentTab?.isEdited || isSaving || isConfirming || isItemTableEditing}
               onClick={async () => {
                 // Wrap in try-catch to prevent errors from propagating to React error boundary
@@ -2341,7 +2238,8 @@ const ActionButtons: React.FC<Props> = ({
 
             {/* Confirm Button - Only enable if order is created (has orderId) and there are NO unsaved edits */}
             <Button
-              className="px-2 py-1 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-medium rounded-lg hover:shadow-lg transition-all duration-300 flex items-center gap-1.5 text-[9px] disabled:opacity-50 disabled:cursor-not-allowed"
+              variant="tab-emerald"
+              className="px-4 py-2 font-medium transition-all duration-300 flex items-center gap-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={
                 !currentUserPrivileges?.billing ||
                 !currentTab?.orderId ||
@@ -2374,7 +2272,8 @@ const ActionButtons: React.FC<Props> = ({
 
               return (
                 <Button
-                  className="px-2 py-1 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium rounded-lg hover:shadow-lg transition-all duration-300 flex items-center gap-1.5 text-[9px] disabled:opacity-50 disabled:cursor-not-allowed"
+                  variant="tab-blue"
+                  className="px-4 py-2 font-medium transition-all duration-300 flex items-center gap-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={shouldDisablePayButton || isItemTableEditing}
                   onClick={handlePay}
                 >
@@ -2390,7 +2289,8 @@ const ActionButtons: React.FC<Props> = ({
             {/* Return Button - Only enable if order is confirmed (docstatus = 1) */}
             <Button
               data-testid="return-button"
-              className="relative px-2 py-1 bg-gradient-to-r from-orange-500 to-orange-600 text-white font-medium rounded-lg hover:shadow-lg transition-all duration-300 flex items-center gap-1.5 text-[9px] disabled:opacity-50 disabled:cursor-not-allowed"
+              variant="tab-orange"
+              className="relative px-4 py-2 font-medium transition-all duration-300 flex items-center gap-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={(() => {
                 // Check if order is confirmed (docstatus = 1)
                 const docstatus = currentTab?.orderData ? Number(currentTab.orderData.docstatus) : null
@@ -2498,6 +2398,12 @@ const ActionButtons: React.FC<Props> = ({
                           modeInputRefs.current[payment.id] = el
                         }}
                         className="w-full bg-white"
+                        onKeyDown={(e) => {
+                          if (e.key === 'ArrowRight') {
+                            amountInputRefs.current[payment.id]?.focus()
+                            amountInputRefs.current[payment.id]?.select()
+                          }
+                        }}
                       >
                         <SelectValue placeholder="Select mode" />
                       </SelectTrigger>
@@ -2528,12 +2434,18 @@ const ActionButtons: React.FC<Props> = ({
                           e.preventDefault()
                           const nextPayment = payments[index + 1]
                           if (nextPayment) {
-                            // Focus next payment amount
-                            amountInputRefs.current[nextPayment.id]?.focus()
-                            amountInputRefs.current[nextPayment.id]?.select()
+                            // Focus next payment mode
+                            modeInputRefs.current[nextPayment.id]?.focus()
                           } else {
                             // Submit if it's the last row
                             handleConfirmPayClick()
+                          }
+                        } else if (e.key === 'ArrowLeft') {
+                          modeInputRefs.current[payment.id]?.focus()
+                        } else if (e.key === 'ArrowRight') {
+                          if (payment.mode !== 'Cash' && !(profile as any)?.custom_autogenerate_bank_references) {
+                            refNoInputRefs.current[payment.id]?.focus()
+                            refNoInputRefs.current[payment.id]?.select()
                           }
                         }
                       }}
@@ -2548,12 +2460,23 @@ const ActionButtons: React.FC<Props> = ({
                           Ref No. <span className="text-red-500 font-bold">*</span>
                         </div>
                         <Input
+                          ref={(el) => {
+                            refNoInputRefs.current[payment.id] = el
+                          }}
                           type="text"
                           value={payment.reference_no}
                           onChange={(e) => {
                             const newPayments = [...payments]
                             newPayments[index].reference_no = e.target.value
                             setPayments(newPayments)
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'ArrowLeft') {
+                              amountInputRefs.current[payment.id]?.focus()
+                              amountInputRefs.current[payment.id]?.select()
+                            } else if (e.key === 'ArrowRight') {
+                              refDateInputRefs.current[payment.id]?.focus()
+                            }
                           }}
                           className={`bg-white border-2 focus:border-blue-500 ${showValidationErrors && !payment.reference_no?.trim() ? 'border-red-500 ring-red-500 focus:border-red-500' : ''}`}
                           placeholder="Required"
@@ -2565,12 +2488,21 @@ const ActionButtons: React.FC<Props> = ({
                           Ref Date <span className="text-red-500 font-bold">*</span>
                         </div>
                         <Input
+                          ref={(el) => {
+                            refDateInputRefs.current[payment.id] = el
+                          }}
                           type="date"
                           value={payment.reference_date}
                           onChange={(e) => {
                             const newPayments = [...payments]
                             newPayments[index].reference_date = e.target.value
                             setPayments(newPayments)
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'ArrowLeft') {
+                              refNoInputRefs.current[payment.id]?.focus()
+                              refNoInputRefs.current[payment.id]?.select()
+                            }
                           }}
                           className={`bg-white border-2 focus:border-blue-500 ${showValidationErrors && !payment.reference_date ? 'border-red-500 ring-red-500 focus:border-red-500' : ''}`}
                           required
@@ -2584,7 +2516,10 @@ const ActionButtons: React.FC<Props> = ({
                     onClick={() => {
                       setPayments(payments.filter((_, i) => i !== index))
                       delete amountInputRefs.current[payment.id]
+                      delete amountInputRefs.current[payment.id]
                       delete modeInputRefs.current[payment.id]
+                      delete refNoInputRefs.current[payment.id]
+                      delete refDateInputRefs.current[payment.id]
                     }}
                     className="absolute -top-2 -right-2 p-1 bg-red-100 text-red-600 rounded-full hover:bg-red-200 transition-colors shadow-sm"
                     title="Remove Payment"

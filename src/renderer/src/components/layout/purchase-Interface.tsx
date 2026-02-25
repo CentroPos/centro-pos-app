@@ -21,6 +21,7 @@ const PurchaseInterface: React.FC = () => {
   const [selectedItemId, setSelectedItemId] = useState<string | undefined>()
   const [shouldStartEditing, setShouldStartEditing] = useState(false)
   const [rightPanelTab, setRightPanelTab] = useState<'product' | 'customer' | 'prints' | 'payments' | 'orders'>('product')
+  const [isEditing, setIsEditing] = useState(false)
 
   const [saveCompleted] = useState(0)
 
@@ -92,7 +93,10 @@ const PurchaseInterface: React.FC = () => {
               <PurchaseHeader onNewOrder={handleNewPurchase} />
             </div>
             <div className="w-[45%] flex justify-end">
-              <PurchaseActionButtons isItemTableEditing={false} />
+              <PurchaseActionButtons
+                isItemTableEditing={isEditing}
+                onNavigateToPrints={() => setRightPanelTab('prints')}
+              />
             </div>
           </div>
 
@@ -102,11 +106,6 @@ const PurchaseInterface: React.FC = () => {
               selectedItemId={selectedItemId}
               selectItem={handleItemSelect}
               onAddItemClick={() => {
-                if (!supplier) {
-                  toast.error('Select supplier before selecting items')
-                  setSupplierModalOpen(true)
-                  return
-                }
                 setProductModalOpen(true)
               }}
               shouldStartEditing={shouldStartEditing}
@@ -114,6 +113,7 @@ const PurchaseInterface: React.FC = () => {
               onSaveCompleted={saveCompleted}
               isProductModalOpen={productModalOpen}
               isCustomerModalOpen={supplierModalOpen}
+              onEditingStateChange={setIsEditing}
             />
 
             {/* Fixed bottom: Discount/Summary section */}

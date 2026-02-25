@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { useHotkeys } from 'react-hotkeys-hook'
 import { toast } from 'sonner'
 
 import { Button } from '@renderer/components/ui/button'
@@ -7,18 +8,26 @@ import { Input } from '@renderer/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@renderer/components/ui/select'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 import { usePurchaseTabStore } from '@renderer/store/usePurchaseTabStore'
-import { handleServerErrorMessages } from '@renderer/lib/error-handler'
+import { handleError } from '@renderer/lib/error-handler'
 import PurchaseReturnModal from './purchase-return-modal'
 import PurchaseReceiptModal from './PurchaseReceiptModal'
 
-const paymentModes = ['Cash', 'Bank'] as const
-type PaymentMode = (typeof paymentModes)[number]
+import { PlusCircle, Trash } from 'lucide-react'
+
+interface Payment {
+  mode: string
+  amount: string
+  reference_no: string
+  reference_date: string
+  id: string
+}
 
 type PurchaseActionButtonsProps = {
   isItemTableEditing?: boolean
+  onNavigateToPrints?: () => void
 }
 
-const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTableEditing }) => {
+const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTableEditing, onNavigateToPrints }) => {
   const { profile, currentUserPrivileges } = usePOSProfileStore()
   const {
     activeTabId,
@@ -30,7 +39,11 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
     getCurrentTabGlobalDiscount,
     getCurrentTabRoundingEnabled,
     getCurrentTabPostingDate,
-    getCurrentTabSupplier
+    getCurrentTabSupplier,
+    updateTabInstantPrintUrl,
+    setPurchaseOrderPrintUrl,
+    setPurchaseInvoicePrintUrl,
+    updateTabStatus // Ensure this exists in store
   } = usePurchaseTabStore()
 
   const currentTab = getCurrentTab()
@@ -80,19 +93,22 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
   }, [activeTabId, currentTab?.purchaseOrderId, currentTab?.id, updateTabOrderData])
 
   const [isSaving, setIsSaving] = useState(false)
-  const [isConfirming, setIsConfirming] = useState(false) // Flag to indicate confirm mode (vs pay mode)
-  const [isConfirmingProcessing, setIsConfirmingProcessing] = useState(false) // Loading state for confirm button
+  const [isConfirming, setIsConfirming] = useState(false)
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
-  const [confirmOpen, setConfirmOpen] = useState(false)
-  const [payOpen, setPayOpen] = useState(false)
+  const [open, setOpen] = useState<'pay' | 'confirm' | false>(false)
   const [returnModalOpen, setReturnModalOpen] = useState(false)
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
-  const [paymentMode, setPaymentMode] = useState<PaymentMode>('Cash')
-  const [amount, setAmount] = useState<string>('')
+  const [paymentModes, setPaymentModes] = useState<string[]>(['Cash', 'Bank'])
+  const [payments, setPayments] = useState<Payment[]>([])
+  const [showValidationErrors, setShowValidationErrors] = useState(false)
   const [date, setDate] = useState<string>('')
   const [orderAmount, setOrderAmount] = useState<string>('0.00')
   const [amountDue, setAmountDue] = useState<string>('0.00')
-  const amountInputRef = React.useRef<HTMLInputElement>(null)
+  const amountInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({})
+  const modeInputRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({})
+  const refNoInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({})
+  const refDateInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({})
+  const prevPaymentsLengthRef = useRef(0)
 
   // Get current date helper
   const getCurrentDate = () => {
@@ -219,12 +235,12 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
 
   // Calculate payment status
   const getPaymentStatus = () => {
-    const enteredAmount = parseFloat(amount || '0') || 0
+    const totalPaid = payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0)
     const orderAmt = parseFloat(orderAmount || '0') || 0
 
-    if (enteredAmount === 0) {
+    if (totalPaid === 0) {
       return { text: 'Credit Purchase', color: 'bg-orange-100 text-orange-800' }
-    } else if (enteredAmount >= orderAmt) {
+    } else if (totalPaid >= orderAmt) {
       return { text: 'Fully Paid', color: 'bg-green-100 text-green-800' }
     } else {
       return { text: 'Partially Paid', color: 'bg-yellow-100 text-yellow-800' }
@@ -233,9 +249,77 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
 
   const paymentStatus = getPaymentStatus()
 
+  // Load POS Profile data for payment modes
+  const loadPOSProfile = async () => {
+    try {
+      const response = await window.electronAPI?.proxy?.request({
+        url: '/api/method/centro_pos_apis.api.pos_profile.get_pos_profile_details',
+        method: 'GET'
+      })
+
+      if (response?.data?.data) {
+        const profileData = response.data.data
+        if (profileData.payments && Array.isArray(profileData.payments)) {
+          const modes = profileData.payments
+            .map((p: any) => p.mode_of_payment)
+            .filter((m: any) => m && m.trim() !== '')
+          const uniqueModes = [...new Set(modes)]
+          if (uniqueModes.length > 0) {
+            setPaymentModes(uniqueModes as string[])
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error loading POS profile for purchase:', error)
+    }
+  }
+
+  useEffect(() => {
+    loadPOSProfile()
+  }, [])
+
+  // Focus new payment mode when row is added
+  useEffect(() => {
+    if (payments.length > prevPaymentsLengthRef.current) {
+      const lastPayment = payments[payments.length - 1]
+      setTimeout(() => {
+        modeInputRefs.current[lastPayment.id]?.focus()
+      }, 50)
+    }
+    prevPaymentsLengthRef.current = payments.length
+  }, [payments.length])
+
+  const paymentsRef = useRef(payments)
+  useEffect(() => {
+    paymentsRef.current = payments
+  }, [payments])
+
+  // Auto-focus first payment mode input when dialog opens
+  useEffect(() => {
+    if (open) {
+      const focusFirstPayment = () => {
+        const currentPayments = paymentsRef.current
+        const firstPaymentId = currentPayments[0]?.id
+        if (firstPaymentId && modeInputRefs.current[firstPaymentId]) {
+          const btn = modeInputRefs.current[firstPaymentId]
+          btn?.focus()
+        }
+      }
+      const t1 = setTimeout(focusFirstPayment, 100)
+      const t2 = setTimeout(focusFirstPayment, 250)
+      const t3 = setTimeout(focusFirstPayment, 500)
+      return () => {
+        clearTimeout(t1)
+        clearTimeout(t2)
+        clearTimeout(t3)
+      }
+    }
+    return undefined
+  }, [open])
+
   // Load Amount Due and update Order Amount when Pay dialog opens
   useEffect(() => {
-    if (!payOpen) return
+    if (open !== 'pay') return
 
     let cancelled = false
     const fetchAmountDue = async () => {
@@ -275,255 +359,288 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
     }
     fetchAmountDue()
     return () => { cancelled = true }
-  }, [payOpen, currentTab?.orderData?.linked_invoices, getCurrentTabSupplier])
+  }, [open, currentTab?.orderData?.linked_invoices, getCurrentTabSupplier])
 
   // Initialize date when modal opens
   useEffect(() => {
-    if (confirmOpen || payOpen) {
+    if (open) {
       setDate(transactionDate || getCurrentDate())
+      // Initialize payments if empty
+      if (payments.length === 0) {
+        setPayments([
+          {
+            mode: 'Cash',
+            amount: open === 'pay' ? orderAmount : '0',
+            reference_no: '',
+            reference_date: getCurrentDate(),
+            id: crypto.randomUUID()
+          }
+        ])
+      }
     }
-  }, [confirmOpen, payOpen, transactionDate, getCurrentDate])
+  }, [open, transactionDate, getCurrentDate, orderAmount])
 
-  // Define handleConfirmPayClick with useCallback before useEffect that uses it
-  const handleConfirmPayClick = useCallback(async () => {
-    if (!currentTab?.purchaseOrderId || !activeTabId) {
-      toast.error('Purchase order ID or Active Tab not found')
+  // Purchase order confirmation API function
+  const handlePurchaseOrderConfirmation = async (paymentsArray: Payment[] = [], isConfirmingMode: boolean = false) => {
+    const paymentAmount = paymentsArray.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0)
+
+    const zeroQtyItem = items.find((it: any) => Number(it.quantity || 0) <= 0)
+    if (zeroQtyItem) {
+      toast.error(`Item ${zeroQtyItem.item_code} has 0 quantity. Please set a valid quantity.`)
+      setIsProcessingPayment(false)
       return
     }
 
-    const paidAmount = Number(amount || 0)
-
-    // For confirm mode, allow 0 amount (credit purchase)
-    // For pay mode, require amount > 0
-    if (!isConfirming && (!Number.isFinite(paidAmount) || paidAmount <= 0)) {
-      toast.error('Please enter a valid paid amount')
-      return
-    }
-
-    // Set processing state only when actually processing
-    if (isConfirming) {
-      setIsConfirmingProcessing(true)
-    } else {
-      setIsProcessingPayment(true)
-    }
+    setIsProcessingPayment(true)
 
     try {
-      let confirmResponse: any = null
+      if (!currentTab || !currentTab.purchaseOrderId) {
+        toast.error('No purchase order found. Please save the order first.')
+        return
+      }
 
-      // Only confirm if in confirm mode (not pay mode)
-      if (isConfirming) {
-        // First confirm the purchase order - ONLY send these 3 fields as per API requirement
-        console.log('📦 ===== CONFIRM PURCHASE ORDER API CALL =====')
-        console.log('📦 API URL: /api/method/centro_pos_apis.api.purchase.purchase_order_confirmation')
-        console.log('📦 Request Method: POST')
+      // Check if order is already confirmed (docstatus = 1)
+      let isAlreadyConfirmed = false
+      try {
+        const orderDetailsCheck = await window.electronAPI?.proxy?.request({
+          url: '/api/method/centro_pos_apis.api.purchase.get_purchase_order_details',
+          params: {
+            purchase_order_id: currentTab.purchaseOrderId
+          },
+          method: 'GET'
+        })
+        if (orderDetailsCheck?.data?.data) {
+          isAlreadyConfirmed = Number(orderDetailsCheck.data.data.docstatus) === 1
+        }
+      } catch (checkError) {
+        console.warn('Failed to check docstatus:', checkError)
+        isAlreadyConfirmed = currentTab?.orderData && Number(currentTab.orderData.docstatus) === 1
+      }
 
-        const confirmPayload = {
-          purchase_order_id: currentTab.purchaseOrderId,
-          mode_of_payment: paymentMode,
-          paid_amount: paidAmount
+      // If already confirmed and we have payments, create payment entries directly
+      if (!isConfirmingMode && isAlreadyConfirmed && paymentAmount > 0) {
+        let supplierId = currentTab?.supplier?.supplier_id || currentTab?.orderData?.supplier || null
+        if (!supplierId) {
+          const s = getCurrentTabSupplier()
+          supplierId = s?.supplier_id || null
         }
 
-        console.log('📦 Request Body (ONLY 3 fields):', JSON.stringify(confirmPayload, null, 2))
-        console.log('📦 Purchase Order ID:', confirmPayload.purchase_order_id)
-        console.log('📦 Payment Mode:', confirmPayload.mode_of_payment)
-        console.log('📦 Paid Amount:', confirmPayload.paid_amount)
-
-        confirmResponse = await window.electronAPI?.proxy?.request({
-          url: '/api/method/centro_pos_apis.api.purchase.purchase_order_confirmation',
-          method: 'POST',
-          data: confirmPayload
-        })
-
-        console.log('📦 ===== CONFIRM PURCHASE ORDER API RESPONSE =====')
-        console.log('📦 Full Response:', confirmResponse)
-        console.log('📦 Response Success:', confirmResponse?.success)
-        console.log('📦 Response Status:', confirmResponse?.status)
-        console.log('📦 Response Data:', JSON.stringify(confirmResponse?.data, null, 2))
-
-        // Check if confirmation was successful
-        if (confirmResponse?.success === false || confirmResponse?.status === 400) {
-          console.error('❌ Purchase order confirmation failed')
-          if (confirmResponse?.data?._server_messages) {
-            handleServerErrorMessages(confirmResponse.data._server_messages, '')
-          } else {
-            toast.error(confirmResponse?.data?.message || confirmResponse?.message || 'Failed to confirm purchase order')
-          }
-          setIsConfirmingProcessing(false)
-          setIsProcessingPayment(false)
+        if (!supplierId) {
+          toast.error('Supplier not found. Cannot process payment.')
           return
         }
 
-        // Refresh order data after confirmation to update status
-        if (activeTabId && currentTab.purchaseOrderId) {
-          try {
-            console.log('🔄 Refreshing purchase order data after confirmation...')
-            const res = await window.electronAPI?.proxy?.request({
-              url: '/api/method/centro_pos_apis.api.purchase.get_purchase_order_details',
-              params: {
-                purchase_order_id: currentTab.purchaseOrderId
+        // Get invoice number
+        let invoiceNumber = currentTab?.orderData?.purchase_invoice_no || null
+        if (!invoiceNumber && currentTab?.orderData?.linked_invoices) {
+          const linked = currentTab.orderData.linked_invoices
+          if (Array.isArray(linked) && linked.length > 0) {
+            invoiceNumber = linked[0]?.name || null
+          } else if (linked && typeof linked === 'object') {
+            invoiceNumber = (linked as any).name || null
+          }
+        }
+
+        const postingDate = getCurrentTabPostingDate() || date || getCurrentDate()
+
+        for (const payment of paymentsArray) {
+          const rowAmount = parseFloat(payment.amount) || 0
+          if (rowAmount <= 0) continue
+
+          const paymentEntryData = {
+            payment_type: 'Pay',
+            party_type: 'Supplier',
+            party: supplierId,
+            posting_date: postingDate,
+            paid_amount: rowAmount,
+            mode_of_payment: payment.mode,
+            reference_no: payment.reference_no || null,
+            reference_date: payment.reference_date || null,
+            references: [
+              {
+                reference_doctype: 'Purchase Invoice',
+                reference_name: invoiceNumber,
+                allocated_amount: rowAmount
               }
-            })
-            if (res?.data?.data) {
-              console.log('✅ Purchase order data refreshed:', res.data.data)
-              updateTabOrderData(activeTabId, res.data.data)
-              const newDocstatus = Number(res.data.data?.docstatus)
-              console.log('📋 Order status after refresh - docstatus:', newDocstatus, 'isConfirmed:', newDocstatus === 1)
-            }
-          } catch (refreshError) {
-            console.error('❌ Failed to refresh purchase order data:', refreshError)
+            ]
+          }
+
+          const res = await window.electronAPI?.proxy?.request({
+            method: 'POST',
+            url: '/api/method/centro_pos_apis.api.order.create_payment_entry',
+            data: paymentEntryData
+          })
+
+          if (res?.success) {
+            const pdfUrl = res.data?.data?.pdf_download_url || res.data?.pdf_download_url
+            if (pdfUrl) updateTabInstantPrintUrl(currentTab.id, pdfUrl)
+          } else {
+            handleError(res?.data?._server_messages || `Failed to create payment entry for ${payment.mode}`)
           }
         }
 
-        // ONLY confirm, don't process payment here
-        toast.success('Purchase Order confirmed successfully')
-        setConfirmOpen(false)
-        setIsConfirmingProcessing(false)
-        setAmount('')
-        return
-      }
+        toast.success(`Payments processed successfully!`)
+        if (activeTabId) updateTabStatus?.(activeTabId, 'paid')
 
-      // Payment mode - only process payment if order is already confirmed
-      // Get supplier ID for payment entry
-      const selectedSupplier = getCurrentTabSupplier()
-      let supplierId = selectedSupplier?.supplier_id || currentTab?.supplier?.supplier_id || null
-
-      // If supplier ID not found, try to get from order data
-      if (!supplierId && currentTab?.orderData?.supplier) {
-        supplierId = currentTab.orderData.supplier
-      }
-
-      if (!supplierId) {
-        console.error('❌ No supplier ID found for payment entry')
-        toast.error('Supplier ID not found. Payment entry not created.')
-        setIsProcessingPayment(false)
-        return
-      }
-
-      // Get posting date from store or use current date
-      const selectedPostingDate = getCurrentTabPostingDate()
-      const formattedDate = selectedPostingDate || transactionDate || getCurrentDate()
-
-      // Get purchase invoice number from order data
-      const purchaseInvoice = currentTab?.orderData?.purchase_invoice_no || null
-      const purchaseOrderId = currentTab.purchaseOrderId
-
-      // Try to get invoice from linked invoices if available
-      const linkedInvoices = currentTab?.orderData?.linked_invoices
-      let purchaseInvoiceFromLinked = null
-      if (linkedInvoices && !purchaseInvoice) {
-        if (Array.isArray(linkedInvoices) && linkedInvoices.length > 0) {
-          purchaseInvoiceFromLinked = linkedInvoices[0]?.purchase_invoice_no || linkedInvoices[0]?.name
-        } else if (typeof linkedInvoices === 'object') {
-          purchaseInvoiceFromLinked = (linkedInvoices as any)?.purchase_invoice_no || (linkedInvoices as any)?.name
-        }
-      }
-
-      const finalPurchaseInvoice = purchaseInvoice || purchaseInvoiceFromLinked
-
-      // Create payment entry using the same endpoint as sales
-      const paymentEntryData = {
-        payment_type: 'Pay', // Pay for purchase (opposite of Receive for sales)
-        party_type: 'Supplier', // Supplier for purchase (opposite of Customer for sales)
-        party: supplierId,
-        posting_date: formattedDate,
-        paid_amount: paidAmount,
-        mode_of_payment: paymentMode,
-        references: finalPurchaseInvoice ? [
-          {
-            reference_doctype: 'Purchase Invoice',
-            reference_name: finalPurchaseInvoice,
-            allocated_amount: paidAmount
-          }
-        ] : purchaseOrderId ? [
-          {
-            reference_doctype: 'Purchase Order',
-            reference_name: purchaseOrderId,
-            allocated_amount: paidAmount
-          }
-        ] : []
-      }
-
-      console.log('💳 ===== CREATE PAYMENT ENTRY API CALL (PURCHASE) =====')
-      console.log('💳 API URL: /api/method/centro_pos_apis.api.order.create_payment_entry')
-      console.log('💳 Request Method: POST')
-      console.log('💳 Request Body:', JSON.stringify(paymentEntryData, null, 2))
-
-      await window.electronAPI?.proxy?.request({
-        method: 'POST',
-        url: '/api/method/centro_pos_apis.api.order.create_payment_entry',
-        data: paymentEntryData
-      })
-
-      console.log('💳 Payment entry created successfully for purchase order')
-
-      // Refresh order data after payment
-      if (activeTabId && currentTab.purchaseOrderId) {
+        // Refresh details
         try {
-          console.log('🔄 Refreshing purchase order data after payment...')
           const res = await window.electronAPI?.proxy?.request({
             url: '/api/method/centro_pos_apis.api.purchase.get_purchase_order_details',
-            params: {
-              purchase_order_id: currentTab.purchaseOrderId
-            }
+            params: { purchase_order_id: currentTab.purchaseOrderId }
           })
-          if (res?.data?.data) {
-            console.log('✅ Purchase order data refreshed:', res.data.data)
-            updateTabOrderData(activeTabId, res.data.data)
-          }
-        } catch (refreshError) {
-          console.error('❌ Failed to refresh purchase order data:', refreshError)
-        }
+          if (res?.data?.data && activeTabId) updateTabOrderData(activeTabId, res.data.data)
+        } catch (e) { }
+
+        setOpen(false)
+        onNavigateToPrints?.()
+        return
       }
 
-      toast.success('Payment recorded successfully')
-      setPayOpen(false)
-      setIsProcessingPayment(false)
-      setAmount('')
-    } catch (e: any) {
-      console.error('❌ Purchase confirm/payment failed', e)
-      toast.error(e?.response?.data?.message || e?.message || `Failed to ${isConfirming ? 'confirm' : 'process payment for'} purchase order`)
+      // Confirmation mode or not confirmed yet
+      const confirmationData = {
+        purchase_order_id: currentTab.purchaseOrderId,
+        payments: paymentsArray.map(p => ({
+          mode_of_payment: p.mode,
+          amount: parseFloat(p.amount) || 0,
+          reference_no: p.reference_no || null,
+          reference_date: p.reference_date || null
+        }))
+      }
+
+      console.log('📦 Confirmation Payload:', JSON.stringify(confirmationData, null, 2))
+
+      const response = await window.electronAPI?.proxy?.request({
+        method: 'POST',
+        url: '/api/method/centro_pos_apis.api.purchase.purchase_order_confirmation',
+        data: confirmationData
+      })
+
+      if (response?.success) {
+        toast.success('Purchase Order confirmed successfully')
+
+        const pdfUrl = response.data?.data?.pdf_download_url || response.data?.pdf_download_url
+        if (pdfUrl) {
+          updateTabInstantPrintUrl(currentTab.id, pdfUrl)
+          setPurchaseInvoicePrintUrl(currentTab.id, pdfUrl)
+        }
+
+        // Refresh and check for payments
+        const refreshRes = await window.electronAPI?.proxy?.request({
+          url: '/api/method/centro_pos_apis.api.purchase.get_purchase_order_details',
+          params: { purchase_order_id: currentTab.purchaseOrderId }
+        })
+
+        if (refreshRes?.data?.data) {
+          const orderData = refreshRes.data.data
+          updateTabOrderData(currentTab.id, orderData)
+
+          // Extract invoice number for potential payments
+          const linked = orderData.linked_invoices
+          let invoiceNumber = null
+          if (Array.isArray(linked) && linked.length > 0) {
+            invoiceNumber = linked[0]?.name || null
+          } else if (linked && typeof linked === 'object') {
+            invoiceNumber = (linked as any).name || null
+          }
+
+          // If not in confirm-only mode and we have remaining payment to process
+          if (!isConfirmingMode && paymentAmount > 0 && invoiceNumber) {
+            let supplierId = orderData.supplier || currentTab?.supplier?.supplier_id
+            const postingDate = getCurrentTabPostingDate() || date || getCurrentDate()
+
+            for (const payment of paymentsArray) {
+              const rowAmount = parseFloat(payment.amount) || 0
+              if (rowAmount <= 0) continue
+
+              const paymentEntryData = {
+                payment_type: 'Pay',
+                party_type: 'Supplier',
+                party: supplierId,
+                posting_date: postingDate,
+                paid_amount: rowAmount,
+                mode_of_payment: payment.mode,
+                reference_no: payment.reference_no || null,
+                reference_date: payment.reference_date || null,
+                references: [
+                  {
+                    reference_doctype: 'Purchase Invoice',
+                    reference_name: invoiceNumber,
+                    allocated_amount: rowAmount
+                  }
+                ]
+              }
+
+              await window.electronAPI?.proxy?.request({
+                method: 'POST',
+                url: '/api/method/centro_pos_apis.api.order.create_payment_entry',
+                data: paymentEntryData
+              })
+            }
+          }
+        }
+
+        setOpen(false)
+        onNavigateToPrints?.()
+      } else {
+        handleError(response?.data?._server_messages || response?.data?.message || 'Failed to confirm purchase order')
+      }
+    } catch (error) {
+      handleError(error, 'Failed to confirm purchase order')
     } finally {
-      setIsConfirmingProcessing(false)
       setIsProcessingPayment(false)
+      setIsConfirming(false)
     }
-  }, [currentTab, amount, paymentMode, isConfirming, activeTabId, transactionDate, getCurrentTabSupplier, getCurrentTabPostingDate, updateTabOrderData, setConfirmOpen, setPayOpen, setAmount, setIsConfirming, setIsProcessingPayment])
+  }
 
-  // Auto-focus Amount input when dialog opens
-  useEffect(() => {
-    if (confirmOpen || payOpen) {
-      const focusAmount = () => {
-        if (amountInputRef.current) {
-          amountInputRef.current.focus()
-          if (document.activeElement !== amountInputRef.current) {
-            amountInputRef.current.focus()
-          }
-        }
-      }
-      const timer1 = setTimeout(() => focusAmount(), 100)
-      const timer2 = setTimeout(() => focusAmount(), 250)
-      return () => {
-        clearTimeout(timer1)
-        clearTimeout(timer2)
-      }
+  const handleConfirmPayClick = () => {
+    // Validate payments
+    const invalidPayment = payments.find(p => {
+      const amount = parseFloat(p.amount) || 0
+      if (amount <= 0) return false
+      if (p.mode === 'Cash') return false
+      return !p.reference_no?.trim() || !p.reference_date
+    })
+
+    if (invalidPayment) {
+      setShowValidationErrors(true)
+      toast.error('Please fill in reference numbers and dates for non-cash payments.')
+      return
     }
-    return undefined
-  }, [confirmOpen, payOpen])
+
+    setShowValidationErrors(false)
+    handlePurchaseOrderConfirmation(payments, open === 'confirm')
+  }
+
 
   // Keyboard shortcuts for Confirm/Pay modal
   useEffect(() => {
-    if (!confirmOpen && !payOpen) return
+    if (!open) return
 
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement
       const isInputField = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
 
+      // Ctrl + Plus (+) to add new row
+      if (e.ctrlKey && (e.key === '+' || e.key === '=')) {
+        e.preventDefault()
+        setPayments(prev => [
+          ...prev,
+          {
+            mode: 'Cash',
+            amount: '0',
+            reference_no: '',
+            reference_date: getCurrentDate(),
+            id: crypto.randomUUID()
+          }
+        ])
+        return
+      }
+
       // Shift+Enter or Ctrl+Enter: Trigger Confirm button
       if ((e.key === 'Enter' && e.shiftKey) || (e.key === 'Enter' && e.ctrlKey)) {
-        // Allow Shift+Enter or Ctrl+Enter even in input fields (common pattern for submitting forms)
-        if (!isConfirmingProcessing && !isProcessingPayment) {
+        if (!isProcessingPayment) {
           e.preventDefault()
           e.stopPropagation()
-          console.log('⌨️ Shortcut (Shift+Enter or Ctrl+Enter) pressed - triggering Confirm/Pay')
           handleConfirmPayClick()
         }
       }
@@ -532,41 +649,97 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
         e.preventDefault()
         e.stopPropagation()
 
-        // Cycle through payment modes
-        const currentIndex = paymentModes.indexOf(paymentMode)
-        const nextIndex = (currentIndex + 1) % paymentModes.length
-        const nextMode = paymentModes[nextIndex]
-
-        console.log('⌨️ Spacebar pressed - cycling payment mode from', paymentMode, 'to', nextMode)
-        setPaymentMode(nextMode)
-      }
-    }
-
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [confirmOpen, payOpen, paymentMode, paymentModes, isConfirmingProcessing, isProcessingPayment, handleConfirmPayClick])
-
-  // Keyboard shortcuts for buttons
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey) {
-        const key = e.key.toLowerCase()
-        if (key === 's') {
-          e.preventDefault()
-          handleConfirm()
-        } else if (key === 'f') {
-          e.preventDefault()
-          handlePay()
+        if (payments.length > 0) {
+          const currentIndex = paymentModes.indexOf(payments[0].mode)
+          const nextIndex = (currentIndex + 1) % paymentModes.length
+          const nextMode = paymentModes[nextIndex]
+          const newPayments = [...payments]
+          newPayments[0].mode = nextMode
+          setPayments(newPayments)
         }
       }
     }
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [currentTab?.purchaseOrderId])
+  }, [open, payments, paymentModes, isProcessingPayment, handleConfirmPayClick])
+
+  // Keyboard shortcuts for buttons
+  useHotkeys('ctrl+s', (e) => {
+    const canSave = (
+      currentUserPrivileges?.purchase &&
+      currentTab?.status !== 'confirmed' &&
+      currentTab?.status !== 'paid' &&
+      !isConfirmed &&
+      currentTab?.isEdited &&
+      !isSaving &&
+      !isConfirming &&
+      !isItemTableEditing
+    )
+
+    if (canSave) {
+      e.preventDefault()
+      handleSave()
+    }
+  }, { enableOnFormTags: true }, [currentUserPrivileges, currentTab, isConfirmed, isSaving, isConfirming, isItemTableEditing])
+
+  useHotkeys('ctrl+shift+s', (e) => {
+    const canConfirm = (
+      currentUserPrivileges?.purchase &&
+      currentTab?.purchaseOrderId &&
+      !isConfirmed &&
+      !currentTab?.isEdited &&
+      !isItemTableEditing &&
+      !isSaving &&
+      !isConfirming
+    )
+
+    if (canConfirm) {
+      e.preventDefault()
+      handleConfirm()
+    }
+  }, { enableOnFormTags: true }, [currentUserPrivileges, currentTab, isConfirmed, isItemTableEditing, isSaving, isConfirming])
+
+  useHotkeys('ctrl+shift+f', (e) => {
+    const linkedInvoices = currentTab?.orderData?.linked_invoices
+    const firstLinkedInvoice = Array.isArray(linkedInvoices) && linkedInvoices.length > 0 ? linkedInvoices[0] : null
+    const outstandingAmount = firstLinkedInvoice?.outstanding_amount
+    const hasOutstanding = outstandingAmount !== undefined && outstandingAmount !== null && Number(outstandingAmount) > 0
+    const hasInvoice = !!firstLinkedInvoice
+    const canPay = (
+      currentUserPrivileges?.purchase &&
+      currentTab?.purchaseOrderId &&
+      isConfirmed &&
+      (!hasInvoice || hasOutstanding) &&
+      !isItemTableEditing &&
+      !isProcessingPayment
+    )
+
+    if (canPay) {
+      e.preventDefault()
+      handlePay()
+    }
+  }, { enableOnFormTags: true }, [currentUserPrivileges, currentTab, isConfirmed, isItemTableEditing, isProcessingPayment])
+
+  useHotkeys('ctrl+r', (e) => {
+    const canReturn = (
+      currentUserPrivileges?.purchase &&
+      isConfirmed &&
+      currentTab?.purchaseOrderId &&
+      currentTab?.orderData?.is_fully_returned !== 1 &&
+      !isItemTableEditing
+    )
+
+    const target = e.target as HTMLElement
+    const isInputField = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
+    if (!isInputField && canReturn) {
+      e.preventDefault()
+      handleReturn()
+    }
+  }, { enableOnFormTags: true }, [currentUserPrivileges, isConfirmed, currentTab, isItemTableEditing])
 
   const handleSave = async () => {
-    if (!currentTab || isSaving) return
+    if (!currentTab || isSaving || isConfirmed) return
 
     if (!currentTab?.supplier?.supplier_id) {
       toast.error('Please select a supplier before saving')
@@ -703,11 +876,7 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
         console.error('❌ Full Response:', JSON.stringify(response, null, 2))
 
         // Handle server error messages
-        if (response?.data?._server_messages) {
-          handleServerErrorMessages(response.data._server_messages, '')
-        } else {
-          toast.error(response?.data?.message || response?.message || 'Failed to save purchase order')
-        }
+        handleError(response?.data?._server_messages || response?.data?.message || response?.message || 'Failed to save purchase order')
         return
       }
 
@@ -742,8 +911,23 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
         }
 
         updateTabPurchaseOrderId(activeTabId, String(purchaseOrderId))
+
+        // Extract pdf_download_url from response
+        const pdfUrl = response.data?.data?.pdf_download_url || response.data?.pdf_download_url
+        if (pdfUrl) {
+          console.log('🖨️ Purchase Order PDF URL found:', pdfUrl)
+          updateTabInstantPrintUrl(activeTabId, pdfUrl)
+          // Also update the specific Purchase Order Print URL
+          setPurchaseOrderPrintUrl(activeTabId, pdfUrl)
+        }
+
         setTabEdited(activeTabId, false)
         toast.success(`Purchase Order ${currentTab.purchaseOrderId ? 'updated' : 'saved'}: ${purchaseOrderId}`)
+
+        // Navigate to prints tab if URL was available
+        if (pdfUrl) {
+          onNavigateToPrints?.()
+        }
       } else {
         console.error('❌ ===== NO PURCHASE ORDER ID FOUND =====')
         console.error('❌ Full Response:', JSON.stringify(response, null, 2))
@@ -766,8 +950,7 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
         return
       }
     } catch (e: any) {
-      console.error('❌ Purchase save failed', e)
-      toast.error(e?.response?.data?.message || e?.message || 'Failed to save purchase order')
+      handleError(e, 'Failed to save purchase order')
     } finally {
       setIsSaving(false)
     }
@@ -778,13 +961,9 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
       toast.error('Please save the purchase order first')
       return
     }
-    console.log('🔘 Confirm button clicked - opening confirm dialog')
-    console.log('🔘 Current tab purchaseOrderId:', currentTab.purchaseOrderId)
-    console.log('🔘 Current tab isEdited:', currentTab.isEdited)
-    console.log('🔘 Is confirmed:', isConfirmed)
-    setAmount('')
+    setPayments([])
     setIsConfirming(true)
-    setConfirmOpen(true)
+    setOpen('confirm')
   }
 
   const handlePay = () => {
@@ -792,20 +971,14 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
       toast.error('Please save the purchase order first')
       return
     }
-    // Check if order is confirmed
     const docstatus = currentTab?.orderData ? Number(currentTab.orderData.docstatus) : null
-    const isConfirmed = docstatus === 1
-    console.log('💳 Pay button clicked')
-    console.log('💳 Current tab purchaseOrderId:', currentTab.purchaseOrderId)
-    console.log('💳 Order docstatus:', docstatus)
-    console.log('💳 Is confirmed:', isConfirmed)
-    if (!isConfirmed) {
+    if (docstatus !== 1) {
       toast.error('Please confirm the purchase order first')
       return
     }
-    setAmount('')
+    setPayments([])
     setIsConfirming(false)
-    setPayOpen(true)
+    setOpen('pay')
   }
 
   const handleReturn = () => {
@@ -848,6 +1021,7 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
                 !currentUserPrivileges?.purchase ||
                 currentTab?.status === 'confirmed' ||
                 currentTab?.status === 'paid' ||
+                isConfirmed ||
                 !currentTab?.isEdited ||
                 isSaving ||
                 isConfirming ||
@@ -984,21 +1158,33 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
         </div>
       </div>
 
-      {/* Confirm Dialog */}
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+      {/* Payment / Confirm Dialog */}
+      <Dialog open={!!open} onOpenChange={(v) => setOpen(v ? open || 'confirm' : false)}>
         <DialogContent
-          className="max-w-4xl w-[90vw] bg-white border-2 shadow-2xl"
+          className="max-w-5xl w-[95vw] bg-white border-2 shadow-2xl"
           onOpenAutoFocus={(e) => {
             e.preventDefault()
-            // Focus will be handled by useEffect
           }}
         >
           <DialogHeader className="pb-4">
-            <DialogTitle className="text-xl font-bold text-gray-800">Confirm Purchase Order</DialogTitle>
+            <DialogTitle className="text-xl font-bold text-gray-800">
+              {open === 'pay' ? 'Payment' : 'Confirm'}
+            </DialogTitle>
           </DialogHeader>
 
+          {/* Date */}
+          <div className="mb-6">
+            <div className="text-sm font-medium text-gray-700 mb-2">Date</div>
+            <Input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="max-w-[220px] text-lg py-3"
+            />
+          </div>
+
           {/* Row: amounts */}
-          <div className="grid grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div className="p-4 rounded-lg bg-gray-50 border-2">
               <div className="text-sm font-medium text-gray-700 mb-2 truncate">Order Amount</div>
               <div className="text-lg font-semibold text-gray-900">{orderAmount}</div>
@@ -1013,74 +1199,186 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
             </div>
           </div>
 
-          {/* Date, Mode, Amount */}
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div>
-              <div className="text-sm font-medium text-gray-700 mb-2">Date</div>
-              <Input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="text-lg py-3"
-              />
-            </div>
-            <div>
-              <div className="text-sm font-medium text-gray-700 mb-2">Payment Mode</div>
-              <Select value={paymentMode} onValueChange={(v) => setPaymentMode(v as PaymentMode)}>
-                <SelectTrigger className="w-full text-sm py-3">
-                  <SelectValue placeholder="Select mode" />
-                </SelectTrigger>
-                <SelectContent className="bg-white border-gray-200 shadow-lg">
-                  {paymentModes.map((mode) => (
-                    <SelectItem key={mode} value={mode}>
-                      {mode}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <div className="text-sm font-medium text-gray-700 mb-2">Amount</div>
-              <Input
-                ref={amountInputRef}
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                onKeyDown={(e) => {
-                  // When arrow keys are pressed, move focus out of the input
-                  if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-                    // Only blur if cursor is at the edge (beginning for left/up, end for right/down)
-                    const input = e.currentTarget as HTMLInputElement
-                    const cursorPosition = input.selectionStart || 0
-                    const valueLength = input.value.length
-
-                    if (
-                      (e.key === 'ArrowRight' && cursorPosition === valueLength) ||
-                      (e.key === 'ArrowLeft' && cursorPosition === 0) ||
-                      e.key === 'ArrowDown' ||
-                      e.key === 'ArrowUp'
-                    ) {
-                      e.preventDefault()
-                      input.blur()
-                      // Focus the Confirm button or next logical element
-                      setTimeout(() => {
-                        const confirmButton = document.querySelector('[data-confirm-button]') as HTMLButtonElement
-                        if (confirmButton && !confirmButton.disabled) {
-                          confirmButton.focus()
+          {/* Payment Rows */}
+          <div className="space-y-4 mb-6 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+            <div className="text-sm font-medium text-gray-700">Payments</div>
+            {payments.map((payment, index) => (
+              <div key={payment.id} className="p-4 rounded-lg border-2 bg-gray-50 relative group">
+                <div
+                  className={`grid grid-cols-1 ${payment.mode === 'Cash' || (profile as any)?.custom_autogenerate_bank_references
+                    ? 'md:grid-cols-[100px_1fr]'
+                    : 'md:grid-cols-[100px_1.2fr_1.8fr_140px]'
+                    } gap-3`}
+                >
+                  <div>
+                    <div className="text-xs font-medium text-gray-500 mb-1">Mode</div>
+                    <Select
+                      value={payment.mode}
+                      onValueChange={(val) => {
+                        const newPayments = [...payments]
+                        newPayments[index].mode = val
+                        if (val === 'Cash') {
+                          newPayments[index].reference_no = ''
+                          newPayments[index].reference_date = ''
                         }
-                      }, 0)
-                    }
+                        setPayments(newPayments)
+                      }}
+                    >
+                      <SelectTrigger
+                        ref={(el) => {
+                          modeInputRefs.current[payment.id] = el
+                        }}
+                        className="w-full bg-white"
+                        onKeyDown={(e) => {
+                          if (e.key === 'ArrowRight') {
+                            amountInputRefs.current[payment.id]?.focus()
+                            amountInputRefs.current[payment.id]?.select()
+                          }
+                        }}
+                      >
+                        <SelectValue placeholder="Select mode" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white">
+                        {paymentModes.map((m) => (
+                          <SelectItem key={m} value={m}>
+                            {m}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <div className="text-xs font-medium text-gray-500 mb-1">Amount</div>
+                    <Input
+                      ref={(el) => {
+                        amountInputRefs.current[payment.id] = el
+                      }}
+                      type="number"
+                      value={payment.amount}
+                      onChange={(e) => {
+                        const newPayments = [...payments]
+                        newPayments[index].amount = e.target.value
+                        setPayments(newPayments)
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          const nextPayment = payments[index + 1]
+                          if (nextPayment) {
+                            modeInputRefs.current[nextPayment.id]?.focus()
+                          } else {
+                            handleConfirmPayClick()
+                          }
+                        } else if (e.key === 'ArrowLeft') {
+                          modeInputRefs.current[payment.id]?.focus()
+                        } else if (e.key === 'ArrowRight') {
+                          if (payment.mode !== 'Cash' && !(profile as any)?.custom_autogenerate_bank_references) {
+                            refNoInputRefs.current[payment.id]?.focus()
+                            refNoInputRefs.current[payment.id]?.select()
+                          }
+                        }
+                      }}
+                      className="bg-white"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  {payment.mode !== 'Cash' && !(profile as any)?.custom_autogenerate_bank_references && (
+                    <>
+                      <div>
+                        <div className="text-xs font-medium text-gray-500 mb-1">
+                          Ref No. <span className="text-red-500 font-bold">*</span>
+                        </div>
+                        <Input
+                          ref={(el) => {
+                            refNoInputRefs.current[payment.id] = el
+                          }}
+                          type="text"
+                          value={payment.reference_no}
+                          onChange={(e) => {
+                            const newPayments = [...payments]
+                            newPayments[index].reference_no = e.target.value
+                            setPayments(newPayments)
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'ArrowLeft') {
+                              amountInputRefs.current[payment.id]?.focus()
+                              amountInputRefs.current[payment.id]?.select()
+                            } else if (e.key === 'ArrowRight') {
+                              refDateInputRefs.current[payment.id]?.focus()
+                            }
+                          }}
+                          className={`bg-white border-2 focus:border-blue-500 ${showValidationErrors && !payment.reference_no?.trim() ? 'border-red-500 ring-red-500 focus:border-red-500' : ''}`}
+                          placeholder="Required"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <div className="text-xs font-medium text-gray-500 mb-1">
+                          Ref Date <span className="text-red-500 font-bold">*</span>
+                        </div>
+                        <Input
+                          ref={(el) => {
+                            refDateInputRefs.current[payment.id] = el
+                          }}
+                          type="date"
+                          value={payment.reference_date}
+                          onChange={(e) => {
+                            const newPayments = [...payments]
+                            newPayments[index].reference_date = e.target.value
+                            setPayments(newPayments)
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'ArrowLeft') {
+                              refNoInputRefs.current[payment.id]?.focus()
+                              refNoInputRefs.current[payment.id]?.select()
+                            }
+                          }}
+                          className={`bg-white border-2 focus:border-blue-500 ${showValidationErrors && !payment.reference_date ? 'border-red-500 ring-red-500 focus:border-red-500' : ''}`}
+                          required
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+                {payments.length > 1 && (
+                  <button
+                    onClick={() => {
+                      setPayments(payments.filter((_, i) => i !== index))
+                      delete amountInputRefs.current[payment.id]
+                      delete modeInputRefs.current[payment.id]
+                      delete refNoInputRefs.current[payment.id]
+                      delete refDateInputRefs.current[payment.id]
+                    }}
+                    className="absolute -top-2 -right-2 p-1 bg-red-100 text-red-600 rounded-full hover:bg-red-200 transition-colors shadow-sm"
+                    title="Remove Payment"
+                  >
+                    <Trash className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            ))}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setPayments([
+                  ...payments,
+                  {
+                    mode: 'Cash',
+                    amount: '0',
+                    reference_no: '',
+                    reference_date: getCurrentDate(),
+                    id: crypto.randomUUID()
                   }
-                }}
-                className="text-lg py-3"
-                placeholder="Enter amount"
-                min="0"
-                step="0.01"
-              />
-            </div>
+                ])
+              }}
+              className="w-full border-dashed flex items-center gap-2 hover:bg-gray-50 focus-visible:ring-0 focus-visible:ring-offset-0"
+            >
+              <PlusCircle className="w-4 h-4" />
+              Add Payment
+            </Button>
           </div>
 
-          {/* Payment Status - Real-time calculation */}
           <div className="mb-6 p-4 bg-gray-50 rounded-lg border-2">
             <span className="text-sm font-medium text-gray-700 mr-3">Payment Status:</span>
             <span className={`px-3 py-2 ${paymentStatus.color} text-sm font-medium rounded-lg`}>
@@ -1089,152 +1387,24 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
           </div>
 
           <DialogFooter className="pt-6">
-            <Button variant="outline" onClick={() => setConfirmOpen(false)}>
-              Cancel
-            </Button>
             <Button
               data-confirm-button
               onClick={handleConfirmPayClick}
-              disabled={isConfirmingProcessing || isProcessingPayment}
-              className={`px-8 py-3 text-lg font-semibold flex items-center gap-2 ${isConfirmingProcessing || isProcessingPayment ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'} text-white`}
+              disabled={isProcessingPayment}
+              className={`px-8 py-3 text-lg font-semibold flex items-center gap-2 ${isProcessingPayment ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'} text-white`}
             >
-              {isConfirmingProcessing ? (
+              {isProcessingPayment ? (
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  Confirming...
+                  {isConfirming ? 'Confirming...' : 'Processing...'}
                 </div>
-              ) : (
+              ) : isConfirming ? (
                 <>
                   <svg className="w-4 h-4" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="paper-plane" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="currentColor">
                     <path d="M498.1 5.6c10.1 7 15.4 19.1 13.5 31.2l-64 416c-1.5 9.7-7.4 18.2-16 23s-18.9 5.4-28 1.6L284 427.7l-68.5 74.1c-8.9 9.7-22.9 12.9-35.2 8.1S160 493.2 160 480V396.4c0-4 1.5-7.8 4.2-10.7L331.8 202.8c5.8-6.3 5.6-16-.4-22s-15.7-6.4-22-.7L106 360.8 17.7 316.6C7.1 311.3 .3 300.7 0 288.9s5.9-22.8 16.1-28.7l448-256c10.7-6.1 23.9-5.5 34 1.4z"></path>
                   </svg>
                   Confirm
                 </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Pay Dialog */}
-      <Dialog open={payOpen} onOpenChange={setPayOpen}>
-        <DialogContent
-          className="max-w-4xl w-[90vw] bg-white border-2 shadow-2xl"
-          onOpenAutoFocus={(e) => {
-            e.preventDefault()
-            // Focus will be handled by useEffect
-          }}
-        >
-          <DialogHeader className="pb-4">
-            <DialogTitle className="text-xl font-bold text-gray-800">Payment</DialogTitle>
-          </DialogHeader>
-
-          {/* Row: amounts */}
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="p-4 rounded-lg bg-gray-50 border-2">
-              <div className="text-sm font-medium text-gray-700 mb-2 truncate">Order Amount</div>
-              <div className="text-lg font-semibold text-gray-900">{orderAmount}</div>
-            </div>
-            <div className="p-4 rounded-lg bg-gray-50 border-2">
-              <div className="text-sm font-medium text-gray-700 mb-2 truncate">Amount Due</div>
-              <div className="text-lg font-semibold text-gray-900">{amountDue}</div>
-            </div>
-            <div className="p-4 rounded-lg bg-gray-50 border-2">
-              <div className="text-sm font-medium text-gray-700 mb-2 truncate">Total Pending</div>
-              <div className="text-lg font-semibold text-gray-900">{totalPending}</div>
-            </div>
-          </div>
-
-          {/* Date, Mode, Amount */}
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div>
-              <div className="text-sm font-medium text-gray-700 mb-2">Date</div>
-              <Input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="text-lg py-3"
-              />
-            </div>
-            <div>
-              <div className="text-sm font-medium text-gray-700 mb-2">Payment Mode</div>
-              <Select value={paymentMode} onValueChange={(v) => setPaymentMode(v as PaymentMode)}>
-                <SelectTrigger className="w-full text-sm py-3">
-                  <SelectValue placeholder="Select mode" />
-                </SelectTrigger>
-                <SelectContent className="bg-white border-gray-200 shadow-lg">
-                  {paymentModes.map((mode) => (
-                    <SelectItem key={mode} value={mode}>
-                      {mode}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <div className="text-sm font-medium text-gray-700 mb-2">Amount</div>
-              <Input
-                ref={amountInputRef}
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                onKeyDown={(e) => {
-                  // When arrow keys are pressed, move focus out of the input
-                  if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-                    // Only blur if cursor is at the edge (beginning for left/up, end for right/down)
-                    const input = e.currentTarget as HTMLInputElement
-                    const cursorPosition = input.selectionStart || 0
-                    const valueLength = input.value.length
-
-                    if (
-                      (e.key === 'ArrowRight' && cursorPosition === valueLength) ||
-                      (e.key === 'ArrowLeft' && cursorPosition === 0) ||
-                      e.key === 'ArrowDown' ||
-                      e.key === 'ArrowUp'
-                    ) {
-                      e.preventDefault()
-                      input.blur()
-                      // Focus the Confirm button or next logical element
-                      setTimeout(() => {
-                        const confirmButton = document.querySelector('[data-confirm-button]') as HTMLButtonElement
-                        if (confirmButton && !confirmButton.disabled) {
-                          confirmButton.focus()
-                        }
-                      }, 0)
-                    }
-                  }
-                }}
-                className="text-lg py-3"
-                placeholder="Enter amount"
-                min="0"
-                step="0.01"
-              />
-            </div>
-          </div>
-
-          {/* Payment Status - Real-time calculation */}
-          <div className="mb-6 p-4 bg-gray-50 rounded-lg border-2">
-            <span className="text-sm font-medium text-gray-700 mr-3">Payment Status:</span>
-            <span className={`px-3 py-2 ${paymentStatus.color} text-sm font-medium rounded-lg`}>
-              {paymentStatus.text}
-            </span>
-          </div>
-
-          <DialogFooter className="pt-6">
-            <Button variant="outline" onClick={() => setPayOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              data-confirm-button
-              onClick={handleConfirmPayClick}
-              disabled={isProcessingPayment || !amount || Number(amount) <= 0}
-              className={`px-8 py-3 text-lg font-semibold flex items-center gap-2 ${isProcessingPayment ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'} text-white`}
-            >
-              {isProcessingPayment ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  Processing...
-                </div>
               ) : (
                 <>
                   <svg className="w-4 h-4" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="credit-card" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512" fill="currentColor">
@@ -1243,6 +1413,16 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
                   Confirm and Pay
                 </>
               )}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setOpen(false)
+                setIsConfirming(false)
+              }}
+              className="px-8 py-3 text-lg font-semibold"
+            >
+              Cancel
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1253,7 +1433,8 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
         isOpen={returnModalOpen}
         onClose={() => setReturnModalOpen(false)}
         onReturnSuccess={() => {
-          console.log('✅ Purchase return successful - refreshing order data')
+          console.log('✅ Purchase return successful - navigating to prints')
+          onNavigateToPrints?.()
         }}
       />
 
