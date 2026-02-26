@@ -31,7 +31,7 @@ export function InvoiceHeader({
     onFinish,
     hasSelection,
     canFinish,
-    onScheduleClick
+    onScheduleClick,
 }: InvoiceHeaderProps) {
     console.log('isWarehouseAssigned', isWarehouseAssigned);
     return (

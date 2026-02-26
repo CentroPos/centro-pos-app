@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@renderer/components/ui/dialog'
+import { Search } from 'lucide-react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@renderer/components/ui/select'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
 import { Label } from '@renderer/components/ui/label'
@@ -646,35 +648,54 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                 </div>
               </div>
 
-              {/* Warehouse Selection */}
-              {allowedWarehouses.length > 0 && (
-                <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
-                  <label className="text-sm font-semibold text-gray-700 font-sans mb-2 block">
-                    Select Warehouse
+              {/* Warehouse Selection & Search Box */}
+              <div className="flex items-end gap-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                {allowedWarehouses.length > 0 && (
+                  <div className="flex-shrink-0">
+                    <label className="text-sm font-semibold text-gray-700 font-sans mb-2 block">
+                      Select Warehouse
+                    </label>
+                    <Select
+                      value={selectedWarehouse}
+                      onValueChange={setSelectedWarehouse}
+                    >
+                      <SelectTrigger className="w-[280px] bg-white border-2 border-gray-300 h-10">
+                        <SelectValue placeholder="Select a warehouse" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {allowedWarehouses.map((warehouse) => (
+                          <SelectItem key={warehouse.name} value={warehouse.name}>
+                            {warehouse.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {/* Search Box */}
+                <div className="flex-1 max-w-md">
+                  <label className="text-sm font-semibold text-gray-700 font-sans mb-2 block opacity-0 pointer-events-none">
+                    Search
                   </label>
-                  <div className="flex flex-wrap gap-2">
-                    {allowedWarehouses.map((warehouse) => (
-                      <button
-                        key={warehouse.name}
-                        type="button"
-                        onClick={() => setSelectedWarehouse(warehouse.name)}
-                        className={`px-4 py-2 rounded-full text-sm font-medium transition-all border ${selectedWarehouse === warehouse.name
-                            ? 'bg-green-700 hover:bg-green-800 text-white border-green-700 shadow-sm'
-                            : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
-                          }`}
-                      >
-                        {warehouse.name}
-                      </button>
-                    ))}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-900" />
+                    <Input
+                      type="text"
+                      placeholder="Search items by code or name..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-9 font-sans border-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 h-10"
+                    />
                   </div>
                 </div>
-              )}
+              </div>
 
               {/* Items Table with Tabs */}
               <div className="flex-1 flex flex-col space-y-2 overflow-hidden min-h-0">
                 <div className="flex items-center justify-between">
                   <h3 className="text-base font-bold text-gray-800 font-sans">Select Items to Return</h3>
-                  {(() => {
+                  {/* {(() => {
                     // Calculate total amount for selected items
                     const totalAmount = invoiceData.items
                       .filter((item) => {
@@ -692,18 +713,7 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
                         Total Selected Amount: {currencySymbol} {totalAmount.toFixed(2)}
                       </span>
                     )
-                  })()}
-                </div>
-
-                {/* Search Box */}
-                <div className="space-y-2">
-                  <Input
-                    type="text"
-                    placeholder="🔍 Search items by code or name..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-1/2 font-sans border-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                  />
+                  })()} */}
                 </div>
 
                 <Tabs defaultValue="items" className="flex-1 flex flex-col overflow-hidden min-h-0 relative">
@@ -904,34 +914,58 @@ const ReturnModal: React.FC<ReturnModalProps> = ({ isOpen, onClose, onReturnSucc
               </div>
 
               {/* Action Buttons */}
-              <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 flex-shrink-0">
-                <Button
-                  variant="outline"
-                  onClick={onClose}
-                  disabled={returnLoading}
-                  className="font-sans border-2 border-gray-300 hover:bg-gray-50"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleReturnOrder}
-                  disabled={returnLoading || Object.values(selectedItems).every(item => !item.selected) || (allowedWarehouses.length > 0 && !selectedWarehouse)}
-                  className="bg-orange-500 hover:bg-orange-600 text-white font-sans font-medium px-6 py-2 flex items-center gap-2"
-                >
-                  {returnLoading ? (
-                    <>
-                      <i className="fas fa-spinner fa-spin"></i>
-                      Processing Return...
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="arrow-rotate-left" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="currentColor">
-                        <path d="M125.7 160H176c17.7 0 32 14.3 32 32s-14.3 32-32 32H48c-17.7 0-32-14.3-32-32V64c0-17.7 14.3-32 32-32s32 14.3 32 32v51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
-                      </svg>
-                      Process Return
-                    </>
-                  )}
-                </Button>
+              <div className="flex items-center justify-between pt-4 border-t border-gray-200 flex-shrink-0">
+                <div className="text-base font-bold text-gray-800 font-sans pl-2">
+                  {(() => {
+                    const totalAmount = invoiceData.items
+                      .filter((item) => {
+                        const selectionKey = item.original_sales_invoice_item || item.item_code || ''
+                        return selectedItems[selectionKey]?.selected === true
+                      })
+                      .reduce((sum, item) => {
+                        const selectionKey = item.original_sales_invoice_item || item.item_code || ''
+                        const rate = typeof item.rate === 'number' ? item.rate : 0
+                        const qty = selectedItems[selectionKey]?.qty ?? 0
+                        return sum + (rate * qty)
+                      }, 0)
+
+                    // Calculate VAT based on profile's custom tax rate
+                    const customTaxRate = (profile as any)?.custom_tax_rate ? Number((profile as any).custom_tax_rate) : 0;
+                    const vatAmount = totalAmount * (customTaxRate / 100);
+                    const totalWithVat = totalAmount + vatAmount;
+
+                    return `Total Selected Amount: ${currencySymbol} ${totalWithVat.toFixed(2)}`;
+                  })()}
+                </div>
+                <div className="flex gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={onClose}
+                    disabled={returnLoading}
+                    className="font-sans border-2 border-gray-300 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleReturnOrder}
+                    disabled={returnLoading || Object.values(selectedItems).every(item => !item.selected) || (allowedWarehouses.length > 0 && !selectedWarehouse)}
+                    className="bg-orange-500 hover:bg-orange-600 text-white font-sans font-medium px-6 py-2 flex items-center gap-2"
+                  >
+                    {returnLoading ? (
+                      <>
+                        <i className="fas fa-spinner fa-spin"></i>
+                        Processing Return...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="arrow-rotate-left" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="currentColor">
+                          <path d="M125.7 160H176c17.7 0 32 14.3 32 32s-14.3 32-32 32H48c-17.7 0-32-14.3-32-32V64c0-17.7 14.3-32 32-32s32 14.3 32 32v51.2L97.6 97.6c87.5-87.5 229.3-87.5 316.8 0s87.5 229.3 0 316.8s-229.3 87.5-316.8 0c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0c62.5 62.5 163.8 62.5 226.3 0s62.5-163.8 0-226.3s-163.8-62.5-226.3 0L125.7 160z"></path>
+                        </svg>
+                        Process Return
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             </div>
           )}

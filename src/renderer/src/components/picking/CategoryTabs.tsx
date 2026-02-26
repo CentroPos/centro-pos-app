@@ -1,5 +1,6 @@
 import { cn } from '@renderer/lib/utils';
 import { Search, RotateCcw } from 'lucide-react';
+import { Checkbox } from '@renderer/components/ui/checkbox';
 
 interface Category {
     label: string;
@@ -14,6 +15,9 @@ interface CategoryTabsProps {
     onSearchChange: (query: string) => void;
     onRefresh: () => void;
     isRefreshing?: boolean;
+    showBatchCheckbox?: boolean;
+    isBatchChecked?: boolean;
+    onBatchToggle?: (checked: boolean) => void;
 }
 
 export function CategoryTabs({
@@ -23,7 +27,10 @@ export function CategoryTabs({
     searchQuery,
     onSearchChange,
     onRefresh,
-    isRefreshing
+    isRefreshing,
+    showBatchCheckbox,
+    isBatchChecked,
+    onBatchToggle
 }: CategoryTabsProps) {
     return (
         <div className="border-b border-border bg-card flex-shrink-0">
@@ -56,6 +63,22 @@ export function CategoryTabs({
 
                 {/* Right Side Controls */}
                 <div className="flex items-center gap-2 flex-shrink-0 border-l border-border pl-4">
+                    {showBatchCheckbox && (
+                        <div className="flex items-center gap-2 mr-2 bg-muted/20 px-3 py-1.5 rounded-lg border border-border/50">
+                            <Checkbox
+                                id="batch-assign-checkbox"
+                                checked={isBatchChecked}
+                                onCheckedChange={(checked) => onBatchToggle?.(checked === true)}
+                                className="h-4 w-4"
+                            />
+                            <label
+                                htmlFor="batch-assign-checkbox"
+                                className="text-[11px] font-bold text-muted-foreground uppercase cursor-pointer select-none whitespace-nowrap"
+                            >
+                                Batch Assign
+                            </label>
+                        </div>
+                    )}
                     <div className="relative">
                         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                         <input

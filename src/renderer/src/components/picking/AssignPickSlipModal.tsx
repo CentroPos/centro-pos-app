@@ -14,7 +14,6 @@ import {
 } from '@renderer/components/ui/table';
 import { ScrollArea } from '@renderer/components/ui/scroll-area';
 import { toast } from 'sonner';
-import { handleError } from '@renderer/lib/error-handler';
 
 
 interface AssignPickSlipModalProps {
@@ -183,8 +182,9 @@ export function AssignPickSlipModal({
 
                 setAvailabilityMap(newMap);
 
-            } catch (e: any) {
-                handleError(e, "Failed to fetch item availability");
+            } catch (e) {
+                console.error("Failed to fetch item availability", e);
+                toast.error("Failed to fetch item availability");
             } finally {
                 setIsLoadingAvailability(false);
             }
@@ -250,13 +250,8 @@ export function AssignPickSlipModal({
         const allPickers = warehouses.flatMap(w => w.pickers);
         const picker = allPickers.find(p => p.id === selectedPicker);
 
-        const payloadItems = localItems.map((item) => ({
-            name: item.id,
-            item_row_name: item.id,
-            inv_sl_no: item.slNo,
+        const payloadItems = localItems.map(item => ({
             serial_no: item.slNo,
-            sl_no: item.slNo,
-            idx: item.slNo,
             item_code: item.itemCode,
             quantity: item.quantity,
             uom: item.uom
@@ -304,7 +299,8 @@ export function AssignPickSlipModal({
                 // Modal stays open so user can click "Update" button to make changes
             }
         } catch (e: any) {
-            handleError(e, "Failed to assign pick slip");
+            console.error("Failed to assign pick slip", e);
+            toast.error(e?.message || "Failed to assign pick slip");
         } finally {
             setIsCreating(false);
         }
@@ -363,7 +359,8 @@ export function AssignPickSlipModal({
                 }, 5000); // Small delay to show success message
             }
         } catch (e: any) {
-            handleError(e, "Failed to update pick slip");
+            console.error("Failed to update pick slip", e);
+            toast.error(e?.message || "Failed to update pick slip");
         } finally {
             setIsCreating(false);
         }
@@ -437,7 +434,8 @@ export function AssignPickSlipModal({
             }
 
         } catch (e: any) {
-            handleError(e, "Failed to cancel pick slip");
+            console.error("Failed to cancel pick slip", e);
+            toast.error(e?.message || "Failed to cancel pick slip");
         } finally {
             setIsCreating(false);
         }
@@ -666,7 +664,7 @@ export function AssignPickSlipModal({
                                 <TableHeader className="sticky top-0 bg-slate-100 z-10 text-xs border-b border-slate-200 shadow-sm">
                                     <TableRow className="hover:bg-transparent">
                                         <TableHead className="w-[50px] font-bold text-center text-slate-700">SL No</TableHead>
-                                        <TableHead className="w-[80px] font-bold text-center text-slate-700">INV SL NO</TableHead>
+                                        {/* <TableHead className="w-[80px] font-bold text-center text-slate-700">INV SL NO</TableHead> */}
                                         <TableHead className="w-[300px] font-bold text-left text-slate-700 pl-4">ITEM</TableHead>
                                         <TableHead className="w-[120px] font-bold text-center text-slate-700">CATEGORY</TableHead>
                                         <TableHead className="w-[80px] font-bold text-center text-slate-700">UOM</TableHead>
@@ -685,7 +683,7 @@ export function AssignPickSlipModal({
                                         return (
                                             <TableRow key={item.id} className={cn("text-xs transition-colors border-b last:border-0", !hasStock ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-muted/50')}>
                                                 <TableCell className="text-center text-muted-foreground font-medium">{index + 1}</TableCell>
-                                                <TableCell className="text-center font-medium">{item.slNo || '-'}</TableCell>
+                                                {/* <TableCell className="text-center font-medium">{item.slNo || '-'}</TableCell> */}
                                                 <TableCell className="py-2" title={item.itemName}>
                                                     <div className="flex flex-col gap-0.5">
                                                         <span className="font-semibold text-foreground text-xs">{item.itemName}</span>

@@ -12,12 +12,14 @@ import { Button } from '@renderer/components/ui/button';
 import { Plus, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePickingStore } from '@renderer/store/usePickingStore';
+import { usePosProfile } from '@renderer/hooks/useProfile';
 
 interface LocalTabState {
     selectedItems: Set<string>;
     activeFilter: 'all' | 'unassigned' | 'assigned';
     activeCategory: string;
     searchQuery: string;
+    isBatchChecked: boolean;
 }
 
 const DynamicPickupInterface: React.FC = () => {
@@ -32,6 +34,10 @@ const DynamicPickupInterface: React.FC = () => {
         setActiveTab,
         fetchGeneralInfo,
     } = usePickingStore();
+
+    const { data: posProfile } = usePosProfile();
+    const customBatchSize = posProfile?.custom_batch_size || 14;
+    const showBatchToggle = posProfile?.custom_enable_batch_picking_assignment === 1;
 
 
 
@@ -54,15 +60,25 @@ const DynamicPickupInterface: React.FC = () => {
             selectedItems: new Set(),
             activeFilter: 'all',
             activeCategory: 'All Items',
-            searchQuery: ''
+            searchQuery: '',
+            isBatchChecked: false // Always default to false as per request "if the checkbox is checked then only the batchwise selction needed"
         };
     };
 
     const updateLocalTabState = (invoiceId: string, updates: Partial<LocalTabState>) => {
-        setTabStates(prev => ({
-            ...prev,
-            [invoiceId]: { ...getTabState(invoiceId), ...updates }
-        }));
+        setTabStates(prev => {
+            const current = prev[invoiceId] || {
+                selectedItems: new Set(),
+                activeFilter: 'all',
+                activeCategory: 'All Items',
+                searchQuery: '',
+                isBatchChecked: false
+            };
+            return {
+                ...prev,
+                [invoiceId]: { ...current, ...updates }
+            };
+        });
     };
 
     // Derived State
@@ -248,6 +264,15 @@ const DynamicPickupInterface: React.FC = () => {
                 isWarehouseAssigned: warehouseAssigned
             });
 
+            // Auto-select batch if enabled for this tab
+            const currentState = getTabState(invoice.id);
+            if (currentState.isBatchChecked) {
+                const unassignedItems = mappedItems.filter(item => !item.isAssigned);
+                const batchItems = unassignedItems.slice(0, customBatchSize);
+                const newSelectedItems = new Set<string>(batchItems.map(item => item.id));
+                updateLocalTabState(invoice.id, { selectedItems: newSelectedItems });
+            }
+
         } catch (e) {
             console.error("Failed to fetch invoice details", e);
             toast.error("Failed to load invoice details");
@@ -383,6 +408,22 @@ const DynamicPickupInterface: React.FC = () => {
             unassignedFilteredItems.forEach((item) => newSelectedItems.add(item.id));
         }
         updateLocalTabState(activeTab.invoice.id, { selectedItems: newSelectedItems });
+    };
+
+    const handleBatchToggle = (checked: boolean) => {
+        if (!activeTab) return;
+
+        const updates: Partial<LocalTabState> = { isBatchChecked: checked };
+
+        if (checked) {
+            const unassignedItems = activeTab.items.filter(item => !item.isAssigned);
+            const batchItems = unassignedItems.slice(0, customBatchSize);
+            updates.selectedItems = new Set<string>(batchItems.map(item => item.id));
+        } else {
+            updates.selectedItems = new Set();
+        }
+
+        updateLocalTabState(activeTab.invoice.id, updates);
     };
 
     const handleOpenAssignModal = () => {
@@ -603,6 +644,9 @@ const DynamicPickupInterface: React.FC = () => {
                                 onSearchChange={(query) => updateLocalTabState(activeTab.invoice.id, { searchQuery: query })}
                                 onRefresh={handleRefresh}
                                 isRefreshing={isRefreshing}
+                                showBatchCheckbox={showBatchToggle}
+                                isBatchChecked={currentState?.isBatchChecked || false}
+                                onBatchToggle={handleBatchToggle}
                             />
 
                             <div className="flex-1 overflow-auto min-h-0">
@@ -688,10 +732,16 @@ const DynamicPickupInterface: React.FC = () => {
                     if (activeTab) {
                         fetchInvoiceDetails(activeTab.invoice);
                         setRightSidebarTab('details');
+
+                        // Note: fetchInvoiceDetails will handle the auto-selection of the next batch 
+                        // because it calls the auto-select logic after data is loaded and store updated.
                     }
                     if (!editingPickSlip && activeTab) {
-                        // Clear selection if it was a new assignment
-                        updateLocalTabState(activeTab.invoice.id, { selectedItems: new Set() });
+                        const currentState = getTabState(activeTab.invoice.id);
+                        if (!currentState.isBatchChecked) {
+                            // Only clear selection manually if batch is NOT checked
+                            updateLocalTabState(activeTab.invoice.id, { selectedItems: new Set() });
+                        }
                     }
                 }}
             />
