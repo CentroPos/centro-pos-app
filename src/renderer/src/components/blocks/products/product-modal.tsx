@@ -1,10 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react'
-import { useForm } from 'react-hook-form'
-import { yupResolver } from '@hookform/resolvers/yup'
-import * as Yup from 'yup'
-import type { SubmitHandler } from 'react-hook-form'
-import { Search, Plus, ArrowLeft, Wand2, Package } from 'lucide-react'
-import { toast } from 'sonner'
+import { Search, Plus, Package } from 'lucide-react'
 
 import {
   Dialog,
@@ -15,31 +10,11 @@ import {
 } from '@renderer/components/ui/dialog'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
-import { Textarea } from '@renderer/components/ui/textarea'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@renderer/components/ui/select'
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage
-} from '@renderer/components/ui/form'
-import { ScrollArea } from '@renderer/components/ui/scroll-area'
 import { Badge } from '@renderer/components/ui/badge'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
-import { Separator } from '@renderer/components/ui/separator'
 
 // API and Hooks
-import { useMutationQuery } from '@renderer/hooks/react-query/useReactQuery'
-import { API_Endpoints } from '@renderer/config/endpoints'
-import { ControlledTextField } from '@renderer/components/form/controlled-text-field'
+import ItemCreationWizard from './item-creation-wizard'
 
 // Types
 interface Product {
@@ -57,42 +32,14 @@ interface ProductSearchModalProps {
   selectedPriceList?: string
 }
 
-// Validation schemas
-const productSchema = Yup.object().shape({
-  item_code: Yup.string().required('Item code is required'),
-  item_name: Yup.string().required('Item name is required'),
-  standard_rate: Yup.number().required('Standard rate is required').min(0, 'Rate must be positive'),
-  description: Yup.string().optional(),
-  stock_uom: Yup.string().required('UOM is required'),
-  item_group: Yup.string().optional(),
-  brand: Yup.string().optional(),
-  barcode: Yup.string().optional(),
-  opening_stock: Yup.number().optional().min(0, 'Stock must be positive'),
-  min_order_qty: Yup.number().optional().min(0, 'Minimum quantity must be positive'),
-  max_order_qty: Yup.number().optional().min(0, 'Maximum quantity must be positive')
-}) as Yup.ObjectSchema<ProductFormData>
-
-type ProductFormData = {
-  item_code: string
-  item_name: string
-  standard_rate: number
-  description?: string
-  stock_uom: string
-  item_group?: string
-  brand?: string
-  barcode?: string
-  opening_stock?: number
-  min_order_qty?: number
-  max_order_qty?: number
-}
 
 // Product Search Component
 const ProductSearch: React.FC<{
   onSelect: (product: Product) => void
-  onCreateNew: () => void
+  onOpenWizard: () => void
   selectedPriceList?: string
   isOpen?: boolean
-}> = ({ onSelect, onCreateNew, selectedPriceList = 'Standard Selling', isOpen = true }) => {
+}> = ({ onSelect, onOpenWizard, selectedPriceList = 'Standard Selling', isOpen = true }) => {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(-1)
   const { profile } = usePOSProfileStore()
@@ -184,6 +131,13 @@ const ProductSearch: React.FC<{
   // Handle keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent) => {
     switch (e.key) {
+      case 'N':
+      case 'n':
+        if (e.shiftKey) {
+          e.preventDefault()
+          onOpenWizard()
+        }
+        break
       case 'ArrowDown':
         e.preventDefault()
         if (selectedIndex === -1) {
@@ -247,8 +201,6 @@ const ProductSearch: React.FC<{
     }
   }
 
-  const allowAddNew = Boolean((profile as any)?.custom_allow_adding_new_products === 1)
-
   return (
     <div className="space-y-4">
       {/* Search Input */}
@@ -262,16 +214,20 @@ const ProductSearch: React.FC<{
           className="pl-10 pr-28"
           autoFocus
         />
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onCreateNew}
-          className="absolute right-2 top-1/2 transform -translate-y-1/2 h-7"
-          style={{ display: allowAddNew ? undefined : 'none' }}
-        >
-          <Plus className="h-3 w-3 mr-1" />
-          New
-        </Button>
+        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onOpenWizard}
+            className="h-8 gap-2"
+          >
+            <div className="flex items-center">
+              <Plus className="h-3.5 w-3.5 mr-1 text-slate-600" />
+              New
+            </div>
+            <span className="text-xs bg-gray-200 px-1 rounded text-muted-foreground">Shift+N</span>
+          </Button>
+        </div>
       </div>
 
       {/* Search Results */}
@@ -411,230 +367,6 @@ const ProductSearch: React.FC<{
   )
 }
 
-// Product Create Component
-const ProductCreate: React.FC<{
-  onBack: () => void
-  onSuccess: (product: Product) => void
-}> = ({ onBack, onSuccess }) => {
-  const form = useForm<ProductFormData>({
-    resolver: yupResolver(productSchema),
-    defaultValues: {
-      item_code: '',
-      item_name: '',
-      description: '',
-      standard_rate: 0,
-      stock_uom: 'Nos',
-      item_group: 'Products',
-      brand: '',
-      barcode: '',
-      opening_stock: 0,
-      min_order_qty: 0,
-      max_order_qty: 0
-    }
-  })
-
-  const { mutate: createProduct, isPending } = useMutationQuery({
-    endPoint: API_Endpoints.PRODUCTS,
-    method: 'POST',
-    options: {
-      onSuccess: (response: any) => {
-        toast.success('Product created successfully!')
-        onSuccess(response.data)
-        form.reset()
-      },
-      onError: (error) => {
-        console.error('Product creation failed:', error)
-      }
-    }
-  })
-
-  const generateItemCode = () => {
-    const timestamp = Date.now().toString().slice(-6)
-    const random = Math.random().toString(36).substring(2, 5).toUpperCase()
-    return `ITEM-${timestamp}-${random}`
-  }
-
-  const onSubmit: SubmitHandler<ProductFormData> = (data) => {
-    const productData = {
-      doctype: 'Item',
-      item_code: data.item_code,
-      item_name: data.item_name,
-      description: data.description,
-      item_group: data.item_group || 'Products',
-      stock_uom: data.stock_uom,
-      standard_rate: data.standard_rate,
-      is_stock_item: 1,
-      include_item_in_manufacturing: 0,
-      is_sales_item: 1,
-      is_purchase_item: 1,
-      ...(data.brand && { brand: data.brand }),
-      ...(data.barcode && { barcode: data.barcode }),
-      ...(data.opening_stock && { opening_stock: data.opening_stock }),
-      ...(data.min_order_qty && { min_order_qty: data.min_order_qty }),
-      ...(data.max_order_qty && { max_order_qty: data.max_order_qty })
-    }
-
-    createProduct({
-      data: productData,
-      params: {}
-    })
-  }
-
-  return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-        <ScrollArea className="h-[400px] pr-4">
-          <div className="space-y-4">
-            {/* Basic Information */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 pb-2">
-                <Package className="h-4 w-4" />
-                <h3 className="text-sm font-semibold">Basic Information</h3>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <ControlledTextField
-                    name="item_code"
-                    label="Item Code"
-                    control={form.control}
-                    required
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => form.setValue('item_code', generateItemCode())}
-                    className="w-full"
-                  >
-                    <Wand2 className="h-3 w-3 mr-1" />
-                    Generate Code
-                  </Button>
-                </div>
-
-                <FormField
-                  control={form.control}
-                  name="stock_uom"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Unit of Measure *</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select UOM" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="Nos">Nos</SelectItem>
-                          <SelectItem value="Each">Each</SelectItem>
-                          <SelectItem value="Box">Box</SelectItem>
-                          <SelectItem value="Kg">Kg</SelectItem>
-                          <SelectItem value="Ltr">Ltr</SelectItem>
-                          <SelectItem value="Meter">Meter</SelectItem>
-                          <SelectItem value="Piece">Piece</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <ControlledTextField
-                name="item_name"
-                label="Item Name"
-                control={form.control}
-                required
-              />
-
-              <FormField
-                control={form.control}
-                name="description"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Description</FormLabel>
-                    <FormControl>
-                      <Textarea
-                        placeholder="Product description"
-                        className="resize-none"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <Separator />
-
-            {/* Pricing & Category */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold">Pricing & Category</h3>
-
-              <div className="grid grid-cols-2 gap-4">
-                <ControlledTextField
-                  name="standard_rate"
-                  label="Standard Rate"
-                  type="number"
-                  control={form.control}
-                  required
-                />
-
-                <ControlledTextField name="item_group" label="Item Group" control={form.control} />
-              </div>
-
-              <ControlledTextField name="brand" label="Brand" control={form.control} />
-            </div>
-
-            <Separator />
-
-            {/* Inventory */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold">Inventory</h3>
-
-              <div className="grid grid-cols-3 gap-4">
-                <ControlledTextField
-                  name="opening_stock"
-                  label="Opening Stock"
-                  type="number"
-                  control={form.control}
-                />
-
-                <ControlledTextField
-                  name="min_order_qty"
-                  label="Min Order Qty"
-                  type="number"
-                  control={form.control}
-                />
-
-                <ControlledTextField
-                  name="max_order_qty"
-                  label="Max Order Qty"
-                  type="number"
-                  control={form.control}
-                />
-              </div>
-
-              <ControlledTextField name="barcode" label="Barcode" control={form.control} />
-            </div>
-          </div>
-        </ScrollArea>
-
-        <DialogFooter className="gap-2">
-          <Button type="button" variant="outline" onClick={onBack}>
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Back
-          </Button>
-          <Button type="submit" disabled={isPending}>
-            {isPending ? 'Creating...' : 'Create Product'}
-          </Button>
-        </DialogFooter>
-      </form>
-    </Form>
-  )
-}
-
 // Main Modal Component
 const ProductSearchModal: React.FC<ProductSearchModalProps> = ({
   open,
@@ -642,10 +374,9 @@ const ProductSearchModal: React.FC<ProductSearchModalProps> = ({
   onSelect,
   selectedPriceList
 }) => {
-  const [view, setView] = useState<'search' | 'create'>('search')
+  const [isWizardOpen, setIsWizardOpen] = useState(false)
 
   const handleClose = () => {
-    setView('search')
     onOpenChange(false)
   }
 
@@ -654,38 +385,53 @@ const ProductSearchModal: React.FC<ProductSearchModalProps> = ({
     handleClose()
   }
 
-  const handleProductCreated = (product: Product) => {
-    onSelect(product)
-    handleClose()
-  }
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] bg-white">
+      <DialogContent
+        className="max-w-2xl max-h-[90vh] bg-white"
+        onKeyDown={(e) => {
+          if (e.shiftKey && (e.key === 'N' || e.key === 'n')) {
+            e.preventDefault()
+            setIsWizardOpen(true)
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package className="h-5 w-5" />
-            {view === 'search' ? 'Search Products' : 'Create New Product'}
+            Search Products
           </DialogTitle>
         </DialogHeader>
 
-        {view === 'search' ? (
-          <>
-            <ProductSearch
-              onSelect={handleProductSelect}
-              onCreateNew={() => setView('create')}
-              selectedPriceList={selectedPriceList}
-              isOpen={open}
-            />
-            <DialogFooter>
-              <Button variant="outline" onClick={handleClose}>
-                Cancel
-              </Button>
-            </DialogFooter>
-          </>
-        ) : (
-          <ProductCreate onBack={() => setView('search')} onSuccess={handleProductCreated} />
-        )}
+        <ProductSearch
+          onSelect={handleProductSelect}
+          onOpenWizard={() => setIsWizardOpen(true)}
+          selectedPriceList={selectedPriceList}
+          isOpen={open}
+        />
+        <DialogFooter>
+          <Button variant="outline" onClick={handleClose}>
+            Cancel
+          </Button>
+        </DialogFooter>
+
+        <ItemCreationWizard
+          open={isWizardOpen}
+          onOpenChange={setIsWizardOpen}
+          onSuccess={(item) => {
+            if (item) {
+              onSelect({
+                name: item.item_code || item.name,
+                item_name: item.item_name,
+                item_code: item.item_code || item.name,
+                standard_rate: item.standard_rate || 0,
+                uom: item.stock_uom,
+                quantity: 1,
+                discount_percentage: 0
+              } as any)
+            }
+          }}
+        />
       </DialogContent>
     </Dialog>
   )

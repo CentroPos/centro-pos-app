@@ -12,7 +12,7 @@ interface MainLayoutProps {
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     const { pathname } = useLocation()
-    const { currentUserPrivileges } = usePOSProfileStore()
+    const { currentUserPrivileges, profile } = usePOSProfileStore()
 
     const tabs = [
         {
@@ -48,6 +48,12 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         if (!currentUserPrivileges) return true
         if (t.id === 'sales') return currentUserPrivileges.sales
         if (t.id === 'purchase') return currentUserPrivileges.purchase
+
+        // Hide picking and picker_feedback if retail mode is enabled
+        if (profile?.custom_enable_retail_mode === 1) {
+            if (t.id === 'picking' || t.id === 'picker_feedback') return false
+        }
+
         return true
     })
 

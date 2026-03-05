@@ -1054,8 +1054,6 @@ const ActionButtons: React.FC<Props> = ({
                 if (allErrors.length > 0) {
                   onInsufficientStockErrors?.(allErrors)
                 }
-                // Show server messages in toast popup
-                toast.error("Not enough stock available")
                 return
               }
             } catch (parseError) {
@@ -1070,7 +1068,7 @@ const ActionButtons: React.FC<Props> = ({
 
           // Handle server error messages in toast popup (only if present)
           if (response?.data?._server_messages) {
-            toast.error('Not enough stock available')
+            handleError(response.data._server_messages)
             return
           }
         }
@@ -1194,8 +1192,6 @@ const ActionButtons: React.FC<Props> = ({
                 if (allErrors.length > 0) {
                   onInsufficientStockErrors?.(allErrors)
                 }
-                // Show server messages in toast popup
-                toast.error("Not enough stock available")
                 return
               }
             } catch (parseError) {
@@ -1210,7 +1206,7 @@ const ActionButtons: React.FC<Props> = ({
 
           // Handle server error messages in toast popup (only if present)
           if (response?.data?._server_messages) {
-            toast.error('Not enough stock available')
+            handleError(response.data._server_messages)
             return
           }
         }
@@ -1875,7 +1871,11 @@ const ActionButtons: React.FC<Props> = ({
         console.log('❌ Response:', response)
 
         // Handle server error messages
-        toast.error('Not enough stock available')
+        if (response?.data?._server_messages) {
+          handleError(response.data._server_messages)
+        } else {
+          toast.error('Failed to confirm order. Please try again.')
+        }
         return
       }
     } catch (error) {
@@ -2055,6 +2055,16 @@ const ActionButtons: React.FC<Props> = ({
             }
           }
         }
+      }
+
+      // Validation: Ensure total payment does not exceed order amount
+      const totalPayments = payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0)
+      const orderAmt = parseFloat(orderAmount || '0') || 0
+
+      // We allow small rounding differences (e.g. 0.01) if necessary, but generally should be exact or less
+      if (totalPayments > orderAmt + 0.01) {
+        toast.error(`Total payment amount (${totalPayments.toFixed(2)}) cannot exceed order amount (${orderAmt.toFixed(2)})`)
+        return
       }
 
       // Call order confirmation API with payments from dialog

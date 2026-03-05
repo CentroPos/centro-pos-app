@@ -170,9 +170,8 @@ export async function sendRequest(
     // Handle form data
     if (data) {
       if (isFormData) {
-        requestConfig.data = jsonToFormData(data)
+        requestConfig.data = data instanceof FormData ? data : jsonToFormData(data)
         // Remove Content-Type to let browser set multipart boundary
-
         if (requestConfig.headers) {
           delete requestConfig.headers['Content-Type']
         }

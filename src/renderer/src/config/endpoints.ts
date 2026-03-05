@@ -21,6 +21,12 @@ export enum API_Endpoints {
   PRODUCT_CUSTOMER_HISTORY = 'method/centro_pos_apis.api.product.get_product_customer_history',
   PRODUCT_SALES_HISTORY = 'method/centro_pos_apis.api.product.get_product_sales_history',
   PRODUCT_PURCHASE_HISTORY = 'method/centro_pos_apis.api.product.get_product_purchase_history',
+  ITEM_CREATE = 'method/centro_pos_apis.api.product.create_item',
+  ITEM_DETAILS = 'method/centro_pos_apis.api.product.get_item_details',
+  ITEM_EDIT = 'method/centro_pos_apis.api.product.edit_item',
+  ITEM_GROUP_LIST = 'method/centro_pos_apis.api.product.get_item_groups',
+  BRAND_LIST = 'method/centro_pos_apis.api.product.get_brands',
+  UOM_LIST = 'method/centro_pos_apis.api.product.get_uoms',
 
   // Profile
   PROFILE_DETAILS = 'method/centro_pos_apis.api.profile.profile_details',

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react'
-import { RefreshCcw } from 'lucide-react'
+import { RefreshCcw, Pencil } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@renderer/components/ui/dialog'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
@@ -14,6 +14,7 @@ import PaymentTab from '../payment/payment-tab'
 import MultiWarehousePopup from '../common/multi-warehouse-popup'
 import AlternateProducts from './alternate-products'
 import ItemOffers from './item-offers'
+import ItemCreationWizard from '../products/item-creation-wizard'
 
 // A right-side panel for the POS screen, adapted from pos.html
 // Contains tabs for Product, Customer, Prints, Payments, Orders
@@ -834,6 +835,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const { profile } = usePOSProfileStore()
   const hideCostAndMargin = profile?.custom_hide_cost_and_margin_info === 1
   const showPurchaseHistory = profile?.custom_show_purchase_history === 1
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
 
   // Tab configuration - filter based on profile setting
   const productTabs = [
@@ -3073,14 +3075,24 @@ const RightPanel: React.FC<RightPanelProps> = ({
                   <div className="space-y-2 ml-4 flex-1">
                     <div className="flex items-center justify-between">
                       <div className="font-bold text-lg text-gray-500">{productData.item_code}</div>
-                      <button
-                        type="button"
-                        onClick={() => triggerTabRefresh('product')}
-                        className="inline-flex items-center justify-center rounded-full p-2 text-gray-500 hover:text-black hover:bg-gray-100 transition-colors"
-                        title="Refresh product data"
-                      >
-                        <RefreshCcw className="h-4 w-4" />
-                      </button>
+                      <div className="flex items-center">
+                        <button
+                          type="button"
+                          onClick={() => triggerTabRefresh('product')}
+                          className="inline-flex items-center justify-center rounded-full p-2 text-gray-500 hover:text-black hover:bg-gray-100 transition-colors"
+                          title="Refresh product data"
+                        >
+                          <RefreshCcw className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsEditModalOpen(true)}
+                          className="inline-flex items-center justify-center rounded-full p-2 text-gray-500 hover:text-black hover:bg-gray-100 transition-colors"
+                          title="Edit product"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
                     <div className="font-semibold text-sm text-gray-800">{productData.item_name}</div>
                     {productArabicName && (
@@ -3806,6 +3818,16 @@ const RightPanel: React.FC<RightPanelProps> = ({
               </div>
             </>
           )}
+
+          <ItemCreationWizard
+            open={isEditModalOpen}
+            onOpenChange={setIsEditModalOpen}
+            onSuccess={() => {
+              setIsEditModalOpen(false)
+              triggerTabRefresh('product')
+            }}
+            editItemCode={selectedItemId as string}
+          />
         </div>
       )}
 

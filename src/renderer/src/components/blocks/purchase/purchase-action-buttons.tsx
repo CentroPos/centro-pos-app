@@ -593,7 +593,7 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
   }
 
   const handleConfirmPayClick = () => {
-    // Validate payments
+    // Validate payments: Ensure all non-cash modes have reference and date
     const invalidPayment = payments.find(p => {
       const amount = parseFloat(p.amount) || 0
       if (amount <= 0) return false
@@ -604,6 +604,17 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
     if (invalidPayment) {
       setShowValidationErrors(true)
       toast.error('Please fill in reference numbers and dates for non-cash payments.')
+      return
+    }
+
+    // Validation: Ensure total payment does not exceed order amount
+    const totalPayments = payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0)
+    // For purchase, we might use orderAmount or amountDue depending on the context
+    // But usually for "Confirm and Pay", we compare against the total order amount
+    const orderAmt = parseFloat(orderAmount?.replace(/[^0-9.-]+/g, "") || '0') || 0
+
+    if (totalPayments > orderAmt + 0.01) {
+      toast.error(`Total payment amount (${totalPayments.toFixed(2)}) cannot exceed order amount (${orderAmt.toFixed(2)})`)
       return
     }
 

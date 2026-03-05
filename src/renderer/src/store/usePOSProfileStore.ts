@@ -22,6 +22,7 @@ interface POSProfile {
   warehouse?: string
   custom_hide_cost_and_margin_info?: number
   custom_show_purchase_history?: number
+  custom_enable_retail_mode?: number
   taxes_and_charges?: string
   // Purchase-specific fields
   custom_buying_price_list?: string

@@ -7,10 +7,11 @@ type ControlledTextFieldProps = {
   control: Control<any, any>
   label?: string
   description?: string
+  hideErrorMessage?: boolean
 } & InputProps
 
 const ControlledTextField = (props: ControlledTextFieldProps) => {
-  const { name, control, label, description, required, ...rest } = props
+  const { name, control, label, description, required, hideErrorMessage, ...rest } = props
   return (
     <FormField
       name={name}
@@ -23,11 +24,17 @@ const ControlledTextField = (props: ControlledTextFieldProps) => {
             {Boolean(label) && (
               <FormLabel>
                 {label}
-                {required && <span className="text-red-500">*</span>}
+                {required && <span className="text-destructive ml-1">*</span>}
               </FormLabel>
             )}
             <FormControl>
-              <CustomInput {...rest} {...field} error={Boolean(error)} errorMessage={body} />
+              <CustomInput
+                {...rest}
+                label={undefined}
+                {...field}
+                error={Boolean(error)}
+                errorMessage={hideErrorMessage ? undefined : body}
+              />
             </FormControl>
             {Boolean(description) && <FormDescription>{description}</FormDescription>}
           </FormItem>

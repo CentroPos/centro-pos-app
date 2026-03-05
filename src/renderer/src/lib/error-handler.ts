@@ -213,12 +213,12 @@ function makeErrorUserFriendly(message: string): string {
   }
 
   // Generic validation error often used for stock
-  if (message.includes('Item validation failed.')) {
+  if (message.toLowerCase().includes('item validation failed') && (message.toLowerCase().includes('stock') || message.toLowerCase().includes('available'))) {
     return 'Not enough stock available'
   }
 
   // Stock unavailable error
-  if (message.includes('Global Stock Unavailable') || message.includes('Insufficient stock')) {
+  if (message.toLowerCase().includes('global stock unavailable') || message.toLowerCase().includes('insufficient stock')) {
     return 'Not enough stock available for this item.'
   }
   
