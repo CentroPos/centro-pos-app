@@ -14,4 +14,6 @@ build-publish-secure.ps1
 GITHUB_ACTIONS_PUBLISH_SETUP.md
 
 pnpm-lock.yaml
-.agent
+.agentdist.zip
+dist/
+build/
