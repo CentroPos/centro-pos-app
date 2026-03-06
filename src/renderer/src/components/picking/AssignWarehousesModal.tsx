@@ -8,6 +8,7 @@ import { ScrollArea } from '@renderer/components/ui/scroll-area';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@renderer/components/ui/table';
 
 import { toast } from 'sonner';
+import { TransferGraph } from './TransferGraph';
 
 interface AssignWarehousesModalProps {
     isOpen: boolean;
@@ -219,6 +220,13 @@ export function AssignWarehousesModal({
                                     {warehouse.name}
                                 </Button>
                             ))}
+                        </div>
+
+                        <div className="mt-4">
+                            <TransferGraph
+                                operations={operationsList}
+                                deliveryWarehouseId={selectedDeliveryWarehouse}
+                            />
                         </div>
                     </div>
                 </div>

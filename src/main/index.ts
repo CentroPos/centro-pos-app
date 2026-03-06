@@ -468,7 +468,7 @@ function setupAuthHandlers(): void {
         console.log(`🖨️ Window [ID: ${windowId}] closed and removed from Set. Remaining: ${printWindows.size}`)
       })
 
-      printWindow.on('close', (e) => {
+      printWindow.on('close', () => {
         console.log(`🖨️ Window [ID: ${windowId}] received 'close' event`)
       })
 

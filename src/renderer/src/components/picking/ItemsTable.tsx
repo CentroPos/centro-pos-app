@@ -85,7 +85,7 @@ export function ItemsTable({
                     </tr>
                 </thead>
                 <tbody>
-                    {sortedItems.map((item) => (
+                    {sortedItems.map((item, index) => (
                         <tr
                             key={item.id}
                             className={`border-b border-border transition-colors ${selectedItems.has(item.id)
@@ -103,7 +103,7 @@ export function ItemsTable({
                                     className="h-4 w-4"
                                 />
                             </td>
-                            <td className="p-3 font-medium text-muted-foreground text-sm text-center">{item.slNo}</td>
+                            <td className="p-3 font-medium text-muted-foreground text-sm text-center">{index + 1}</td>
                             <td className="p-3">
                                 <div className="flex items-center gap-2">
                                     <div className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center">

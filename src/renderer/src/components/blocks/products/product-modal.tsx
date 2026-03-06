@@ -15,6 +15,7 @@ import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 
 // API and Hooks
 import ItemCreationWizard from './item-creation-wizard'
+import { useActiveScope } from '@renderer/hooks/useActiveScope'
 
 // Types
 interface Product {
@@ -56,15 +57,18 @@ const ProductSearch: React.FC<{
   const [hasMore, setHasMore] = useState(true)
   const latestRequestId = useRef(0)
 
+  // Activate hotkey scope when this search is open
+  useActiveScope(isOpen ? 'product-search' : 'global')
+
   const fetchProducts = async (term: string, pageToLoad = 1) => {
     const requestId = ++latestRequestId.current
     const isAppend = pageToLoad > 1
     if (isAppend) setIsFetchingMore(true)
     else setIsLoading(true)
     try {
-      const limit_start = 1
+      const limit_start = pageToLoad
       const limit_page_length = perPage
-      console.log('[ProductModal] Fetching', { term, price_list: selectedPriceList, limit_start, limit_page_length })
+      console.log('[ProductModal] Fetching', { term, price_list: selectedPriceList, limit_start, limit_page_length, isAppend })
       const res = await window.electronAPI?.proxy?.request({
         url: '/api/method/centro_pos_apis.api.product.product_list',
         params: {
@@ -77,10 +81,11 @@ const ProductSearch: React.FC<{
       console.log('SHD ==> [ProductModal]', res)
       if (requestId !== latestRequestId.current) return
       const rows = Array.isArray(res?.data?.data) ? res.data.data : []
-      console.log('[ProductModal] Received', rows.length, 'rows (cumulative)')
-      setHasMore(false)
+      console.log('[ProductModal] Received', rows.length, 'rows')
+
+      setHasMore(rows.length >= perPage)
       setPage(pageToLoad)
-      setProducts(rows)
+      setProducts((prev) => (isAppend ? [...prev, ...rows] : rows))
     } catch (e) {
       console.error('[ProductModal] Fetch error', e)
     } finally {

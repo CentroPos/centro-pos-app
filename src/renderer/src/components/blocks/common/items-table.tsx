@@ -23,12 +23,13 @@ import {
 
 import React, { useState, useRef, useEffect } from 'react'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
-import { useHotkeys } from 'react-hotkeys-hook'
+import { useScopedHotkeys } from '@renderer/hooks/useScopedHotkeys'
 import MultiWarehousePopup from './multi-warehouse-popup'
 import api from '@renderer/services/api'
 import { API_Endpoints } from '@renderer/config/endpoints'
 import { toast } from 'sonner'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore';
+import { useHotkeys } from 'react-hotkeys-hook'
 
 type Props = {
   selectedItemId?: string
@@ -1080,12 +1081,61 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   }
 
   // Emergency reset hotkey
-  useHotkeys('ctrl+r', () => {
-    console.log('🔄 Emergency reset triggered')
-    resetEditingState()
-  }, { preventDefault: true, enableOnFormTags: true })
+  useScopedHotkeys(
+    'ctrl+r',
+    () => {
+      console.log('🔄 Emergency reset triggered')
+      resetEditingState()
+    },
+    { preventDefault: true, enableOnFormTags: true },
+    [],
+    'global'
+  )
 
-  useHotkeys(
+  // Hotkeys
+  useScopedHotkeys(
+    'shift+tab',
+    (e) => {
+      if (isProductModalOpen || isCustomerModalOpen || isErrorBoxFocused || showWarehousePopup) {
+        console.log('🚫 Shift+Tab blocked - Modal/Popup Open or Error Box Focused')
+        return
+      }
+      e.preventDefault()
+      e.stopPropagation()
+      console.log('⌨️ Shift+Tab pressed')
+
+      const el = document.getElementById('search-products')
+      if (el) {
+        el.focus()
+      } else {
+        const searchInput = document.querySelector('input[placeholder*="Search products"]') as HTMLInputElement
+        if (searchInput) searchInput.focus()
+      }
+    },
+    { enableOnFormTags: true },
+    [],
+    'global'
+  )
+
+  useScopedHotkeys(
+    'F2',
+    (e) => {
+      // Don't trigger F2 to clear errors if a modal is open
+      if (isProductModalOpen || isCustomerModalOpen || showWarehousePopup) return
+
+      if (isErrorBoxFocused) {
+        e.preventDefault()
+        e.stopPropagation()
+        onClearItemError?.(selectedItemId || '')
+      }
+    },
+    { enableOnFormTags: true },
+    [],
+    'global'
+  )
+
+  // Use Space bar to cycle through available UOMs for the selected item if NOT editing
+  useScopedHotkeys(
     'space',
     async (e) => {
       console.log('⌨️ Space key pressed. Active field:', activeField, 'Selected item:', selectedItemId, 'Is editing:', isEditing)
@@ -1224,29 +1274,35 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         console.error('Space-to-cycle UOM failed:', err)
       }
     },
-    { preventDefault: false, enableOnFormTags: false }
+    { preventDefault: false, enableOnFormTags: false },
+    [],
+    'global'
   )
 
   // Emergency reset shortcut (Ctrl+R)
-  useHotkeys(
+  useScopedHotkeys(
     'ctrl+r',
     () => {
       console.log('🆘 Emergency reset triggered')
       resetEditingState()
     },
-    { preventDefault: true, enableOnFormTags: true }
+    { preventDefault: true, enableOnFormTags: true },
+    [],
+    'global'
   )
 
-  useHotkeys(
+  useScopedHotkeys(
     'Escape',
     () => {
       setIsEditing(false)
     },
-    { preventDefault: true }
+    { preventDefault: true },
+    [],
+    'global'
   )
 
   // Ctrl+I key to show product list popup immediately
-  useHotkeys(
+  useScopedHotkeys(
     'ctrl+i',
     async () => {
       // Disable when read-only (confirmed/paid)
@@ -1265,11 +1321,13 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         onAddItemClick()
       }
     },
-    { preventDefault: true, enableOnFormTags: true }
+    { preventDefault: true, enableOnFormTags: true },
+    [],
+    'global'
   )
 
   // Arrow key navigation - only between qty and unit price
-  useHotkeys(
+  useScopedHotkeys(
     'ArrowLeft',
     () => {
       if (isProductModalOpen) return // Disable when product modal is open
@@ -1360,90 +1418,85 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     { preventDefault: true, enableOnFormTags: true }
   )
 
-  useHotkeys(
-    'ArrowUp',
-    () => {
-      if (isProductModalOpen) return // Disable when product modal is open
-      if (isCustomerModalOpen) return // Disable when customer modal is open
-      if (isErrorBoxFocused) return // Disable when error box is focused
-      // Avoid double-handling when container already processed the key
-      if (document.activeElement === tableScrollRef.current || localKeyHandlingRef.current) return
-      if (selectedItemId) {
-        const currentIndex = selectedRowIndex
-        if (currentIndex > 0) {
-          const prevItem = filteredItems[currentIndex - 1]
-          console.log('⬆️ Arrow Up: Moving from', selectedItemId, 'to', prevItem.item_code)
-          selectItem(prevItem.item_code)
-          setSelectedRowIndex(currentIndex - 1)
-          scrollToSelectedItem(prevItem.item_code, currentIndex - 1)
-          if (isEditing && !isReadOnly) {
-            // Keep editing mode but switch to the previous item (only if not read-only)
-            setTimeout(() => {
-              const item = items.find((i) => i.item_code === prevItem.item_code)
-              if (item) {
-                setEditValue(String(item[activeField] ?? ''))
-              }
-            }, 10)
-          } else if (isEditing && isReadOnly) {
-            // Exit editing mode if read-only
-            resetEditingState()
-          }
+  useScopedHotkeys('ArrowUp', (e) => {
+    if (isProductModalOpen) return // Disable when product modal is open
+    if (isCustomerModalOpen) return // Disable when customer modal is open
+    if (isErrorBoxFocused) return // Disable when error box is focused
+    // Avoid double-handling when container already processed the key
+    if (document.activeElement === tableScrollRef.current || localKeyHandlingRef.current) return
+    e.preventDefault()
+    if (selectedItemId) {
+      const currentIndex = selectedRowIndex
+      if (currentIndex > 0) {
+        const prevItem = filteredItems[currentIndex - 1]
+        console.log('⬆️ Arrow Up: Moving from', selectedItemId, 'to', prevItem.item_code)
+        selectItem(prevItem.item_code)
+        setSelectedRowIndex(currentIndex - 1)
+        scrollToSelectedItem(prevItem.item_code, currentIndex - 1)
+        if (isEditing && !isReadOnly) {
+          // Keep editing mode but switch to the previous item (only if not read-only)
+          setTimeout(() => {
+            const item = items.find((i) => i.item_code === prevItem.item_code)
+            if (item) {
+              setEditValue(String(item[activeField] ?? ''))
+            }
+          }, 10)
+        } else if (isEditing && isReadOnly) {
+          // Exit editing mode if read-only
+          resetEditingState()
         }
-      } else if (filteredItems.length > 0) {
-        // No item selected, select the last item
-        console.log('⬆️ Arrow Up: No item selected, selecting last item')
-        selectItem(filteredItems[filteredItems.length - 1].item_code)
-        setSelectedRowIndex(filteredItems.length - 1)
-        scrollToSelectedItem(filteredItems[filteredItems.length - 1].item_code, filteredItems.length - 1)
       }
-    },
-    { preventDefault: true, enableOnFormTags: true }
-  )
+    } else if (filteredItems.length > 0) {
+      // No item selected, select the last item
+      console.log('⬆️ Arrow Up: No item selected, selecting last item')
+      selectItem(filteredItems[filteredItems.length - 1].item_code)
+      setSelectedRowIndex(filteredItems.length - 1)
+      scrollToSelectedItem(filteredItems[filteredItems.length - 1].item_code, filteredItems.length - 1)
+    }
+  }, { preventDefault: true, enableOnFormTags: true }, [], 'global')
 
-  useHotkeys(
-    'ArrowDown',
-    () => {
-      if (isProductModalOpen) return // Disable when product modal is open
-      if (isCustomerModalOpen) return // Disable when customer modal is open
-      if (isErrorBoxFocused) return // Disable when error box is focused
-      if (document.activeElement === tableScrollRef.current || localKeyHandlingRef.current) return
-      if (selectedItemId) {
-        const currentIndex = selectedRowIndex
-        if (currentIndex < filteredItems.length - 1) {
-          const nextItem = filteredItems[currentIndex + 1]
-          console.log('⬇️ Arrow Down: Moving from', selectedItemId, 'to', nextItem.item_code)
-          selectItem(nextItem.item_code)
-          setSelectedRowIndex(currentIndex + 1)
-          scrollToSelectedItem(nextItem.item_code, currentIndex + 1)
-          if (isEditing && !isReadOnly) {
-            // Keep editing mode but switch to the next item (only if not read-only)
-            setTimeout(() => {
-              const item = items.find((i) => i.item_code === nextItem.item_code)
-              if (item) {
-                setEditValue(String(item[activeField] ?? ''))
-              }
-            }, 10)
-          } else if (isEditing && isReadOnly) {
-            // Exit editing mode if read-only
-            resetEditingState()
-          }
+  useScopedHotkeys('ArrowDown', (e) => {
+    if (isProductModalOpen) return // Disable when product modal is open
+    if (isCustomerModalOpen) return // Disable when customer modal is open
+    if (isErrorBoxFocused) return // Disable when error box is focused
+    if (document.activeElement === tableScrollRef.current || localKeyHandlingRef.current) return
+    e.preventDefault()
+    if (selectedItemId) {
+      const currentIndex = selectedRowIndex
+      if (currentIndex < filteredItems.length - 1) {
+        const nextItem = filteredItems[currentIndex + 1]
+        console.log('⬇️ Arrow Down: Moving from', selectedItemId, 'to', nextItem.item_code)
+        selectItem(nextItem.item_code)
+        setSelectedRowIndex(currentIndex + 1)
+        scrollToSelectedItem(nextItem.item_code, currentIndex + 1)
+        if (isEditing && !isReadOnly) {
+          // Keep editing mode but switch to the next item (only if not read-only)
+          setTimeout(() => {
+            const item = items.find((i) => i.item_code === nextItem.item_code)
+            if (item) {
+              setEditValue(String(item[activeField] ?? ''))
+            }
+          }, 10)
+        } else if (isEditing && isReadOnly) {
+          // Exit editing mode if read-only
+          resetEditingState()
         }
-      } else if (filteredItems.length > 0) {
-        // No item selected, select the first item
-        console.log('⬇️ Arrow Down: No item selected, selecting first item')
-        selectItem(filteredItems[0].item_code)
-        setSelectedRowIndex(0)
-        scrollToSelectedItem(filteredItems[0].item_code, 0)
       }
-    },
-    { preventDefault: true, enableOnFormTags: true }
-  )
+    } else if (filteredItems.length > 0) {
+      // No item selected, select the first item
+      console.log('⬇️ Arrow Down: No item selected, selecting first item')
+      selectItem(filteredItems[0].item_code)
+      setSelectedRowIndex(0)
+      scrollToSelectedItem(filteredItems[0].item_code, 0)
+    }
+  }, { preventDefault: true, enableOnFormTags: true }, [], 'global')
 
   // Enter key handler for navigation
-  useHotkeys(
+  useScopedHotkeys(
     'enter',
-    () => {
+    (e) => {
       if (isProductModalOpen) return // Disable when product modal is open
+      e.preventDefault()
       if (selectedItemId && !isEditing) {
         const currentIndex = items.findIndex((i) => i.item_code === selectedItemId)
         if (currentIndex < items.length - 1) {
@@ -1464,7 +1517,9 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         scrollToSelectedItem(items[0].item_code)
       }
     },
-    { preventDefault: true, enableOnFormTags: false }
+    { preventDefault: true, enableOnFormTags: false },
+    [],
+    'global'
   )
 
   // Delete key to trigger the same action as clicking the X (delete) on the selected row

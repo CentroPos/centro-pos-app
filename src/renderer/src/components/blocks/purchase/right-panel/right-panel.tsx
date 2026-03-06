@@ -885,8 +885,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
   selectedCustomer,
   onTabChange,
   activeTab: externalActiveTab,
-  onAddItem,
-  onReplaceItem
+  onAddItem
 }) => {
   const [internalActiveTab, setInternalActiveTab] = useState<
     'product' | 'customer' | 'prints' | 'payments' | 'orders'
@@ -924,10 +923,9 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [isOpeningOrder, setIsOpeningOrder] = useState(false)
 
   // History state for Purchase History and Supplier History tabs
-  const [customerHistory, setCustomerHistory] = useState<any[]>([])
-  const [customerHistoryLoading, setCustomerHistoryLoading] = useState(false)
-  const [customerHistorySearch, setCustomerHistorySearch] = useState('')
-  const customerHistoryScrollRef = React.useRef<HTMLDivElement>(null)
+  const [_customerHistory, setCustomerHistory] = useState<any[]>([])
+  const [_customerHistoryLoading, _setCustomerHistoryLoading] = useState(false)
+  const [customerHistorySearch, _setCustomerHistorySearch] = useState('')
 
   const [purchaseHistory, setPurchaseHistory] = useState<any[]>([])
   const [purchaseHistoryLoading, setPurchaseHistoryLoading] = useState(false)
@@ -1486,7 +1484,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
     if (isFetchingCustomerRef.current) return
     isFetchingCustomerRef.current = true
-    setCustomerHistoryLoading(true)
+    _setCustomerHistoryLoading(true)
     try {
       const apiUrl = '/api/method/centro_pos_apis.api.product.get_product_customer_history'
       const apiParams = {
@@ -1519,7 +1517,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
       console.error('❌ Error loading customer history:', error)
       setCustomerHistory([])
     } finally {
-      setCustomerHistoryLoading(false)
+      _setCustomerHistoryLoading(false)
       isFetchingCustomerRef.current = false
     }
   }
@@ -2054,9 +2052,6 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
   // Use data directly - server handles all filtering via search_term parameter
   // No client-side filtering needed since API already filters results
-  const filteredCustomerHistory = useMemo(() => {
-    return customerHistory
-  }, [customerHistory])
 
 
   const filteredRecentOrders = useMemo(() => {

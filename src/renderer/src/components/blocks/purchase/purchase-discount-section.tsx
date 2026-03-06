@@ -4,7 +4,6 @@ import { Input } from '@renderer/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@renderer/components/ui/dialog'
 import { useMemo, useState, useRef, useEffect } from 'react'
 import { usePurchaseTabStore } from '@renderer/store/usePurchaseTabStore'
-import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 import { useHotkeys } from 'react-hotkeys-hook'
 import BottomErrorBox from '../common/bottom-error-box'
 import SupplierModal from '../supplier/supplier-modal'
@@ -52,10 +51,8 @@ const PurchaseDiscountSection: React.FC<Props> = ({
     getCurrentTabRoundingEnabled,
     getCurrentTabSupplier,
     updateTabSupplier,
-    activeTabId,
-    updateTabOrderData
+    activeTabId
   } = usePurchaseTabStore()
-  const { profile } = usePOSProfileStore()
   const items = getCurrentTabItems()
   const currentTab = getCurrentTab()
   const selectedSupplier = getCurrentTabSupplier()
@@ -99,7 +96,7 @@ const PurchaseDiscountSection: React.FC<Props> = ({
   }, [currentTab?.orderData])
 
   // Check if order is confirmed/paid/read-only
-  const isReadOnly = currentTab?.status === 'confirmed' || 
+  const isReadOnly = currentTab?.status === 'confirmed' ||
     currentTab?.status === 'paid' ||
     (currentTab?.orderData && Number(currentTab.orderData.docstatus) === 1) ||
     (currentTab?.purchaseOrderId && outstandingAmount !== null && Math.abs(outstandingAmount) < 0.01) ||
@@ -457,9 +454,8 @@ const PurchaseDiscountSection: React.FC<Props> = ({
             />
           ) : (
             <div
-              className={`text-base font-semibold text-blue-600 px-1 rounded flex flex-col items-center justify-center ${
-                isReadOnly ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-gray-100'
-              }`}
+              className={`text-base font-semibold text-blue-600 px-1 rounded flex flex-col items-center justify-center ${isReadOnly ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-gray-100'
+                }`}
               onClick={handleGlobalDiscountClick}
               title={isReadOnly ? 'Discount cannot be edited for confirmed orders' : 'Click to edit global discount percentage'}
             >
@@ -476,10 +472,9 @@ const PurchaseDiscountSection: React.FC<Props> = ({
             {currencySymbol} {vat.toLocaleString(undefined, { minimumFractionDigits: 2 })}
           </div>
         </div>
-        <div 
-          className={`text-center rounded p-1 ${
-            isReadOnly ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-gray-50'
-          }`}
+        <div
+          className={`text-center rounded p-1 ${isReadOnly ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-gray-50'
+            }`}
           onClick={() => handleRoundingChange(!isRoundingEnabled)}
           title={isReadOnly ? 'Rounding cannot be changed for confirmed orders' : 'Click to toggle rounding'}
         >

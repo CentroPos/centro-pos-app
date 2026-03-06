@@ -6,7 +6,7 @@ import RightPanel from '../blocks/right-panel/right-panel'
 import Header from '../blocks/common/header'
 import DiscountSection from '../blocks/products/discount-section'
 import ProductSearchModal from '../blocks/products/product-modal'
-import { useHotkeys } from 'react-hotkeys-hook'
+import { useScopedHotkeys } from '@renderer/hooks/useScopedHotkeys'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { usePosProfile } from '@renderer/hooks/useProfile'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
@@ -434,14 +434,14 @@ const POSInterface: React.FC = () => {
   //   }
   // };
 
-  useHotkeys('backspace', () => {
+  useScopedHotkeys('backspace', () => {
     if (selectedItemId) {
       removeItem(selectedItemId);
     }
-  }, { enableOnFormTags: false })
+  }, { enableOnFormTags: false }, [], 'global')
 
   // Ctrl+S for save/update order
-  useHotkeys('ctrl+s', (event) => {
+  useScopedHotkeys('ctrl+s', (event) => {
     event.preventDefault()
     if (!isItemTableEditing && getCurrentTab()?.isEdited) {
       // Trigger save by clicking the save button
@@ -450,27 +450,30 @@ const POSInterface: React.FC = () => {
         saveButton.click()
       }
     }
-  }, { enableOnFormTags: false })
-
-  // Ctrl+N for new order
-  useHotkeys('ctrl+n', (event) => {
-    event.preventDefault()
-    const created = createNewTab()
-    if (created) {
-      // Open customer selection automatically when new order is created
-      setIsCustomerModalOpen(true)
-    }
-  }, { enableOnFormTags: false })
+  }, { enableOnFormTags: false }, [], 'global')
 
   // Ctrl+R for return
-  useHotkeys('ctrl+r', (event) => {
+  useScopedHotkeys('ctrl+r', (event) => {
     event.preventDefault()
     // Trigger return by clicking the return button
     const returnButton = document.querySelector('[data-testid="return-button"]') as HTMLButtonElement
     if (returnButton && !returnButton.disabled) {
       returnButton.click()
     }
-  }, { enableOnFormTags: false })
+  }, { enableOnFormTags: false }, [], 'global')
+
+  // Ctrl+N for new order
+  useScopedHotkeys('ctrl+n', (event) => {
+    event.preventDefault()
+    const created = createNewTab()
+    if (created) {
+      // Open customer selection automatically when new order is created
+      setIsCustomerModalOpen(true)
+    }
+  }, { enableOnFormTags: false }, [], 'global')
+
+  // Ctrl+R for return
+  // We already defined it above, removing duplicate declaration here.
 
   // Arrow keys are handled by the items table component, so we don't need global handlers here
   // Enter key is handled by the items table component, so we don't need a global handler here
@@ -507,8 +510,8 @@ const POSInterface: React.FC = () => {
   }, [])
 
   // Hotkeys
-  useHotkeys('ctrl+shift+p', () => setRightPanelTab('prints'), { enableOnFormTags: true });
-  useHotkeys('ctrl+shift+c', () => setIsCustomerModalOpen(true), { enableOnFormTags: true });
+  useScopedHotkeys('ctrl+shift+p', () => setRightPanelTab('prints'), { enableOnFormTags: true }, [], 'global');
+  useScopedHotkeys('ctrl+shift+c', () => setIsCustomerModalOpen(true), { enableOnFormTags: true }, [], 'global');
 
   return (
     <Fragment>

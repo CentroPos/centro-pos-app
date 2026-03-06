@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { yupResolver } from '@hookform/resolvers/yup'
 import * as Yup from 'yup'
@@ -41,6 +41,8 @@ import { CustomInput } from '@renderer/components/ui/custom-input'
 import { useMutation } from '@tanstack/react-query'
 import { API_Endpoints } from '@renderer/config/endpoints'
 import { ControlledTextField } from '@renderer/components/form/controlled-text-field'
+import { useActiveScope } from '@renderer/hooks/useActiveScope'
+import { useScopedHotkeys } from '@renderer/hooks/useScopedHotkeys'
 
 interface ItemCreationWizardProps {
     open: boolean
@@ -100,6 +102,9 @@ const ItemCreationWizard: React.FC<ItemCreationWizardProps> = ({ open, onOpenCha
     const [previewImage, setPreviewImage] = useState<string | null>(null)
     const [isFetchingItemDetails, setIsFetchingItemDetails] = useState(false)
 
+    // Activate hotkey scope when this wizard is open
+    useActiveScope(open ? 'item-creation-wizard' : 'global')
+
     // Pagination and Search States
     const perPage = 10
     const [groupTerm, setGroupTerm] = useState('')
@@ -127,6 +132,18 @@ const ItemCreationWizard: React.FC<ItemCreationWizardProps> = ({ open, onOpenCha
     const latestUomReq = useRef(0)
     const [activeUomLevel, setActiveUomLevel] = useState<number | null>(null)
 
+    const [groupHighlightedIndex, setGroupHighlightedIndex] = useState(-1)
+    const [brandHighlightedIndex, setBrandHighlightedIndex] = useState(-1)
+    const [uomHighlightedIndex, setUomHighlightedIndex] = useState(-1)
+
+    useEffect(() => {
+        setUomHighlightedIndex(-1)
+    }, [activeUomLevel])
+
+    const groupScrollRef = useRef<HTMLDivElement>(null)
+    const brandScrollRef = useRef<HTMLDivElement>(null)
+    const uomScrollRef = useRef<HTMLDivElement>(null)
+
     const form = useForm<WizardFormData>({
         resolver: yupResolver(wizardSchema) as any,
         defaultValues: {
@@ -147,6 +164,24 @@ const ItemCreationWizard: React.FC<ItemCreationWizardProps> = ({ open, onOpenCha
             level_4_qty: 0
         }
     })
+
+    const l1 = form.watch('level_1_uom')
+    const l2 = form.watch('level_2_uom')
+    const l3 = form.watch('level_3_uom')
+    const l4 = form.watch('level_4_uom')
+    const stockUom = form.watch('stock_uom') || 'Nos'
+
+    const calculatedDefaultUnit = useMemo(() => {
+        if (l4) return l4
+        if (l3) return l3
+        if (l2) return l2
+        if (l1) return l1
+        return stockUom
+    }, [l1, l2, l3, l4, stockUom])
+
+    useEffect(() => {
+        form.setValue('unit', calculatedDefaultUnit)
+    }, [calculatedDefaultUnit, form])
 
     // Fetching Lists using Electron Proxy with Server-Side Search & Pagination
     const fetchItemGroups = async (term: string, pageToLoad = 1, append = false) => {
@@ -351,7 +386,19 @@ const ItemCreationWizard: React.FC<ItemCreationWizardProps> = ({ open, onOpenCha
         setCurrentStep(0)
         form.reset()
         setPreviewImage(null)
+        setGroupHighlightedIndex(-1)
+        setBrandHighlightedIndex(-1)
+        setUomHighlightedIndex(-1)
     }
+
+    useScopedHotkeys('ctrl+enter, command+enter', (e) => {
+        e.preventDefault()
+        if (currentStep < STEPS.length - 1) {
+            handleNext()
+        } else {
+            form.handleSubmit(onSubmit)()
+        }
+    }, {}, [currentStep], 'item-creation-wizard')
 
     const handleNext = async () => {
         const fields = currentStep === 0
@@ -426,6 +473,85 @@ const ItemCreationWizard: React.FC<ItemCreationWizardProps> = ({ open, onOpenCha
         }
     }
 
+    const handleGroupKeyDown = (e: React.KeyboardEvent) => {
+        if (!showGroupSuggestions || groupList.length === 0) return
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault()
+            setGroupHighlightedIndex(prev => (prev < groupList.length - 1 ? prev + 1 : prev))
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault()
+            setGroupHighlightedIndex(prev => (prev > 0 ? prev - 1 : prev))
+        } else if (e.key === 'Enter' && groupHighlightedIndex >= 0) {
+            e.preventDefault()
+            const selected = groupList[groupHighlightedIndex]
+            form.setValue('item_group', selected.name)
+            setGroupTerm('')
+            setShowGroupSuggestions(false)
+            setGroupHighlightedIndex(-1)
+        }
+    }
+
+    const handleBrandKeyDown = (e: React.KeyboardEvent) => {
+        if (!showBrandSuggestions || brandList.length === 0) return
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault()
+            setBrandHighlightedIndex(prev => (prev < brandList.length - 1 ? prev + 1 : prev))
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault()
+            setBrandHighlightedIndex(prev => (prev > 0 ? prev - 1 : prev))
+        } else if (e.key === 'Enter' && brandHighlightedIndex >= 0) {
+            e.preventDefault()
+            const selected = brandList[brandHighlightedIndex]
+            form.setValue('brand_name', selected)
+            setBrandTerm('')
+            setShowBrandSuggestions(false)
+            setBrandHighlightedIndex(-1)
+        }
+    }
+
+    const handleUomKeyDown = (e: React.KeyboardEvent, level: number) => {
+        if (activeUomLevel !== level || uomList.length === 0) return
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault()
+            setUomHighlightedIndex(prev => (prev < uomList.length - 1 ? prev + 1 : prev))
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault()
+            setUomHighlightedIndex(prev => (prev > 0 ? prev - 1 : prev))
+        } else if (e.key === 'Enter' && uomHighlightedIndex >= 0) {
+            e.preventDefault()
+            const selected = uomList[uomHighlightedIndex]
+            const name = typeof selected === 'string' ? selected : selected.name
+            form.setValue(`level_${level}_uom` as any, name)
+            setUomTerm('')
+            setActiveUomLevel(null)
+            setUomHighlightedIndex(-1)
+        }
+    }
+
+    useEffect(() => {
+        if (groupHighlightedIndex >= 0 && groupScrollRef.current) {
+            const el = groupScrollRef.current.children[groupHighlightedIndex] as HTMLElement
+            if (el) el.scrollIntoView({ block: 'nearest' })
+        }
+    }, [groupHighlightedIndex])
+
+    useEffect(() => {
+        if (brandHighlightedIndex >= 0 && brandScrollRef.current) {
+            const el = brandScrollRef.current.children[brandHighlightedIndex] as HTMLElement
+            if (el) el.scrollIntoView({ block: 'nearest' })
+        }
+    }, [brandHighlightedIndex])
+
+    useEffect(() => {
+        if (uomHighlightedIndex >= 0 && uomScrollRef.current) {
+            const el = uomScrollRef.current.children[uomHighlightedIndex] as HTMLElement
+            if (el) el.scrollIntoView({ block: 'nearest' })
+        }
+    }, [uomHighlightedIndex])
+
     const renderStepContent = () => {
         switch (currentStep) {
             case 0:
@@ -455,6 +581,7 @@ const ItemCreationWizard: React.FC<ItemCreationWizardProps> = ({ open, onOpenCha
                                                     onBlur={() => {
                                                         setTimeout(() => setShowGroupSuggestions(false), 200)
                                                     }}
+                                                    onKeyDown={handleGroupKeyDown}
                                                 />
                                             </FormControl>
 
@@ -469,16 +596,21 @@ const ItemCreationWizard: React.FC<ItemCreationWizardProps> = ({ open, onOpenCha
                                                         }
                                                     }}
                                                 >
-                                                    <div className="p-1">
-                                                        {groupList.map((group) => (
+                                                    <div className="p-1" ref={groupScrollRef}>
+                                                        {groupList.map((group, index) => (
                                                             <div
                                                                 key={group.name}
-                                                                className="px-3 py-2 text-sm hover:bg-slate-100 cursor-pointer transition-colors rounded-sm flex items-center justify-between group"
+                                                                className={cn(
+                                                                    "px-3 py-2 text-sm hover:bg-slate-100 cursor-pointer transition-colors rounded-sm flex items-center justify-between group",
+                                                                    groupHighlightedIndex === index && "bg-slate-100"
+                                                                )}
                                                                 onClick={() => {
                                                                     field.onChange(group.name)
                                                                     setGroupTerm('')
                                                                     setShowGroupSuggestions(false)
+                                                                    setGroupHighlightedIndex(-1)
                                                                 }}
+                                                                onMouseEnter={() => setGroupHighlightedIndex(index)}
                                                             >
                                                                 <span>{group.name}</span>
                                                                 <ChevronRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -520,6 +652,7 @@ const ItemCreationWizard: React.FC<ItemCreationWizardProps> = ({ open, onOpenCha
                                                     onBlur={() => {
                                                         setTimeout(() => setShowBrandSuggestions(false), 200)
                                                     }}
+                                                    onKeyDown={handleBrandKeyDown}
                                                 />
                                             </FormControl>
 
@@ -534,16 +667,21 @@ const ItemCreationWizard: React.FC<ItemCreationWizardProps> = ({ open, onOpenCha
                                                         }
                                                     }}
                                                 >
-                                                    <div className="p-1">
-                                                        {brandList.map((brand: string) => (
+                                                    <div className="p-1" ref={brandScrollRef}>
+                                                        {brandList.map((brand: string, index) => (
                                                             <div
                                                                 key={brand}
-                                                                className="px-3 py-2 text-sm hover:bg-slate-100 cursor-pointer transition-colors rounded-sm"
+                                                                className={cn(
+                                                                    "px-3 py-2 text-sm hover:bg-slate-100 cursor-pointer transition-colors rounded-sm",
+                                                                    brandHighlightedIndex === index && "bg-slate-100"
+                                                                )}
                                                                 onClick={() => {
                                                                     field.onChange(brand)
                                                                     setBrandTerm('')
                                                                     setShowBrandSuggestions(false)
+                                                                    setBrandHighlightedIndex(-1)
                                                                 }}
+                                                                onMouseEnter={() => setBrandHighlightedIndex(index)}
                                                             >
                                                                 {brand}
                                                             </div>
@@ -611,6 +749,13 @@ const ItemCreationWizard: React.FC<ItemCreationWizardProps> = ({ open, onOpenCha
                                 </div>
                                 <FormDescription>Standard base unit for all items</FormDescription>
                             </FormItem>
+                            <FormItem>
+                                <FormLabel>Default Unit (Highest Level)</FormLabel>
+                                <div className="h-10 px-3 py-2 border rounded-lg bg-blue-50/50 text-blue-700 font-medium text-sm flex items-center">
+                                    {calculatedDefaultUnit}
+                                </div>
+                                <FormDescription>Highest selected UOM level</FormDescription>
+                            </FormItem>
                         </div>
 
                         <Separator />
@@ -647,6 +792,7 @@ const ItemCreationWizard: React.FC<ItemCreationWizardProps> = ({ open, onOpenCha
                                                                 onBlur={() => {
                                                                     setTimeout(() => setActiveUomLevel(null), 200)
                                                                 }}
+                                                                onKeyDown={(e) => handleUomKeyDown(e, level)}
                                                             />
                                                         </FormControl>
 
@@ -661,16 +807,21 @@ const ItemCreationWizard: React.FC<ItemCreationWizardProps> = ({ open, onOpenCha
                                                                     }
                                                                 }}
                                                             >
-                                                                <div className="p-1">
-                                                                    {uomList.map((uom: any) => (
+                                                                <div className="p-1" ref={uomScrollRef}>
+                                                                    {uomList.map((uom: any, index) => (
                                                                         <div
                                                                             key={uom.name || uom}
-                                                                            className="px-2 py-1.5 text-xs hover:bg-slate-100 cursor-pointer transition-colors rounded-sm"
+                                                                            className={cn(
+                                                                                "px-2 py-1.5 text-xs hover:bg-slate-100 cursor-pointer transition-colors rounded-sm",
+                                                                                uomHighlightedIndex === index && "bg-slate-100"
+                                                                            )}
                                                                             onClick={() => {
                                                                                 field.onChange(uom.name || uom)
                                                                                 setUomTerm('')
                                                                                 setActiveUomLevel(null)
+                                                                                setUomHighlightedIndex(-1)
                                                                             }}
+                                                                            onMouseEnter={() => setUomHighlightedIndex(index)}
                                                                         >
                                                                             {uom.name || uom}
                                                                         </div>
@@ -698,7 +849,7 @@ const ItemCreationWizard: React.FC<ItemCreationWizardProps> = ({ open, onOpenCha
                                 ))}
                             </div>
                         </div>
-                    </div>
+                    </div >
                 )
             case 2:
                 return (
@@ -754,6 +905,10 @@ const ItemCreationWizard: React.FC<ItemCreationWizardProps> = ({ open, onOpenCha
                                     <div className="space-y-1">
                                         <p className="text-slate-500">Base Unit</p>
                                         <p className="font-semibold">Nos</p>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <p className="text-slate-500">Default Unit</p>
+                                        <p className="font-semibold text-blue-600">{calculatedDefaultUnit}</p>
                                     </div>
                                 </div>
                             </div>

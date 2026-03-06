@@ -83,8 +83,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
 
     const requestId = ++latestRequestId.current
     try {
-      // Fixed-size page: always request 1-7 (no cumulative growth)
-      const limit_start = 1
+      const limit_start = pageToLoad
       const limit_page_length = perPage
       console.log('[CustomerModal] Fetching page', pageToLoad, {
         search_term: term,
@@ -110,7 +109,7 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
       console.log(
         '[CustomerModal] Received',
         customers.length,
-        'rows (cumulative) for page',
+        'rows for page',
         pageToLoad
       )
 
@@ -134,11 +133,9 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ open, onClose
       }))
       console.log('[CustomerModal] Mapped customers (first 5):', transformedCustomers.slice(0, 5).map(c => ({ name: c.name, default_price_list: (c as any).default_price_list })))
 
-      // Fixed page size; disable further loads
-      setHasMore(false)
+      setHasMore(customers.length >= perPage)
       setPage(pageToLoad)
-      // Replace list with current page
-      setApiCustomers(transformedCustomers)
+      setApiCustomers((prev) => (append ? [...prev, ...transformedCustomers] : transformedCustomers))
     } catch (err) {
       if (requestId !== latestRequestId.current) return
       setError(err instanceof Error ? err.message : 'Failed to load customers')

@@ -8,13 +8,14 @@ import { toast } from 'sonner'
 
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
-import { useHotkeys } from 'react-hotkeys-hook'
+import { useScopedHotkeys } from '@renderer/hooks/useScopedHotkeys'
 import { formatDate, formatTime } from '@renderer/lib/date-utils'
 import PaymentTab from '../payment/payment-tab'
 import MultiWarehousePopup from '../common/multi-warehouse-popup'
 import AlternateProducts from './alternate-products'
 import ItemOffers from './item-offers'
 import ItemCreationWizard from '../products/item-creation-wizard'
+import { useHotkeys } from 'react-hotkeys-hook'
 
 // A right-side panel for the POS screen, adapted from pos.html
 // Contains tabs for Product, Customer, Prints, Payments, Orders
@@ -514,7 +515,7 @@ const PrintsTabContent: React.FC = () => {
   }
 
   // Keyboard shortcut for print (MUST be before any conditional returns)
-  useHotkeys(
+  useScopedHotkeys(
     'ctrl+shift+p',
     (e) => {
       if (isPrintEnabled) {
@@ -523,7 +524,9 @@ const PrintsTabContent: React.FC = () => {
         handlePrint()
       }
     },
-    { enableOnFormTags: true }
+    { enableOnFormTags: true },
+    [],
+    'global'
   )
 
   if (!currentTab?.orderId) {
