@@ -1852,7 +1852,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                       <TableHead className="w-[80px] text-center">Discount</TableHead>
                       <TableHead className="w-[100px] text-center font-bold">Unit Price</TableHead>
                       <TableHead className="w-[100px] text-left pl-8">Total</TableHead>
-                      <TableHead className="w-[60px] text-center pl-1">Actions</TableHead>
+                      {isReadOnly ? (
+                        <TableHead className="w-[80px] text-center">Returned Qty</TableHead>
+                      ) : (
+                        <TableHead className="w-[60px] text-center pl-1">Actions</TableHead>
+                      )}
                     </TableRow>
                   </TableHeader>
                 </Table>
@@ -2552,91 +2556,97 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                               (1 - Number(item.discount_percentage || 0) / 100)
                             ).toFixed(2)}
                           </TableCell>
-                          <TableCell className="w-[60px] text-center">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              data-action="delete"
-                              id={`delete-btn-${index}`}
-                              data-row-index={index}
-                              tabIndex={isReadOnly ? -1 : 0}
-                              className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                if (isReadOnly) return
-                                // Find the actual index in the items array
-                                // Since filteredItems preserves order from items, we can map the filtered index to original index
-                                // Count how many items before this one in filteredItems match the filter
-                                const filteredBefore = filteredItems.slice(0, index)
-                                let itemsBeforeCount = 0
-                                let actualIndex = -1
+                          {isReadOnly ? (
+                            <TableCell className="w-[80px] text-center font-bold">
+                              {item.credit_note_returned_qty || 0}
+                            </TableCell>
+                          ) : (
+                            <TableCell className="w-[60px] text-center">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                data-action="delete"
+                                id={`delete-btn-${index}`}
+                                data-row-index={index}
+                                tabIndex={isReadOnly ? -1 : 0}
+                                className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  if (isReadOnly) return
+                                  // Find the actual index in the items array
+                                  // Since filteredItems preserves order from items, we can map the filtered index to original index
+                                  // Count how many items before this one in filteredItems match the filter
+                                  const filteredBefore = filteredItems.slice(0, index)
+                                  let itemsBeforeCount = 0
+                                  let actualIndex = -1
 
-                                for (let i = 0; i < items.length; i++) {
-                                  // Check if this item would be in the filtered list
-                                  const term = tableSearch.trim().toLowerCase()
-                                  const matchesFilter = !term ||
-                                    String(items[i].item_code || '').toLowerCase().includes(term) ||
-                                    String(items[i].item_name || '').toLowerCase().includes(term)
+                                  for (let i = 0; i < items.length; i++) {
+                                    // Check if this item would be in the filtered list
+                                    const term = tableSearch.trim().toLowerCase()
+                                    const matchesFilter = !term ||
+                                      String(items[i].item_code || '').toLowerCase().includes(term) ||
+                                      String(items[i].item_name || '').toLowerCase().includes(term)
 
-                                  if (matchesFilter) {
-                                    // This item appears in filteredItems
-                                    if (itemsBeforeCount === filteredBefore.length) {
-                                      // This is the item at filteredItems[index]
-                                      actualIndex = i
-                                      break
-                                    }
-                                    itemsBeforeCount++
-                                  }
-                                }
-
-                                setDeleteCandidate(item.item_code)
-                                setDeleteCandidateIndex(actualIndex >= 0 ? actualIndex : null)
-                                setShowDeleteConfirm(true)
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault()
-                                  if (!isReadOnly) {
-                                    // Find the actual index in the items array
-                                    // Since filteredItems preserves order from items, we can map the filtered index to original index
-                                    const filteredBefore = filteredItems.slice(0, index)
-                                    let itemsBeforeCount = 0
-                                    let actualIndex = -1
-
-                                    for (let i = 0; i < items.length; i++) {
-                                      // Check if this item would be in the filtered list
-                                      const term = tableSearch.trim().toLowerCase()
-                                      const matchesFilter = !term ||
-                                        String(items[i].item_code || '').toLowerCase().includes(term) ||
-                                        String(items[i].item_name || '').toLowerCase().includes(term)
-
-                                      if (matchesFilter) {
-                                        // This item appears in filteredItems
-                                        if (itemsBeforeCount === filteredBefore.length) {
-                                          // This is the item at filteredItems[index]
-                                          actualIndex = i
-                                          break
-                                        }
-                                        itemsBeforeCount++
+                                    if (matchesFilter) {
+                                      // This item appears in filteredItems
+                                      if (itemsBeforeCount === filteredBefore.length) {
+                                        // This is the item at filteredItems[index]
+                                        actualIndex = i
+                                        break
                                       }
+                                      itemsBeforeCount++
                                     }
-
-                                    setDeleteCandidate(item.item_code)
-                                    setDeleteCandidateIndex(actualIndex >= 0 ? actualIndex : null)
-                                    setShowDeleteConfirm(true)
                                   }
-                                } else if (e.key === 'ArrowLeft') {
-                                  e.preventDefault()
-                                  moveToField(item.item_code, 'standard_rate')
-                                } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-                                  handleVerticalNavigation(e as any, 'standard_rate', item.item_code)
-                                }
-                              }}
-                              disabled={isReadOnly}
-                            >
-                              <X className="w-4 h-4" />
-                            </Button>
-                          </TableCell>
+
+                                  setDeleteCandidate(item.item_code)
+                                  setDeleteCandidateIndex(actualIndex >= 0 ? actualIndex : null)
+                                  setShowDeleteConfirm(true)
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault()
+                                    if (!isReadOnly) {
+                                      // Find the actual index in the items array
+                                      // Since filteredItems preserves order from items, we can map the filtered index to original index
+                                      const filteredBefore = filteredItems.slice(0, index)
+                                      let itemsBeforeCount = 0
+                                      let actualIndex = -1
+
+                                      for (let i = 0; i < items.length; i++) {
+                                        // Check if this item would be in the filtered list
+                                        const term = tableSearch.trim().toLowerCase()
+                                        const matchesFilter = !term ||
+                                          String(items[i].item_code || '').toLowerCase().includes(term) ||
+                                          String(items[i].item_name || '').toLowerCase().includes(term)
+
+                                        if (matchesFilter) {
+                                          // This item appears in filteredItems
+                                          if (itemsBeforeCount === filteredBefore.length) {
+                                            // This is the item at filteredItems[index]
+                                            actualIndex = i
+                                            break
+                                          }
+                                          itemsBeforeCount++
+                                        }
+                                      }
+
+                                      setDeleteCandidate(item.item_code)
+                                      setDeleteCandidateIndex(actualIndex >= 0 ? actualIndex : null)
+                                      setShowDeleteConfirm(true)
+                                    }
+                                  } else if (e.key === 'ArrowLeft') {
+                                    e.preventDefault()
+                                    moveToField(item.item_code, 'standard_rate')
+                                  } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                                    handleVerticalNavigation(e as any, 'standard_rate', item.item_code)
+                                  }
+                                }}
+                                disabled={isReadOnly}
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </TableCell>
+                          )}
                         </TableRow>
                       )
                     })}

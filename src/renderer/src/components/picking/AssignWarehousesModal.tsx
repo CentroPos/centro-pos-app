@@ -32,23 +32,33 @@ export function AssignWarehousesModal({
     const [isAssigning, setIsAssigning] = useState(false);
 
     // Filter available delivery warehouses: explicitly marked or in current operations
-    const availableDeliveryWarehouses = useMemo(() => {
-        const opNames = new Set(currentOperations.map(op => op.warehouseName));
-        return warehouses.filter(w => w.is_delivery_warehouse || opNames.has(w.name));
+    // Separated into Delivery and Sales
+    const { deliveryWarehouses, salesWarehouses } = useMemo(() => {
+        const opNames = new Set(currentOperations.map(op => (op.warehouseName)));
+        const filtered = warehouses.filter(w => w.is_delivery_warehouse || opNames.has(w.name));
+
+        return {
+            deliveryWarehouses: filtered.filter(w => w.is_delivery_warehouse),
+            salesWarehouses: filtered.filter(w => !w.is_delivery_warehouse)
+        };
     }, [warehouses, currentOperations]);
 
-    // Initialize list when modal opens & Auto-select default
     useEffect(() => {
         if (isOpen) {
             setOperationsList(currentOperations.map(op => ({ ...op })));
 
-            if (availableDeliveryWarehouses.length > 0) {
-                setSelectedDeliveryWarehouse(availableDeliveryWarehouses[0].id);
+            const allAvailable = [...deliveryWarehouses, ...salesWarehouses];
+            if (allAvailable.length > 0) {
+                // Priority to delivery warehouse for default selection if none selected
+                if (!selectedDeliveryWarehouse) {
+                    const defaultWH = deliveryWarehouses.length > 0 ? deliveryWarehouses[0] : allAvailable[0];
+                    setSelectedDeliveryWarehouse(defaultWH.id);
+                }
             } else {
                 setSelectedDeliveryWarehouse(null);
             }
         }
-    }, [isOpen, currentOperations, availableDeliveryWarehouses]);
+    }, [isOpen, currentOperations, deliveryWarehouses, salesWarehouses]);
 
     // Update operations list when Delivery Warehouse selection changes
     useEffect(() => {
@@ -144,7 +154,7 @@ export function AssignWarehousesModal({
         const isSingleRow = operationsList.length === 1;
         const selectedWH = warehouses.find(w => w.id === selectedDeliveryWarehouse);
         const isDeliveryWarehouse = selectedWH?.is_delivery_warehouse;
-        const isFirstLineDelivery = isDeliveryRow && isDeliveryWarehouse;
+        const isFirstLineDelivery = isDeliveryRow;
         const isDone = (operationsList[index].status || '').toLowerCase() === 'done';
 
         // Prevent toggling if disabled
@@ -154,8 +164,9 @@ export function AssignWarehousesModal({
 
         // Check for invalid "All Selected" state BEFORE toggling
         const willBeChecked = !operationsList[index].isCustomerPickup;
-        // Only enforce rule if we have a Delivery Warehouse selected (which is index 0 usually, or selectedDeliveryWarehouse state)
-        if (willBeChecked && selectedDeliveryWarehouse) {
+
+        // Only enforce rule if we have a Delivery Warehouse selected AND it's marked as is_delivery_warehouse
+        if (willBeChecked && selectedDeliveryWarehouse && isDeliveryWarehouse) {
             // Check if all OTHER rows are already checked
             const otherRows = operationsList.filter((_, i) => i !== index);
             const allOthersChecked = otherRows.every(op => op.isCustomerPickup);
@@ -181,8 +192,12 @@ export function AssignWarehousesModal({
 
         if (!hasSelection) return false;
 
-        // Validation: If Delivery Warehouse is selected, at least one other warehouse MUST be unselected (for transfer)
-        if (selectedDeliveryWarehouse) {
+        // Validation: If Delivery Warehouse is selected AND it's a real delivery warehouse, 
+        // at least one other warehouse MUST be unselected (for transfer)
+        const selectedWH = warehouses.find(w => w.id === selectedDeliveryWarehouse);
+        const isActuallyDeliveryWarehouse = selectedWH?.is_delivery_warehouse;
+
+        if (selectedDeliveryWarehouse && isActuallyDeliveryWarehouse) {
             // Check if ALL source warehouses are selected for pickup
             // Source warehouses are all except the first one (Delivery)
             const sourceOps = operationsList.slice(1);
@@ -203,23 +218,52 @@ export function AssignWarehousesModal({
                     </DialogHeader>
 
                     <div className="mt-4 space-y-2">
-                        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Delivery Warehouse</label>
-                        <div className="flex flex-wrap gap-2">
-                            {availableDeliveryWarehouses.map((warehouse) => (
-                                <Button
-                                    key={warehouse.id}
-                                    variant="outline"
-                                    className={cn(
-                                        "h-8 rounded-full px-4 text-xs font-medium border transition-all",
-                                        selectedDeliveryWarehouse === warehouse.id
-                                            ? "bg-green-700 hover:bg-green-800 text-white border-green-700 shadow-sm"
-                                            : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
-                                    )}
-                                    onClick={() => setSelectedDeliveryWarehouse(warehouse.id)}
-                                >
-                                    {warehouse.name}
-                                </Button>
-                            ))}
+                        <div className="flex gap-8">
+                            {salesWarehouses.length > 0 && (
+                                <div className="space-y-2 flex-1">
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Sales Warehouse</label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {salesWarehouses.map((warehouse) => (
+                                            <Button
+                                                key={warehouse.id}
+                                                variant="outline"
+                                                className={cn(
+                                                    "h-8 rounded-full px-4 text-xs font-medium border transition-all",
+                                                    selectedDeliveryWarehouse === warehouse.id
+                                                        ? "bg-green-700 hover:bg-green-800 text-white border-green-700 shadow-sm"
+                                                        : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
+                                                )}
+                                                onClick={() => setSelectedDeliveryWarehouse(warehouse.id)}
+                                            >
+                                                {warehouse.name}
+                                            </Button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {deliveryWarehouses.length > 0 && (
+                                <div className="space-y-2 flex-1">
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Delivery Warehouse</label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {deliveryWarehouses.map((warehouse) => (
+                                            <Button
+                                                key={warehouse.id}
+                                                variant="outline"
+                                                className={cn(
+                                                    "h-8 rounded-full px-4 text-xs font-medium border transition-all",
+                                                    selectedDeliveryWarehouse === warehouse.id
+                                                        ? "bg-green-700 hover:bg-green-800 text-white border-green-700 shadow-sm"
+                                                        : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
+                                                )}
+                                                onClick={() => setSelectedDeliveryWarehouse(warehouse.id)}
+                                            >
+                                                {warehouse.name}
+                                            </Button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         <div className="mt-4">
@@ -254,7 +298,7 @@ export function AssignWarehousesModal({
                                         const selectedWH = warehouses.find(w => w.id === selectedDeliveryWarehouse);
                                         // Use optional chaining carefully - assuming warehouse object structure
                                         const isDeliveryWarehouse = selectedWH && 'is_delivery_warehouse' in selectedWH && !!selectedWH.is_delivery_warehouse;
-                                        const isFirstLineDelivery = isDeliveryRow && isDeliveryWarehouse;
+                                        const isFirstLineDelivery = isDeliveryRow;
 
                                         // Condition: "if only having one row, the checkbox will true by default and inactive"
                                         // Condition: "first line should be inactive if ... is delivery warehouse"

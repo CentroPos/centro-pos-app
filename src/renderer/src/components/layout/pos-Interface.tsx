@@ -12,6 +12,7 @@ import { usePosProfile } from '@renderer/hooks/useProfile'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 import { useAuthStore } from '@renderer/store/useAuthStore'
 import { toast } from 'sonner'
+import { ReturnInvoiceStack } from '../blocks/return-invoice/return-invoice-stack'
 
 const POSInterface: React.FC = () => {
   const [open, setOpen] = useState(false)
@@ -548,7 +549,7 @@ const POSInterface: React.FC = () => {
           /> */}
 
           {/* Items area takes remaining space; inner table handles its own scroll */}
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col relative">
             <ItemsTable
               onRemoveItem={removeItem}
               selectedItemId={selectedItemId}
@@ -580,6 +581,8 @@ const POSInterface: React.FC = () => {
               onCustomerModalChange={setIsCustomerModalOpen}
               onCustomerSelect={handleCustomerSelect}
             />
+            
+            <ReturnInvoiceStack />
           </div>
         </div>
         <RightPanel

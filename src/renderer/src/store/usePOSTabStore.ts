@@ -166,7 +166,8 @@ export const usePOSTabStore = create<POSTabStore>()(
               quantity: Number(it.qty || it.quantity || 0),
               uom: it.uom || it.stock_uom,
               discount_percentage: Number(it.discount_percentage || 0),
-              standard_rate: Number(it.rate || it.price_list_rate || 0)
+              standard_rate: Number(it.rate || it.price_list_rate || 0),
+              credit_note_returned_qty: Number(it.credit_note_returned_qty || 0)
             }
 
             // Preserve warehouseAllocations if present, or convert from custom_stock_adjustment_sources
@@ -545,9 +546,55 @@ export const usePOSTabStore = create<POSTabStore>()(
         set((state) => ({
           tabs: state.tabs.map((tab) => {
             if (tab.id === tabId) {
+              // Map API order items to cart item structure if present
+              let updatedItems = tab.items
+              if (orderData && Array.isArray(orderData.items)) {
+                const customStockAdjustmentSources = orderData.custom_stock_adjustment_sources || []
+                const allocationsByItem: Record<string, Array<{ name: string; allocated: number; available?: number; selected: boolean }>> = {}
+                
+                if (Array.isArray(customStockAdjustmentSources)) {
+                  customStockAdjustmentSources.forEach((source: any) => {
+                    if (source.item_code && source.source_warehouse && source.qty > 0) {
+                      if (!allocationsByItem[source.item_code]) {
+                        allocationsByItem[source.item_code] = []
+                      }
+                      allocationsByItem[source.item_code].push({
+                        name: source.source_warehouse,
+                        allocated: Number(source.qty || 0),
+                        available: source.available || undefined,
+                        selected: true
+                      })
+                    }
+                  })
+                }
+
+                updatedItems = orderData.items.map((it: any) => {
+                  const itemCode = it.item_code
+                  const baseItem = {
+                    item_code: itemCode,
+                    item_name: it.item_name,
+                    item_part_no: it.item_part_no,
+                    label: it.description || it.item_name,
+                    quantity: Number(it.qty || it.quantity || 0),
+                    uom: it.uom || it.stock_uom,
+                    discount_percentage: Number(it.discount_percentage || 0),
+                    standard_rate: Number(it.rate || it.price_list_rate || 0),
+                    credit_note_returned_qty: Number(it.credit_note_returned_qty || 0)
+                  }
+
+                  if (it.warehouseAllocations && Array.isArray(it.warehouseAllocations) && it.warehouseAllocations.length > 0) {
+                    return { ...baseItem, warehouseAllocations: it.warehouseAllocations }
+                  } else if (allocationsByItem[itemCode] && allocationsByItem[itemCode].length > 0) {
+                    return { ...baseItem, warehouseAllocations: allocationsByItem[itemCode] }
+                  }
+                  return baseItem
+                })
+              }
+
               return {
                 ...tab,
                 orderData,
+                items: updatedItems,
                 // Update Other Details fields from orderData if present
                 po_no: orderData?.po_no !== undefined ? orderData.po_no : tab.po_no,
                 po_date: orderData?.po_date !== undefined ? orderData.po_date : tab.po_date,
