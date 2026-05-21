@@ -29,6 +29,7 @@ interface POSProfile {
   custom_purchase_taxes_and_charges?: string
   custom_purchase_tax_rate?: number
   custom_default_purchase_warehouse?: string
+  custom_enable_receipt_wise_purchase?: number
   // Allowed warehouses for returns
   allowed_warehouses?: Array<{ name: string }>
 }

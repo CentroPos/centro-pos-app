@@ -46,7 +46,7 @@ export function TransferGraph({ operations }: TransferGraphProps) {
     const sourceOps = operations.slice(1);
 
     // Filter sources vs delivery
-    const transferOps = sourceOps.filter(op => !op.isCustomerPickup);
+    // const transferOps = sourceOps.filter(op => !op.isCustomerPickup);
     const directPickupOps = sourceOps.filter(op => op.isCustomerPickup);
 
     // Layout Constants

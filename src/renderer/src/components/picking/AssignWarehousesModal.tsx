@@ -295,9 +295,9 @@ export function AssignWarehousesModal({
 
                                         // Checkbox Logic
                                         const isSingleRow = operationsList.length === 1;
-                                        const selectedWH = warehouses.find(w => w.id === selectedDeliveryWarehouse);
+                                        // const selectedWH = warehouses.find(w => w.id === selectedDeliveryWarehouse);
                                         // Use optional chaining carefully - assuming warehouse object structure
-                                        const isDeliveryWarehouse = selectedWH && 'is_delivery_warehouse' in selectedWH && !!selectedWH.is_delivery_warehouse;
+                                        // const isDeliveryWarehouse = selectedWH && 'is_delivery_warehouse' in selectedWH && !!selectedWH.is_delivery_warehouse;
                                         const isFirstLineDelivery = isDeliveryRow;
 
                                         // Condition: "if only having one row, the checkbox will true by default and inactive"
