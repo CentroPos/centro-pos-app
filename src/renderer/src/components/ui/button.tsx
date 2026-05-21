@@ -22,6 +22,8 @@ const buttonVariants = cva(
           'border border-blue-500 text-blue-600 bg-white shadow-sm hover:bg-blue-50 hover:text-blue-700 rounded-md font-medium text-sm transition-all',
         'tab-orange':
           'border border-orange-500 text-orange-600 bg-white shadow-sm hover:bg-orange-50 hover:text-orange-700 rounded-md font-medium text-sm transition-all',
+        'tab-purple':
+          'border border-purple-500 text-purple-600 bg-white shadow-sm hover:bg-purple-50 hover:text-purple-700 rounded-md font-medium text-sm transition-all',
         secondary: 'bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80',
         ghost: 'hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50',
         link: 'text-primary underline-offset-4 hover:underline'

@@ -12,7 +12,7 @@ import { handleError } from '@renderer/lib/error-handler'
 import PurchaseReturnModal from './purchase-return-modal'
 import PurchaseReceiptModal from './PurchaseReceiptModal'
 
-import { PlusCircle, Trash } from 'lucide-react'
+import { Trash } from 'lucide-react'
 
 interface Payment {
   mode: string
@@ -253,7 +253,7 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
   const loadPOSProfile = async () => {
     try {
       const response = await window.electronAPI?.proxy?.request({
-        url: '/api/method/centro_pos_apis.api.pos_profile.get_pos_profile_details',
+        url: '/api/method/centro_pos_apis.api.profile.get_pos_profile',
         method: 'GET'
       })
 
@@ -1012,7 +1012,8 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
             {profile?.custom_enable_receipt_wise_purchase === 1 && (
               <Button
                 data-testid="purchase-receipt-button"
-                className="px-2 py-1 bg-gradient-to-r from-violet-500 to-violet-600 text-white font-medium rounded-lg hover:shadow-lg transition-all duration-300 flex items-center gap-1.5 text-[9px] disabled:opacity-50 disabled:cursor-not-allowed"
+                variant="tab-purple"
+                className="px-4 py-2 font-medium transition-all duration-300 flex items-center gap-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={
                   !currentUserPrivileges?.purchase ||
                   currentTab?.status === 'confirmed' ||
@@ -1031,7 +1032,8 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
             {/* Save Button */}
             <Button
               data-testid="purchase-save-button"
-              className="px-2 py-1 bg-gradient-to-r from-yellow-400 to-yellow-500 text-white font-medium rounded-lg hover:shadow-lg transition-all duration-300 flex items-center gap-1.5 text-[9px] disabled:opacity-50 disabled:cursor-not-allowed"
+              variant="tab-yellow"
+              className="px-4 py-2 font-medium transition-all duration-300 flex items-center gap-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={
                 !currentUserPrivileges?.purchase ||
                 currentTab?.status === 'confirmed' ||
@@ -1072,7 +1074,8 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
             {/* Button stays visible but disabled after confirmation, just like sales */}
             <Button
               data-testid="purchase-confirm-button"
-              className="px-2 py-1 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-medium rounded-lg hover:shadow-lg transition-all duration-300 flex items-center gap-1.5 text-[9px] disabled:opacity-50 disabled:cursor-not-allowed"
+              variant="tab-emerald"
+              className="px-4 py-2 font-medium transition-all duration-300 flex items-center gap-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={
                 !currentUserPrivileges?.purchase ||
                 !currentTab?.purchaseOrderId ||
@@ -1125,7 +1128,8 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
 
               return (
                 <Button
-                  className="px-2 py-1 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium rounded-lg hover:shadow-lg transition-all duration-300 flex items-center gap-1.5 text-[9px] disabled:opacity-50 disabled:cursor-not-allowed"
+                  variant="tab-blue"
+                  className="px-4 py-2 font-medium transition-all duration-300 flex items-center gap-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={shouldDisablePayButton || isItemTableEditing || isProcessingPayment}
                   onClick={handlePay}
                 >
@@ -1141,7 +1145,8 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
             {/* Return Button - Only enable if order is confirmed (docstatus = 1) */}
             <Button
               data-testid="purchase-return-button"
-              className="relative px-2 py-1 bg-gradient-to-r from-orange-500 to-orange-600 text-white font-medium rounded-lg hover:shadow-lg transition-all duration-300 flex items-center gap-1.5 text-[9px] disabled:opacity-50 disabled:cursor-not-allowed"
+              variant="tab-orange"
+              className="relative px-4 py-2 font-medium transition-all duration-300 flex items-center gap-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={
                 !currentUserPrivileges?.purchase ||
                 !isConfirmed ||
@@ -1372,26 +1377,6 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
                 )}
               </div>
             ))}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setPayments([
-                  ...payments,
-                  {
-                    mode: 'Cash',
-                    amount: '0',
-                    reference_no: '',
-                    reference_date: getCurrentDate(),
-                    id: crypto.randomUUID()
-                  }
-                ])
-              }}
-              className="w-full border-dashed flex items-center gap-2 hover:bg-gray-50 focus-visible:ring-0 focus-visible:ring-offset-0"
-            >
-              <PlusCircle className="w-4 h-4" />
-              Add Payment
-            </Button>
           </div>
 
           <div className="mb-6 p-4 bg-gray-50 rounded-lg border-2">
