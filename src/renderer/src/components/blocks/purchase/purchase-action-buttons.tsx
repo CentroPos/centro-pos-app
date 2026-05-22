@@ -1179,7 +1179,14 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
       </div>
 
       {/* Payment / Confirm Dialog */}
-      <Dialog open={!!open} onOpenChange={(v) => setOpen(v ? open || 'confirm' : false)}>
+      <Dialog open={!!open} onOpenChange={(v) => {
+        if (!v) {
+          setOpen(false)
+          setIsConfirming(false)
+        } else {
+          setOpen(open || 'confirm')
+        }
+      }}>
         <DialogContent
           className="max-w-5xl w-[95vw] bg-white border-2 shadow-2xl"
           onOpenAutoFocus={(e) => {

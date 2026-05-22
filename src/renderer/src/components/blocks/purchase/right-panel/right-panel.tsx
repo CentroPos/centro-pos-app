@@ -2021,22 +2021,19 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [editSubmitting, setEditSubmitting] = useState(false)
   const [editFormLoading, setEditFormLoading] = useState(false)
   const [editForm, setEditForm] = useState<any>({
-    customer_id: '',
-    customer_name: '',
-    customer_name_arabic: '',
+    supplier_id: '',
+    supplier_name: '',
+    supplier_name_arabic: '',
     email: '',
-    mobile: '',
-    customer_type: 'Individual',
+    mobile_no: '',
     tax_id: '',
-    customer_id_type_for_zatca: '',
-    customer_id_number_for_zatca: '',
     address_line1: '',
     address_line2: '',
-    building_number: '',
     city: '',
-    pincode: '',
-    country: ''
+    country: '',
+    pincode: ''
   })
+
 
   // Orders/Returns lists with pagination
   const [ordersList, setOrdersList] = useState<any[]>([])
@@ -2860,21 +2857,6 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [ordersTotal, setOrdersTotal] = useState(0);
   const [returnsTotal, setReturnsTotal] = useState(0);
 
-  // PATCH 6: Add dropdown and show total above each list
-  // ... in the JSX for Orders list, above the result count ...
-  <div className="flex items-center justify-between mb-2">
-    <span className="text-xs text-gray-500">{ordersTotal} results found</span>
-    <select
-      value={pageLength}
-      onChange={e => setPageLength(Number(e.target.value))}
-      className="text-xs border rounded px-2 py-1"
-    >
-      {pageSizeOptions.map(opt => (
-        <option key={opt} value={opt}>{opt} / page</option>
-      ))}
-    </select>
-  </div>
-  // ... and similarly for Returns list, use returnsTotal.
 
   return (
     <div className="w-[480px] bg-white/60 backdrop-blur border-l border-white/20 flex flex-col h-full">
@@ -3585,10 +3567,10 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       <button
                         className="px-3 py-1.5 text-sm border rounded hover:bg-gray-50"
                         onClick={async () => {
-                          // Fetch fresh customer details to ensure we have latest data
+                          // Fetch fresh supplier details to ensure we have latest data
                           const customerId = customerDetails.name || selectedCustomer?.name || selectedCustomer?.customer_id
                           if (!customerId) {
-                            toast.error('Customer ID not found')
+                            toast.error('Supplier ID not found')
                             return
                           }
 
@@ -3596,103 +3578,50 @@ const RightPanel: React.FC<RightPanelProps> = ({
                             setEditOpen(true) // Open dialog first to show loading state
                             setEditFormLoading(true)
 
-                            // Fetch fresh customer details from API
-                            console.log('📞 API Call: get_customer_details (Edit)', {
-                              url: '/api/method/centro_pos_apis.api.customer.get_customer_details',
-                              params: { customer_id: customerId }
+                            // Fetch fresh supplier details from API
+                            console.log('📞 API Call: supplier_details (Edit)', {
+                              url: '/api/method/centro_pos_apis.api.supplier.supplier_details',
+                              params: { supplier_id: customerId }
                             })
                             const detailsRes = await (window as any).electronAPI?.proxy?.request({
-                              url: '/api/method/centro_pos_apis.api.customer.get_customer_details',
-                              params: { customer_id: customerId }
+                              url: '/api/method/centro_pos_apis.api.supplier.supplier_details',
+                              params: { supplier_id: customerId }
                             })
 
-                            console.log('📥 API Response: get_customer_details (Edit)', {
+                            console.log('📥 API Response: supplier_details (Edit)', {
                               fullResponse: detailsRes,
                               data: detailsRes?.data,
-                              customerData: detailsRes?.data?.data || detailsRes?.data
+                              supplierData: detailsRes?.data?.data || detailsRes?.data
                             })
 
-                            const customerData = detailsRes?.data?.data || detailsRes?.data
-                            if (!customerData) {
-                              toast.error('Failed to load customer details')
+                            const supplierData = detailsRes?.data?.data || detailsRes?.data
+                            if (!supplierData) {
+                              toast.error('Failed to load supplier details')
                               setEditOpen(false)
                               return
                             }
 
-                            // Helper function to parse address from primary_address HTML
-                            // Format: "987 Vadakkan House<br>\nAziziya<br>Riyadh<br>\n12345<br>Saudi Arabia<br>\n<br>\n"
-                            const parseAddressFromHTML = (htmlAddress: string) => {
-                              if (!htmlAddress || typeof htmlAddress !== 'string') {
-                                return { line1: '', line2: '', city: '', pincode: '', country: '', building: '' }
-                              }
-
-                              // Remove HTML tags and split by <br> tags (including newlines)
-                              const cleanAddress = htmlAddress
-                                .replace(/<br\s*\/?>/gi, '|')
-                                .replace(/<[^>]+>/g, '')
-                                .replace(/\n/g, '')
-                                .trim()
-
-                              const parts = cleanAddress
-                                .split('|')
-                                .map(p => p.trim())
-                                .filter(p => p && p.length > 0)
-
-                              // Typical structure: [address_line1, address_line2, city, pincode, country]
-                              // Building number might be in line2 or separate
-                              let building = ''
-                              const line2 = parts[1] || ''
-
-                              // Try to extract building number from line2 if it contains "building" or numbers
-                              if (line2.toLowerCase().includes('building')) {
-                                building = line2
-                              } else if (line2.match(/^\d+/)) {
-                                // If line2 starts with numbers, it might be building number
-                                building = line2
-                              }
-
-                              return {
-                                line1: parts[0] || '',
-                                line2: building ? '' : (parts[1] || ''), // Don't duplicate if building was extracted
-                                city: parts[2] || '',
-                                pincode: parts[3] || '',
-                                country: parts[4] || '',
-                                building: building
-                              }
-                            }
-
                             // Get address details from primary_address_details object
-                            const primaryAddress = customerData.primary_address_details || {}
-
-                            // Parse address from HTML as fallback if primary_address_details is not available
-                            const parsedAddress = customerData.primary_address
-                              ? parseAddressFromHTML(customerData.primary_address)
-                              : { line1: '', line2: '', city: '', pincode: '', country: '', building: '' }
+                            const primaryAddress = supplierData.primary_address_details || {}
 
                             // Populate form with mapped API response fields
                             setEditForm({
-                              customer_id: customerData.name || customerId,
-                              customer_name: customerData.customer_name || '',
-                              customer_name_arabic: customerData.zatca_customer_name_in_arabic || customerData.customer_name_arabic || '',
-                              email: customerData.email_id || '',
-                              mobile: customerData.mobile_no || '',
-                              customer_type: customerData.customer_type || 'Individual',
-                              tax_id: customerData.tax_id || '',
-                              // Use custom_selected_buyer_id_type and custom_selected_buyer_id_value from API
-                              customer_id_type_for_zatca: customerData.custom_selected_buyer_id_type || customerData.custom_buyer_id_type || customerData.customer_id_type_for_zatca || '',
-                              customer_id_number_for_zatca: customerData.custom_selected_buyer_id_value || customerData.custom_buyer_id || customerData.customer_id_number_for_zatca || '',
-                              // Use primary_address_details object for address fields, with fallback to parsed HTML or top-level fields
-                              address_line1: primaryAddress.address_line1 || customerData.address_line1 || parsedAddress.line1 || '',
-                              address_line2: primaryAddress.address_line2 || customerData.address_line2 || parsedAddress.line2 || '',
-                              building_number: primaryAddress.custom_building_number || customerData.building_number || parsedAddress.building || '',
-                              city: primaryAddress.city || customerData.city || parsedAddress.city || '',
-                              pincode: primaryAddress.pincode || customerData.pincode || parsedAddress.pincode || '',
-                              country: primaryAddress.country || customerData.country || parsedAddress.country || 'Saudi Arabia'
+                              supplier_id: supplierData.name || customerId,
+                              supplier_name: supplierData.supplier_name || supplierData.customer_name || '',
+                              supplier_name_arabic: supplierData.supplier_name_arabic || '',
+                              email: supplierData.email || supplierData.email_id || '',
+                              mobile_no: supplierData.mobile_no || supplierData.mobile || '',
+                              tax_id: supplierData.tax_id || '',
+                              address_line1: primaryAddress.address_line1 || supplierData.address_line1 || '',
+                              address_line2: primaryAddress.address_line2 || supplierData.address_line2 || '',
+                              city: primaryAddress.city || supplierData.city || '',
+                              pincode: primaryAddress.pincode || supplierData.pincode || '',
+                              country: primaryAddress.country || supplierData.country || 'Saudi Arabia'
                             })
                             setEditFormLoading(false)
                           } catch (error) {
-                            console.error('❌ Error loading customer details for edit:', error)
-                            toast.error('Failed to load customer details')
+                            console.error('❌ Error loading supplier details for edit:', error)
+                            toast.error('Failed to load supplier details')
                             setEditFormLoading(false)
                             setEditOpen(false)
                           }
@@ -3795,101 +3724,53 @@ const RightPanel: React.FC<RightPanelProps> = ({
               )}
             {!customerDetailsLoading && !customerDetailsError && !customerDetails && !selectedCustomer && (
               <div className="text-center py-4">
-                <div className="text-sm text-gray-500">Select a customer to view details</div>
+                <div className="text-sm text-gray-500">Select a supplier to view details</div>
               </div>
             )}
             {!customerDetailsLoading && !customerDetailsError && !customerDetails && selectedCustomer && (
               <div className="text-center py-4">
-                <div className="text-sm text-gray-500">Loading customer details...</div>
+                <div className="text-sm text-gray-500">Loading supplier details...</div>
               </div>
             )}
           </div>
 
-          {/* Edit Customer Dialog */}
+          {/* Edit Supplier Dialog */}
           <Dialog open={editOpen} onOpenChange={setEditOpen}>
             <DialogContent className="max-w-2xl">
               <DialogHeader>
-                <DialogTitle>Edit Customer</DialogTitle>
+                <DialogTitle>Edit Supplier</DialogTitle>
               </DialogHeader>
               {editFormLoading ? (
                 <div className="flex items-center justify-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                  <span className="ml-3 text-sm text-gray-600">Loading customer details...</span>
+                  <span className="ml-3 text-sm text-gray-600">Loading supplier details...</span>
                 </div>
               ) : (
                 <>
                   <div className="space-y-3 p-2">
-                    {/* Customer ID - Keep as is */}
+                    {/* Supplier ID */}
                     <div className="space-y-1">
-                      <label className="text-sm font-medium">Customer ID</label>
-                      <Input disabled value={editForm.customer_id} />
+                      <label className="text-sm font-medium">Supplier ID</label>
+                      <Input disabled value={editForm.supplier_id} />
                     </div>
 
-                    {/* Row 1: Customer Name and Name in Arabic */}
+                    {/* Row 1: Supplier Name and Name in Arabic */}
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1">
-                        <label className="text-sm font-medium">Customer Name *</label>
+                        <label className="text-sm font-medium">Supplier Name *</label>
                         <Input
-                          value={editForm.customer_name}
-                          onChange={(e) => setEditForm({ ...editForm, customer_name: e.target.value })}
-                          onKeyDown={(e) => {
-                            const target = e.target as HTMLElement
-                            // Allow arrow keys for text editing in input/textarea fields
-                            const isInputField = target.tagName === 'INPUT' ||
-                              target.tagName === 'TEXTAREA' ||
-                              target.closest('input') ||
-                              target.closest('textarea')
-                            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
-                              e.stopPropagation()
-                              // Don't prevent default - let browser handle cursor movement
-                              return
-                            }
-                            if (e.key === ' ') {
-                              e.stopPropagation()
-                            }
-                          }}
-                          placeholder="Enter customer name"
+                          value={editForm.supplier_name}
+                          onChange={(e) => setEditForm({ ...editForm, supplier_name: e.target.value })}
+                          placeholder="Enter supplier name"
                         />
                       </div>
                       <div className="space-y-1">
                         <label className="text-sm font-medium">Name in Arabic</label>
                         <Input
-                          value={editForm.customer_name_arabic}
-                          onChange={(e) => setEditForm({ ...editForm, customer_name_arabic: e.target.value })}
-                          onKeyDown={(e) => {
-                            const target = e.target as HTMLElement
-                            // Allow arrow keys for text editing in input/textarea fields
-                            const isInputField = target.tagName === 'INPUT' ||
-                              target.tagName === 'TEXTAREA' ||
-                              target.closest('input') ||
-                              target.closest('textarea')
-                            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
-                              e.stopPropagation()
-                              // Don't prevent default - let browser handle cursor movement
-                              return
-                            }
-                          }}
+                          value={editForm.supplier_name_arabic}
+                          onChange={(e) => setEditForm({ ...editForm, supplier_name_arabic: e.target.value })}
                           placeholder="اكتب الاسم بالعربية"
                         />
-                      </div>
-                    </div>
-
-                    {/* Row 1b: Customer Type */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <label className="text-sm font-medium">Customer Type *</label>
-                        <Select
-                          value={editForm.customer_type}
-                          onValueChange={(value) => setEditForm({ ...editForm, customer_type: value })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select customer type" />
-                          </SelectTrigger>
-                          <SelectContent className="z-[9999] bg-white border border-gray-200 shadow-xl">
-                            <SelectItem value="Individual">Individual</SelectItem>
-                            <SelectItem value="Company">Company</SelectItem>
-                          </SelectContent>
-                        </Select>
                       </div>
                     </div>
 
@@ -3901,121 +3782,27 @@ const RightPanel: React.FC<RightPanelProps> = ({
                           type="email"
                           value={editForm.email}
                           onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                          onKeyDown={(e) => {
-                            const target = e.target as HTMLElement
-                            // Allow arrow keys for text editing in input/textarea fields
-                            const isInputField = target.tagName === 'INPUT' ||
-                              target.tagName === 'TEXTAREA' ||
-                              target.closest('input') ||
-                              target.closest('textarea')
-                            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
-                              e.stopPropagation()
-                              // Don't prevent default - let browser handle cursor movement
-                              return
-                            }
-                          }}
                           placeholder="email@example.com"
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-sm font-medium">Mobile{editForm.customer_type === 'Company' ? ' *' : ''}</label>
+                        <label className="text-sm font-medium">Mobile</label>
                         <Input
-                          value={editForm.mobile}
-                          onChange={(e) => setEditForm({ ...editForm, mobile: e.target.value })}
-                          onKeyDown={(e) => {
-                            const target = e.target as HTMLElement
-                            // Allow arrow keys for text editing in input/textarea fields
-                            const isInputField = target.tagName === 'INPUT' ||
-                              target.tagName === 'TEXTAREA' ||
-                              target.closest('input') ||
-                              target.closest('textarea')
-                            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
-                              e.stopPropagation()
-                              // Don't prevent default - let browser handle cursor movement
-                              return
-                            }
-                          }}
+                          value={editForm.mobile_no}
+                          onChange={(e) => setEditForm({ ...editForm, mobile_no: e.target.value })}
                           placeholder="+966509876543"
                         />
                       </div>
                     </div>
 
-                    {/* Separator */}
-                    <div className="border-t border-gray-300 my-2"></div>
-
-                    {/* Row 3: Tax ID and ZATCA fields */}
+                    {/* Row 3: Tax ID and Country */}
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1">
-                        <label className="text-sm font-medium">Tax ID{editForm.customer_type === 'Company' ? ' *' : ''}</label>
+                        <label className="text-sm font-medium">Tax ID</label>
                         <Input
                           value={editForm.tax_id}
                           onChange={(e) => setEditForm({ ...editForm, tax_id: e.target.value })}
-                          onKeyDown={(e) => {
-                            const target = e.target as HTMLElement
-                            // Allow arrow keys for text editing in input/textarea fields
-                            const isInputField = target.tagName === 'INPUT' ||
-                              target.tagName === 'TEXTAREA' ||
-                              target.closest('input') ||
-                              target.closest('textarea')
-                            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
-                              e.stopPropagation()
-                              // Don't prevent default - let browser handle cursor movement
-                              return
-                            }
-                          }}
                           placeholder="310123456700003"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-sm font-medium">Customer ID Type for ZATCA{editForm.customer_type === 'Company' ? ' *' : ''}</label>
-                        <Select
-                          value={editForm.customer_id_type_for_zatca}
-                          onValueChange={(value) => setEditForm({ ...editForm, customer_id_type_for_zatca: value })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select ID type" />
-                          </SelectTrigger>
-                          <SelectContent className="z-[9999] bg-white border border-gray-200 shadow-xl max-h-[200px]">
-                            <SelectItem value="TIN">TIN</SelectItem>
-                            <SelectItem value="CRN">CRN</SelectItem>
-                            <SelectItem value="MOM">MOM</SelectItem>
-                            <SelectItem value="MLS">MLS</SelectItem>
-                            <SelectItem value="700">700</SelectItem>
-                            <SelectItem value="SAG">SAG</SelectItem>
-                            <SelectItem value="NAT">NAT</SelectItem>
-                            <SelectItem value="GCC">GCC</SelectItem>
-                            <SelectItem value="IQA">IQA</SelectItem>
-                            <SelectItem value="PAS">PAS</SelectItem>
-                            <SelectItem value="OTH">OTH</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    {/* Row 4: ZATCA ID Number and Country */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <label className="text-sm font-medium">Customer ID Number for ZATCA{editForm.customer_type === 'Company' ? ' *' : ''}</label>
-                        <Input
-                          value={editForm.customer_id_number_for_zatca}
-                          onChange={(e) => setEditForm({ ...editForm, customer_id_number_for_zatca: e.target.value })}
-                          onKeyDown={(e) => {
-                            const target = e.target as HTMLElement
-                            // Allow arrow keys for text editing in input/textarea fields
-                            const isInputField = target.tagName === 'INPUT' ||
-                              target.tagName === 'TEXTAREA' ||
-                              target.closest('input') ||
-                              target.closest('textarea')
-                            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
-                              e.stopPropagation()
-                              // Don't prevent default - let browser handle cursor movement
-                              return
-                            }
-                            if (e.key === ' ') {
-                              e.stopPropagation()
-                            }
-                          }}
-                          placeholder="1010123456"
                         />
                       </div>
                       <div className="space-y-1">
@@ -4023,47 +3810,18 @@ const RightPanel: React.FC<RightPanelProps> = ({
                         <Input
                           value={editForm.country}
                           onChange={(e) => setEditForm({ ...editForm, country: e.target.value })}
-                          onKeyDown={(e) => {
-                            const target = e.target as HTMLElement
-                            // Allow arrow keys for text editing in input/textarea fields
-                            const isInputField = target.tagName === 'INPUT' ||
-                              target.tagName === 'TEXTAREA' ||
-                              target.closest('input') ||
-                              target.closest('textarea')
-                            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
-                              e.stopPropagation()
-                              // Don't prevent default - let browser handle cursor movement
-                              return
-                            }
-                          }}
                           placeholder="Saudi Arabia"
                         />
                       </div>
                     </div>
 
-                    {/* Row 5: Address Line 1 and 2 */}
+                    {/* Row 4: Address Line 1 and 2 */}
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1">
-                        <label className="text-sm font-medium">Address Line 1{editForm.customer_type === 'Company' ? ' *' : ''}</label>
+                        <label className="text-sm font-medium">Address Line 1</label>
                         <Input
                           value={editForm.address_line1}
                           onChange={(e) => setEditForm({ ...editForm, address_line1: e.target.value })}
-                          onKeyDown={(e) => {
-                            const target = e.target as HTMLElement
-                            // Allow arrow keys for text editing in input/textarea fields
-                            const isInputField = target.tagName === 'INPUT' ||
-                              target.tagName === 'TEXTAREA' ||
-                              target.closest('input') ||
-                              target.closest('textarea')
-                            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
-                              e.stopPropagation()
-                              // Don't prevent default - let browser handle cursor movement
-                              return
-                            }
-                            if (e.key === ' ') {
-                              e.stopPropagation()
-                            }
-                          }}
                           placeholder="789 King Abdullah Road"
                         />
                       </div>
@@ -4072,95 +3830,26 @@ const RightPanel: React.FC<RightPanelProps> = ({
                         <Input
                           value={editForm.address_line2}
                           onChange={(e) => setEditForm({ ...editForm, address_line2: e.target.value })}
-                          onKeyDown={(e) => {
-                            const target = e.target as HTMLElement
-                            // Allow arrow keys for text editing in input/textarea fields
-                            const isInputField = target.tagName === 'INPUT' ||
-                              target.tagName === 'TEXTAREA' ||
-                              target.closest('input') ||
-                              target.closest('textarea')
-                            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
-                              e.stopPropagation()
-                              // Don't prevent default - let browser handle cursor movement
-                              return
-                            }
-                            if (e.key === ' ') {
-                              e.stopPropagation()
-                            }
-                          }}
                           placeholder="Building 8221"
                         />
                       </div>
                     </div>
 
-                    {/* Row 6: City/Town, Building No., Pincode */}
-                    <div className="grid grid-cols-3 gap-4">
+                    {/* Row 5: City and Pincode */}
+                    <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1">
-                        <label className="text-sm font-medium">City/Town{editForm.customer_type === 'Company' ? ' *' : ''}</label>
+                        <label className="text-sm font-medium">City</label>
                         <Input
                           value={editForm.city}
                           onChange={(e) => setEditForm({ ...editForm, city: e.target.value })}
-                          onKeyDown={(e) => {
-                            const target = e.target as HTMLElement
-                            // Allow arrow keys for text editing in input/textarea fields
-                            const isInputField = target.tagName === 'INPUT' ||
-                              target.tagName === 'TEXTAREA' ||
-                              target.closest('input') ||
-                              target.closest('textarea')
-                            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
-                              e.stopPropagation()
-                              // Don't prevent default - let browser handle cursor movement
-                              return
-                            }
-                            if (e.key === ' ') {
-                              e.stopPropagation()
-                            }
-                          }}
                           placeholder="Riyadh"
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-sm font-medium">Building No.{editForm.customer_type === 'Company' ? ' *' : ''}</label>
-                        <Input
-                          value={editForm.building_number}
-                          onChange={(e) => setEditForm({ ...editForm, building_number: e.target.value })}
-                          onKeyDown={(e) => {
-                            const target = e.target as HTMLElement
-                            // Allow arrow keys for text editing in input/textarea fields
-                            const isInputField = target.tagName === 'INPUT' ||
-                              target.tagName === 'TEXTAREA' ||
-                              target.closest('input') ||
-                              target.closest('textarea')
-                            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
-                              e.stopPropagation()
-                              // Don't prevent default - let browser handle cursor movement
-                              return
-                            }
-                            if (e.key === ' ') {
-                              e.stopPropagation()
-                            }
-                          }}
-                          placeholder="Building number"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-sm font-medium">Pincode{editForm.customer_type === 'Company' ? ' *' : ''}</label>
+                        <label className="text-sm font-medium">Pincode</label>
                         <Input
                           value={editForm.pincode}
                           onChange={(e) => setEditForm({ ...editForm, pincode: e.target.value })}
-                          onKeyDown={(e) => {
-                            const target = e.target as HTMLElement
-                            // Allow arrow keys for text editing in input/textarea fields
-                            const isInputField = target.tagName === 'INPUT' ||
-                              target.tagName === 'TEXTAREA' ||
-                              target.closest('input') ||
-                              target.closest('textarea')
-                            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && isInputField) {
-                              e.stopPropagation()
-                              // Don't prevent default - let browser handle cursor movement
-                              return
-                            }
-                          }}
                           placeholder="11564"
                         />
                       </div>
@@ -4171,198 +3860,70 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     <Button disabled={editSubmitting} onClick={async () => {
                       try {
                         setEditSubmitting(true)
-                        console.log('📝 Editing customer - request body:', editForm)
-                        // validation
-                        if (!editForm.customer_name) { toast.error('Customer name is required'); setEditSubmitting(false); return }
-                        if (editForm.customer_type === 'Company') {
-                          if (!editForm.mobile) { toast.error('Mobile is required for Company'); setEditSubmitting(false); return }
-                          if (!editForm.tax_id) { toast.error('Tax ID is required for Company'); setEditSubmitting(false); return }
-                          if (!editForm.customer_id_type_for_zatca || !editForm.customer_id_number_for_zatca) {
-                            toast.error('ZATCA ID Type and Number are required for Company'); setEditSubmitting(false); return
-                          }
-                          if (!editForm.address_line1) { toast.error('Address Line 1 is required for Company'); setEditSubmitting(false); return }
-                          if (!editForm.city) { toast.error('City/Town is required for Company'); setEditSubmitting(false); return }
-                          if (!editForm.building_number) { toast.error('Building No. is required for Company'); setEditSubmitting(false); return }
-                          if (!editForm.pincode) { toast.error('Pincode is required for Company'); setEditSubmitting(false); return }
-                        }
+                        if (!editForm.supplier_name) { toast.error('Supplier name is required'); setEditSubmitting(false); return }
 
-                        // Prepare API payload with all required fields, ensuring empty values are sent as empty strings
                         const apiPayload = {
-                          customer_id: editForm.customer_id || '',
-                          customer_name: editForm.customer_name || '',
-                          customer_name_arabic: editForm.customer_name_arabic || '',
+                          supplier_id: editForm.supplier_id || '',
+                          supplier_name: editForm.supplier_name || '',
+                          supplier_name_arabic: editForm.supplier_name_arabic || '',
                           email: editForm.email || '',
-                          mobile: editForm.mobile || '',
-                          customer_type: editForm.customer_type || 'Individual',
+                          mobile: editForm.mobile_no || '',
+                          mobile_no: editForm.mobile_no || '',
                           tax_id: editForm.tax_id || '',
-                          customer_id_type_for_zatca: editForm.customer_id_type_for_zatca || '',
-                          customer_id_number_for_zatca: editForm.customer_id_number_for_zatca || '',
                           address_line1: editForm.address_line1 || '',
                           address_line2: editForm.address_line2 || '',
-                          building_number: editForm.building_number || '',
                           city: editForm.city || '',
                           pincode: editForm.pincode || '',
                           country: editForm.country || ''
                         }
 
-                        console.log('📝 Editing customer - API call:', {
+                        console.log('📝 Editing supplier - API call:', {
                           method: 'POST',
-                          url: '/api/method/centro_pos_apis.api.customer.edit_customer',
+                          url: '/api/method/centro_pos_apis.api.supplier.edit_supplier',
                           body: apiPayload
                         })
 
                         const res = await (window as any).electronAPI?.proxy?.request({
                           method: 'POST',
-                          url: '/api/method/centro_pos_apis.api.customer.edit_customer',
+                          url: '/api/method/centro_pos_apis.api.supplier.edit_supplier',
                           data: apiPayload
                         })
 
-                        console.log('✅ Edit customer response:', {
-                          status: res?.status,
-                          success: res?.success,
-                          data: res?.data,
-                          fullResponse: res
-                        })
-
-                        // Extract message safely - ensure it's always a string
-                        let serverMsg: string = 'Customer updated successfully'
-                        if (res?.data?.data) {
-                          if (typeof res.data.data === 'object' && res.data.data !== null) {
-                            // If data.data is an object, extract message from it
-                            if (typeof res.data.data.message === 'string') {
-                              serverMsg = res.data.data.message
-                            }
-                          } else if (typeof res.data.data === 'string') {
-                            serverMsg = res.data.data
-                          }
-                        } else if (res?.data?.message) {
-                          if (typeof res.data.message === 'string') {
-                            serverMsg = res.data.message
-                          }
-                        }
-
-                        const serverError = res?.data?._server_messages
-                        if (res?.success === false || res?.status >= 400 || serverError) {
-                          let prettyErr = 'Update failed'
-                          console.log('❌ Edit customer server error raw:', serverError)
-                          try {
-                            if (typeof serverError === 'string') {
-                              // Try direct JSON parse
-                              try {
-                                const arr = JSON.parse(serverError)
-                                if (Array.isArray(arr) && arr.length) {
-                                  const obj = arr[0]
-                                  if (typeof obj === 'object') {
-                                    if (obj.message) prettyErr = obj.message
-                                    else prettyErr = JSON.stringify(obj, null, 2)
-                                  } else if (typeof obj === 'string') {
-                                    prettyErr = obj
-                                  }
-                                }
-                              } catch (e1) {
-                                // Try with unescaped quotes cleanup
-                                const cleaned = serverError
-                                  .replace(/\\n/g, '\n')
-                                  .replace(/\\r/g, '\r')
-                                  .replace(/\\t/g, '\t')
-                                  .replace(/\\\\/g, '\\')
-                                  .replace(/\\\"/g, '"')
-                                try {
-                                  const arr2 = JSON.parse(cleaned)
-                                  if (Array.isArray(arr2) && arr2.length) {
-                                    const obj2 = arr2[0]
-                                    if (typeof obj2 === 'object') {
-                                      if (obj2.message) prettyErr = obj2.message
-                                      else prettyErr = JSON.stringify(obj2, null, 2)
-                                    } else if (typeof obj2 === 'string') {
-                                      prettyErr = obj2
-                                    }
-                                  }
-                                } catch (e2) {
-                                  // Last resort: extract between \"message\": \" ... \"
-                                  const m = serverError.match(/message\\\"\s*:\s*\\\"([^\"]+)/i)
-                                  if (m && m[1]) prettyErr = m[1]
-                                }
-                              }
-                            }
-                          } catch (_) { }
-                          // Prefer showing only the human-friendly message
-                          let uiMsg = prettyErr
-                          try {
-                            if (prettyErr.startsWith('[')) {
-                              const arr = JSON.parse(prettyErr)
-                              const obj = typeof arr[0] === 'string' ? JSON.parse(arr[0]) : arr[0]
-                              if (obj?.message) uiMsg = obj.message
-                            } else if (prettyErr.startsWith('{')) {
-                              const obj = JSON.parse(prettyErr)
-                              if (obj?.message) uiMsg = obj.message
-                            }
-                          } catch (_) { }
-                          toast.error(typeof uiMsg === 'string' ? uiMsg : 'Failed to update customer')
+                        if (res?.success === false || res?.status >= 400) {
+                          toast.error('Failed to update supplier')
                           setEditSubmitting(false)
                           return
                         }
 
-                        // Ensure msg is always a string
-                        const msg = typeof serverMsg === 'string' ? serverMsg : 'Customer updated successfully'
-
+                        toast.success('Supplier updated successfully')
+                        setEditOpen(false)
+                        
                         // refresh details
                         if (selectedCustomer?.name || selectedCustomer?.customer_id || customerDetails?.name) {
-                          // trigger reload using existing loadCustomerDetails flow
                           try {
-                            await (async () => {
-                              // let cancelled=false; // Unused 
-                              setCustomerDetailsLoading(true); setCustomerDetailsError(null);
-                              const listRes = await (window as any).electronAPI?.proxy?.request({ url: '/api/method/centro_pos_apis.api.customer.customer_list', params: { search_term: '', limit_start: 1, limit_page_length: 50 } })
-                              const list = listRes?.data?.data || []
-                              const match = list.find((c: any) => c.customer_name === (selectedCustomer?.name || customerDetails?.customer_name))
-                              const customerId = match?.name || customerDetails?.name
-                              if (customerId) {
-                                console.log('📞 API Call: get_customer_details (Refresh)', {
-                                  url: '/api/method/centro_pos_apis.api.customer.get_customer_details',
-                                  params: { customer_id: customerId }
-                                })
-                                const detailsRes = await (window as any).electronAPI?.proxy?.request({ url: '/api/method/centro_pos_apis.api.customer.get_customer_details', params: { customer_id: customerId } })
-                                console.log('📥 API Response: get_customer_details (Refresh)', {
-                                  fullResponse: detailsRes,
-                                  data: detailsRes?.data,
-                                  customerData: detailsRes?.data?.data
-                                })
-
-                                // Safely extract customer data - ensure it's a proper customer object, not a response wrapper
-                                let customerData: any = null
-                                if (detailsRes?.data?.data) {
-                                  // Check if data.data is a valid customer object (has customer_name or name property)
-                                  if (detailsRes.data.data && typeof detailsRes.data.data === 'object' &&
-                                    (detailsRes.data.data.customer_name || detailsRes.data.data.name)) {
-                                    customerData = detailsRes.data.data
-                                  }
-                                } else if (detailsRes?.data && typeof detailsRes.data === 'object' &&
-                                  (detailsRes.data.customer_name || detailsRes.data.name)) {
-                                  // Fallback: check if data itself is the customer object
-                                  customerData = detailsRes.data
-                                }
-
-                                // Only set if we have valid customer data (not a response wrapper object)
-                                if (customerData && !customerData.status && !customerData.message) {
-                                  setCustomerDetails(customerData)
-                                } else {
-                                  console.warn('⚠️ Invalid customer data structure received:', customerData)
-                                }
+                            setCustomerDetailsLoading(true); setCustomerDetailsError(null);
+                            const customerId = selectedCustomer?.name || selectedCustomer?.customer_id || customerDetails?.name
+                            if (customerId) {
+                              const detailsRes = await (window as any).electronAPI?.proxy?.request({ url: '/api/method/centro_pos_apis.api.supplier.supplier_details', params: { supplier_id: customerId } })
+                              let supplierData: any = null
+                              if (detailsRes?.data?.data) {
+                                supplierData = detailsRes.data.data
+                              } else if (detailsRes?.data) {
+                                supplierData = detailsRes.data
                               }
-                              setCustomerDetailsLoading(false)
-                            })()
+
+                              if (supplierData && !supplierData.status && !supplierData.message) {
+                                setCustomerDetails(supplierData)
+                              }
+                            }
+                            setCustomerDetailsLoading(false)
                           } catch (e) {
-                            console.error('❌ Error refreshing customer details after edit:', e)
+                            console.error('❌ Error refreshing supplier details after edit:', e)
                             setCustomerDetailsLoading(false)
                           }
                         }
-                        toast.success(msg)
-                        setEditOpen(false)
                       } catch (err) {
-                        console.error('❌ Edit customer error:', err)
-                        const errorMsg = err instanceof Error ? err.message : 'Failed to update customer'
-                        toast.error(typeof errorMsg === 'string' ? errorMsg : 'Failed to update customer')
+                        toast.error('Failed to update supplier')
                       } finally {
                         setEditSubmitting(false)
                       }
