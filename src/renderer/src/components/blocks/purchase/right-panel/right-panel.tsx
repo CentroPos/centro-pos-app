@@ -923,10 +923,6 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const [isOpeningOrder, setIsOpeningOrder] = useState(false)
 
   // History state for Purchase History and Supplier History tabs
-  const [_customerHistory, setCustomerHistory] = useState<any[]>([])
-  const [_customerHistoryLoading, _setCustomerHistoryLoading] = useState(false)
-  const [customerHistorySearch, _setCustomerHistorySearch] = useState('')
-
   const [purchaseHistory, setPurchaseHistory] = useState<any[]>([])
   const [purchaseHistoryLoading, setPurchaseHistoryLoading] = useState(false)
 
@@ -1411,13 +1407,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
     }
   }, [selectedItemId, currentUom, refreshTokens.product])
 
-  // Fetch customer history for selected product
-  // Pagination state for product tab histories (already declared above)
-  const [customerHistoryPage, setCustomerHistoryPage] = useState(1)
   const [purchaseHistoryPage, setPurchaseHistoryPage] = useState(1)
-  const customerHasMoreRef = useRef(true)
   const purchaseHasMoreRef = useRef(true)
-  const isFetchingCustomerRef = useRef(false)
   const isFetchingPurchaseRef = useRef(false)
   const purchaseHistoryScrollRef = useRef<HTMLDivElement | null>(null)
   const [purchaseHistorySearch, setPurchaseHistorySearch] = useState('')
@@ -1426,101 +1417,6 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
   const PAGE_LEN = 3
 
-  const fetchCustomerHistory = async (itemCode: string, page = customerHistoryPage, searchTerm: string = '') => {
-    if (!itemCode || !selectedCustomer) {
-      console.log('🚫 Customer history fetch skipped - missing itemCode or selectedCustomer:', {
-        itemCode,
-        selectedCustomer
-      })
-      return
-    }
-
-    // Get the correct customer_id by fetching customer list and finding the matching customer
-    let customerId = selectedCustomer.customer_id || selectedCustomer.name
-
-    try {
-      console.log('📊 ===== FETCHING CUSTOMER LIST FOR CUSTOMER_ID MAPPING =====')
-      const customerListResponse = await window.electronAPI?.proxy?.request({
-        method: 'GET',
-        url: '/api/method/centro_pos_apis.api.customer.customer_list',
-        params: {
-          search_term: '',
-          limit_start: 0,
-          limit_page_length: 1000
-        }
-      })
-
-      if (customerListResponse?.success && customerListResponse?.data?.data) {
-        const customers = customerListResponse.data.data
-        console.log('📊 Customer list from API:', customers)
-
-        // Find the customer where customer_name matches selectedCustomer.name
-        const matchingCustomer = customers.find(
-          (c: any) => c.customer_name === selectedCustomer.name
-        )
-        console.log('📊 Matching customer found:', matchingCustomer)
-
-        if (matchingCustomer) {
-          customerId = matchingCustomer.name // This should be the CUS-ID
-          console.log('📊 Corrected customer_id from API:', customerId)
-        } else {
-          console.log('❌ No matching customer found in API response')
-        }
-      }
-    } catch (error) {
-      console.error('❌ Error fetching customer list for mapping:', error)
-    }
-
-    console.log('📞 Customer History API called:', {
-      itemCode,
-      customerId,
-      page,
-      searchTerm,
-      productSubTab,
-      selectedItemId,
-      selectedCustomer: selectedCustomer?.name,
-      timestamp: new Date().toISOString()
-    })
-
-    if (isFetchingCustomerRef.current) return
-    isFetchingCustomerRef.current = true
-    _setCustomerHistoryLoading(true)
-    try {
-      const apiUrl = '/api/method/centro_pos_apis.api.product.get_product_customer_history'
-      const apiParams = {
-        item_id: itemCode,
-        customer_id: customerId,
-        limit_start: page,
-        limit_page_length: PAGE_LEN,
-        search_term: searchTerm || '' // Always include search_term
-      }
-
-      console.log('📞 Customer History API request params:', apiParams)
-
-      const response = await window.electronAPI?.proxy?.request({
-        method: 'GET',
-        url: apiUrl,
-        params: apiParams
-      })
-
-      console.log('📦 Customer History API result:', response)
-
-      if (response?.success && response?.data?.data) {
-        const newData = response.data.data
-        // hasMore: if returned fewer than PAGE_LEN, no next page
-        customerHasMoreRef.current = Array.isArray(newData) && newData.length === PAGE_LEN
-        setCustomerHistory(newData)
-      } else {
-        setCustomerHistory([])
-      }
-    } catch (error) {
-      console.error('❌ Error loading customer history:', error)
-      setCustomerHistory([])
-    } finally {
-      _setCustomerHistoryLoading(false)
-      isFetchingCustomerRef.current = false
-    }
-  }
 
   // Fetch purchase history for selected product
   const fetchPurchaseHistory = async (itemCode: string, page = purchaseHistoryPage, searchTerm: string = '') => {
@@ -1578,7 +1474,17 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
   // Fetch product supplier history (which suppliers supplied this product)
   const fetchProductSupplierHistory = async (itemCode: string, page = 1, searchTerm: string = '') => {
-    if (!itemCode) return
+    if (!itemCode || !selectedCustomer) {
+      console.log('🚫 Supplier history fetch skipped - missing itemCode or selectedCustomer:', {
+        itemCode,
+        selectedCustomer
+      })
+      setSupplierHistory([])
+      return
+    }
+
+    const supplierId = selectedCustomer.supplier_id || selectedCustomer.name
+
     if (isFetchingSupplierRef.current) return
     isFetchingSupplierRef.current = true
     setSupplierHistoryLoading(true)
@@ -1588,6 +1494,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
         url: '/api/method/centro_pos_apis.api.product.get_product_supplier_history',
         params: {
           item_id: itemCode,
+          supplier_id: supplierId,
           limit_start: page,
           limit_page_length: PAGE_LEN,
           ...(searchTerm ? { search_term: searchTerm } : {})
@@ -1621,22 +1528,16 @@ const RightPanel: React.FC<RightPanelProps> = ({
       console.log('🔄 Product/Supplier changed, loading history data...')
 
       // Load histories when product or supplier changes
-      fetchCustomerHistory(selectedItemId, customerHistoryPage, customerHistorySearch)
       fetchPurchaseHistory(selectedItemId, purchaseHistoryPage, purchaseHistorySearch)
-      if (productSubTab === 'supplier-history') {
-        fetchProductSupplierHistory(selectedItemId, supplierHistoryPage, supplierHistorySearch)
-      }
+      fetchProductSupplierHistory(selectedItemId, supplierHistoryPage, supplierHistorySearch)
     } else {
       console.log('🔄 No product selected, clearing history data...')
-      setCustomerHistory([])
       setPurchaseHistory([])
       setSupplierHistory([])
     }
     // reset pagination on product or supplier change
-    setCustomerHistoryPage(1)
     setPurchaseHistoryPage(1)
     setSupplierHistoryPage(1)
-    customerHasMoreRef.current = true
     purchaseHasMoreRef.current = true
     supplierHasMoreRef.current = true
   }, [selectedItemId, selectedCustomer, refreshTokens.product])
@@ -1671,8 +1572,6 @@ const RightPanel: React.FC<RightPanelProps> = ({
     purchaseHistorySearch,
     supplierHistoryPage,
     supplierHistorySearch,
-    customerHistoryPage,
-    customerHistorySearch,
     selectedItemId,
     refreshTokens.product
   ])
@@ -3216,6 +3115,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                               const unitPrice = Number(item.unit_price || 0).toFixed(2)
                               // Extract order ID from item (purchase order)
                               const orderId = item.purchase_order_id || item.purchase_order_no || item.purchase_invoice_no || item.name
+                              const invoiceId = item.purchase_invoice_no || item.purchase_invoice_id || item.invoice_no || item.invoice_id
 
                               return (
                                 <div
@@ -3229,8 +3129,15 @@ const RightPanel: React.FC<RightPanelProps> = ({
                                 >
                                   {/* Order No and Date Row */}
                                   <div className="flex justify-between items-center mb-2">
-                                    <div className="font-semibold text-black text-sm">
-                                      {item.purchase_order_no || item.purchase_invoice_no || item.name || '—'}
+                                    <div className="flex flex-col">
+                                      <div className="font-semibold text-black text-sm">
+                                        {item.purchase_order_no || item.purchase_invoice_no || item.name || '—'}
+                                      </div>
+                                      {item.purchase_order_no && invoiceId && (
+                                        <div className="text-gray-700 text-[10px] mt-0.5">
+                                          {invoiceId}
+                                        </div>
+                                      )}
                                     </div>
                                     <div className="text-gray-600 text-xs">
                                       {item.creation_datetime || item.posting_date
@@ -3400,6 +3307,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                               }
                               const unitPrice = Number(item.unit_price ?? item.rate ?? 0).toFixed(2)
                               const orderId = item.purchase_order_id || item.purchase_order_no || item.purchase_invoice_no || item.name
+                              const invoiceId = item.purchase_invoice_no || item.purchase_invoice_id || item.invoice_no || item.invoice_id
 
                               return (
                                 <div
@@ -3412,8 +3320,15 @@ const RightPanel: React.FC<RightPanelProps> = ({
                                   }}
                                 >
                                   <div className="flex justify-between items-center mb-2">
-                                    <div className="font-semibold text-black text-sm">
-                                      {item.purchase_order_no || item.purchase_invoice_no || item.name || '—'}
+                                    <div className="flex flex-col">
+                                      <div className="font-semibold text-black text-sm">
+                                        {item.purchase_order_no || item.purchase_invoice_no || item.name || '—'}
+                                      </div>
+                                      {item.purchase_order_no && invoiceId && (
+                                        <div className="text-gray-700 text-[10px] mt-0.5">
+                                          {invoiceId}
+                                        </div>
+                                      )}
                                     </div>
                                     <div className="text-gray-600 text-xs">
                                       {item.creation_datetime || item.posting_date

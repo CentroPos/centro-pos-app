@@ -835,10 +835,23 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const orderSearchInputRef = useRef<HTMLInputElement>(null)
 
   const [currencySymbol, setCurrencySymbol] = useState('$')
-  const { profile } = usePOSProfileStore()
+  const { profile, currentUserPrivileges } = usePOSProfileStore()
   const hideCostAndMargin = profile?.custom_hide_cost_and_margin_info === 1
-  const showPurchaseHistory = profile?.custom_show_purchase_history === 1
+  const hideAlternateProducts = profile?.custom_hide_alternate_products === 1
+  const hideItemOffers = profile?.custom_hide_item_offers === 1
+  const showPurchaseHistory =
+    profile?.custom_show_purchase_history === 1 &&
+    currentUserPrivileges?.custom_allow_purchase_history_in_sales === true
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+
+  // Keep alternate products / item offers subtab aligned with visibility configurations
+  useEffect(() => {
+    if (hideAlternateProducts && !hideItemOffers) {
+      setAltOffersSubTab('offers')
+    } else if (!hideAlternateProducts && hideItemOffers) {
+      setAltOffersSubTab('alternate')
+    }
+  }, [hideAlternateProducts, hideItemOffers])
 
   // Tab configuration - filter based on profile setting
   const productTabs = [
@@ -3288,40 +3301,46 @@ const RightPanel: React.FC<RightPanelProps> = ({
               </div>
 
               {/* Alternate Products / Item Offers Tabs */}
-              <div className="bg-white/90 mt-2">
-                <div className="flex border-b border-gray-200/60">
-                  <button
-                    className={`px-4 py-2 text-xs font-semibold border-b-2 flex-1 ${altOffersSubTab === 'alternate'
-                      ? 'border-blue-500 bg-blue-50 text-blue-700'
-                      : 'border-transparent text-gray-500 hover:text-black hover:bg-white/40'
-                      }`}
-                    onClick={() => setAltOffersSubTab('alternate')}
-                  >
-                    Alternate Products
-                  </button>
-                  <button
-                    className={`px-4 py-2 text-xs font-semibold border-b-2 flex-1 ${altOffersSubTab === 'offers'
-                      ? 'border-amber-500 bg-amber-50 text-amber-700'
-                      : 'border-transparent text-gray-500 hover:text-black hover:bg-white/40'
-                      }`}
-                    onClick={() => setAltOffersSubTab('offers')}
-                  >
-                    Item Offers
-                  </button>
+              {(!hideAlternateProducts || !hideItemOffers) && (
+                <div className="bg-white/90 mt-2">
+                  <div className="flex border-b border-gray-200/60">
+                    {!hideAlternateProducts && (
+                      <button
+                        className={`px-4 py-2 text-xs font-semibold border-b-2 flex-1 ${altOffersSubTab === 'alternate'
+                          ? 'border-blue-500 bg-blue-50 text-blue-700'
+                          : 'border-transparent text-gray-500 hover:text-black hover:bg-white/40'
+                          }`}
+                        onClick={() => setAltOffersSubTab('alternate')}
+                      >
+                        Alternate Products
+                      </button>
+                    )}
+                    {!hideItemOffers && (
+                      <button
+                        className={`px-4 py-2 text-xs font-semibold border-b-2 flex-1 ${altOffersSubTab === 'offers'
+                          ? 'border-amber-500 bg-amber-50 text-amber-700'
+                          : 'border-transparent text-gray-500 hover:text-black hover:bg-white/40'
+                          }`}
+                        onClick={() => setAltOffersSubTab('offers')}
+                      >
+                        Item Offers
+                      </button>
+                    )}
+                  </div>
+
+                  {!hideAlternateProducts && altOffersSubTab === 'alternate' && (
+                    <AlternateProducts
+                      itemCode={selectedItemId}
+                      onAddItem={(item) => onAddItem && onAddItem(item)}
+                      onReplaceItem={(item) => onReplaceItem && onReplaceItem(item)}
+                    />
+                  )}
+
+                  {!hideItemOffers && altOffersSubTab === 'offers' && (
+                    <ItemOffers itemCode={selectedItemId} selectedItem={selectedItem} />
+                  )}
                 </div>
-
-                {altOffersSubTab === 'alternate' && (
-                  <AlternateProducts
-                    itemCode={selectedItemId}
-                    onAddItem={(item) => onAddItem && onAddItem(item)}
-                    onReplaceItem={(item) => onReplaceItem && onReplaceItem(item)}
-                  />
-                )}
-
-                {altOffersSubTab === 'offers' && (
-                  <ItemOffers itemCode={selectedItemId} selectedItem={selectedItem} />
-                )}
-              </div>
+              )}
 
               {/* Product History Section */}
               <div className="bg-white/90 mt-2">
@@ -3743,8 +3762,10 @@ const RightPanel: React.FC<RightPanelProps> = ({
                               const year = date.getFullYear()
                               return `${day}/${month}/${year}`
                             }
-                            const totalAmount = item.total_amount ? Number(item.total_amount).toFixed(2) : (Number(item.qty || 0) * Number(item.unit_price || 0)).toFixed(2)
+                            const quantity = item.quantity || item.qty || 0
+                            const totalAmount = item.total_amount ? Number(item.total_amount).toFixed(2) : (Number(quantity) * Number(item.unit_price || 0)).toFixed(2)
                             const unitPrice = Number(item.unit_price || 0).toFixed(2)
+                            const invoiceId = item.invoice_no || item.purchase_invoice_no || item.purchase_invoice_id || item.invoice_id
                             return (
                               <div
                                 key={index}
@@ -3752,8 +3773,15 @@ const RightPanel: React.FC<RightPanelProps> = ({
                               >
                                 {/* Invoice No and Date Row */}
                                 <div className="flex justify-between items-center mb-2">
-                                  <div className="font-semibold text-black text-sm">
-                                    {item.invoice_no || item.purchase_order_no || '—'}
+                                  <div className="flex flex-col">
+                                    <div className="font-semibold text-black text-sm">
+                                      {item.purchase_order_no || '—'}
+                                    </div>
+                                    {invoiceId && (
+                                      <div className="text-gray-700 text-[10px] mt-0.5">
+                                        {invoiceId}
+                                      </div>
+                                    )}
                                   </div>
                                   <div className="text-gray-600 text-xs">
                                     {item.creation_datetime
@@ -3765,7 +3793,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                                 {/* Amount Row */}
                                 <div className="flex justify-between items-center mb-2">
                                   <span className="text-gray-600 font-medium text-xs">
-                                    Qty: {item.qty || 0}
+                                    Qty: {quantity}
                                   </span>
                                   <div className="flex flex-col items-end">
                                     <span className="text-gray-600 font-medium text-xs">
@@ -3775,6 +3803,28 @@ const RightPanel: React.FC<RightPanelProps> = ({
                                       Total: <span className="font-bold text-green-600">{totalAmount} {currencySymbol}</span>
                                     </span>
                                   </div>
+                                </div>
+
+                                {/* Status Row */}
+                                <div className="flex items-center gap-2">
+                                  {item.status && (
+                                    <span
+                                      className={`px-2 py-0.5 rounded text-[10px] font-medium ${
+                                        item.status === 'Completed'
+                                          ? 'bg-green-100 text-green-800'
+                                          : item.status === 'Draft'
+                                          ? 'bg-gray-100 text-gray-800'
+                                          : 'bg-blue-100 text-blue-800'
+                                      }`}
+                                    >
+                                      {item.status}
+                                    </span>
+                                  )}
+                                  {item.reverse_status && item.reverse_status !== 'No' && (
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800">
+                                      {item.reverse_status}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             )

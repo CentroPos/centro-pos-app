@@ -7,6 +7,7 @@ interface POSProfileUser {
   custom_sales_counter: number
   custom_billing_counter: number
   custom_return_counter: number
+  custom_allow_purchase_history_in_sales?: number
 }
 
 interface POSProfile {
@@ -23,6 +24,8 @@ interface POSProfile {
   custom_hide_cost_and_margin_info?: number
   custom_show_purchase_history?: number
   custom_enable_retail_mode?: number
+  custom_hide_alternate_products?: number
+  custom_hide_item_offers?: number
   taxes_and_charges?: string
   // Purchase-specific fields
   custom_buying_price_list?: string
@@ -41,6 +44,7 @@ interface POSProfileStore {
     purchase: boolean
     billing: boolean
     return: boolean
+    custom_allow_purchase_history_in_sales?: boolean
   } | null
   setProfile: (profile: POSProfile) => void
   setCurrentUserPrivileges: (userEmail: string) => void
@@ -107,7 +111,8 @@ export const usePOSProfileStore = create<POSProfileStore>((set, get) => ({
         sales: (currentUser as any).custom_enable_sales === 1 || currentUser.custom_sales_counter === 1,
         purchase: (currentUser as any).custom_enable_purchase === 1,
         billing: currentUser.custom_billing_counter === 1,
-        return: currentUser.custom_return_counter === 1
+        return: currentUser.custom_return_counter === 1,
+        custom_allow_purchase_history_in_sales: currentUser.custom_allow_purchase_history_in_sales === 1
       }
       
       console.log('✅ Setting privileges:', privileges)
@@ -123,7 +128,8 @@ export const usePOSProfileStore = create<POSProfileStore>((set, get) => ({
           sales: false,
           purchase: false,
           billing: false,
-          return: false
+          return: false,
+          custom_allow_purchase_history_in_sales: false
         }
       })
     }
