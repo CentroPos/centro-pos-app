@@ -48,7 +48,7 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
 
   const currentTab = getCurrentTab()
   const items = getCurrentTabItems()
-  const globalDiscountPercent = getCurrentTabGlobalDiscount()
+  const globalDiscount = getCurrentTabGlobalDiscount()
   const isRoundingEnabled = getCurrentTabRoundingEnabled()
 
   // Fetch order details when tab is opened/selected (for previously opened orders)
@@ -187,12 +187,19 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
     const individualDiscountSum = items.reduce((sum: number, it: any) => {
       const qty = Number(it.quantity || 0)
       const rate = Number(it.standard_rate || 0)
-      const disc = Number(it.discount_percentage || 0)
-      return sum + (qty * rate * disc) / 100
+      if (it.discount_type === 'Amount') {
+        const discAmt = Number(it.discount_amount || 0)
+        return sum + (discAmt * qty)
+      } else {
+        const discPct = Number(it.discount_percentage || 0)
+        return sum + (qty * rate * discPct) / 100
+      }
     }, 0)
 
     const netAfterIndividualDiscount = untaxedSum - individualDiscountSum
-    const globalDiscountAmount = (netAfterIndividualDiscount * globalDiscountPercent) / 100
+    const globalDiscountAmount = globalDiscount.type === 'Amount'
+      ? globalDiscount.amount
+      : (netAfterIndividualDiscount * globalDiscount.percent) / 100
     const netAfterGlobalDiscount = netAfterIndividualDiscount - globalDiscountAmount
 
     // Get VAT percentage from profile
@@ -212,7 +219,7 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
     return totalFinal.toFixed(2)
   }, [
     items,
-    globalDiscountPercent,
+    globalDiscount,
     isRoundingEnabled,
     currentTab?.orderData,
     currentTab?.purchaseOrderId,
@@ -776,7 +783,9 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
         qty: Number(it.quantity || 0),
         uom: it.uom,
         rate: Number(it.standard_rate || 0),
-        discount_percentage: Number(it.discount_percentage || 0),
+        discount_percentage: it.discount_type === 'Percentage' ? Number(it.discount_percentage || 0) : 0,
+        discount_amount: it.discount_type === 'Amount' ? Number(it.discount_amount || 0) : 0,
+        new_selling_rate: it.selling_rate !== undefined ? Number(it.selling_rate) : null,
         ...(enableReceiptWisePurchase && it.pr_item_id ? { pr_item_id: it.pr_item_id } : {})
       }))
 
@@ -790,6 +799,7 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
       // Use purchase-specific buying price list from profile if available
       const finalBuyingPriceList = profile?.custom_buying_price_list || buyingPriceList
 
+
       const payload: any = {
         supplier: currentTab.supplier.supplier_id,
         transaction_date: postingDate,
@@ -797,7 +807,8 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
         buying_price_list: finalBuyingPriceList,
         internal_note: currentTab.internal_note || '',
         disable_rounded_total: disable_rounded_total,
-        additional_discount_percentage: globalDiscountPercent,
+        additional_discount_percentage: globalDiscount.type === 'Percentage' ? globalDiscount.percent : 0,
+        additional_discount_amount: globalDiscount.type === 'Amount' ? globalDiscount.amount : 0,
         items: mappedItems
       }
 

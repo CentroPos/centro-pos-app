@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Button } from '@renderer/components/ui/button'
 import {
   Dialog,
@@ -227,7 +227,7 @@ const ActionButtons: React.FC<Props> = ({
   const { currentUserPrivileges, profile } = usePOSProfileStore()
   const items = getCurrentTabItems()
   const currentTab = getCurrentTab()
-  const globalDiscountPercent = getCurrentTabGlobalDiscount()
+  const globalDiscount = getCurrentTabGlobalDiscount()
 
   console.log('SHD ===> Current Tab Items:', items)
 
@@ -467,19 +467,17 @@ const ActionButtons: React.FC<Props> = ({
   // }, [currentUserPrivileges, profile])
 
   // Get VAT percentage from profile (same as DiscountSection)
-  const [vatPercentage, setVatPercentage] = useState(15) // Default to 15%
-  const isRoundingEnabled = getCurrentTabRoundingEnabled()
-
   // Load VAT percentage from profile
-  useEffect(() => {
-    const taxRate = (profile as any)?.custom_tax_rate
-    if (taxRate !== null && taxRate !== undefined) {
-      const vatValue = Number(taxRate)
-      if (!isNaN(vatValue) && vatValue >= 0) {
-        setVatPercentage(vatValue)
-      }
+  const vatPercentage = useMemo(() => {
+    const isExempt = currentTab?.custom_is_exempt === 1
+    if (isExempt) {
+      const exemptRate = (profile as any)?.custom_exempt_tax_rate
+      return exemptRate !== undefined && exemptRate !== null ? Number(exemptRate) : 0
+    } else {
+      const normalRate = (profile as any)?.custom_tax_rate
+      return normalRate !== undefined && normalRate !== null ? Number(normalRate) : 15
     }
-  }, [(profile as any)?.custom_tax_rate])
+  }, [currentTab?.custom_is_exempt, (profile as any)?.custom_tax_rate, (profile as any)?.custom_exempt_tax_rate])
 
   // Helper function to round to nearest (same as DiscountSection)
   const roundToNearest = (value: number, step = 0.05) => {
@@ -491,6 +489,7 @@ const ActionButtons: React.FC<Props> = ({
   // For confirmed orders (docstatus = 1), always use outstanding_amount from linked_invoices[0]
   // For draft orders (docstatus != 1), use calculated total from discount section
   const calculateOrderTotal = useCallback(() => {
+    const isRoundingEnabled = getCurrentTabRoundingEnabled()
     const normalize = (value: any) => {
       const num = Number(value)
       return Number.isFinite(num) ? Number(num.toFixed(2)) : null
@@ -551,30 +550,37 @@ const ActionButtons: React.FC<Props> = ({
     const individualDiscountSum = items.reduce((sum: number, it: any) => {
       const qty = Number(it.quantity || 0)
       const rate = Number(it.standard_rate || 0)
-      const disc = Number(it.discount_percentage || 0)
-      return sum + (qty * rate * disc) / 100
+      if (it.discount_type === 'Amount') {
+        const discAmt = Number(it.discount_amount || 0)
+        return sum + (discAmt * qty)
+      } else {
+        const discPct = Number(it.discount_percentage || 0)
+        return sum + (qty * rate * discPct) / 100
+      }
     }, 0)
 
     const netAfterIndividualDiscount = untaxedSum - individualDiscountSum
-    const globalDiscountAmount = (netAfterIndividualDiscount * globalDiscountPercent) / 100
+    const globalDiscountAmount = globalDiscount.type === 'Amount'
+      ? globalDiscount.amount
+      : (netAfterIndividualDiscount * globalDiscount.percent) / 100
     const netAfterGlobalDiscount = netAfterIndividualDiscount - globalDiscountAmount
     const vatCalc = netAfterGlobalDiscount * (vatPercentage / 100)
     const totalRaw = netAfterGlobalDiscount + vatCalc
     const totalRoundedCandidate = roundToNearest(totalRaw, 0.05)
 
-    const useRounding = isRoundingEnabled
-    const totalFinal = useRounding ? totalRoundedCandidate : Number(totalRaw.toFixed(2))
-
-    return totalFinal.toFixed(2)
-  }, [
-    items,
-    globalDiscountPercent,
-    vatPercentage,
-    isRoundingEnabled,
-    currentTab?.orderData,
-    currentTab?.orderId,
-    currentTab?.isEdited
-  ])
+     const useRounding = isRoundingEnabled
+     const totalFinal = useRounding ? totalRoundedCandidate : Number(totalRaw.toFixed(2))
+ 
+     return totalFinal.toFixed(2)
+   }, [
+     items,
+     globalDiscount,
+     vatPercentage,
+     getCurrentTabRoundingEnabled,
+     currentTab?.orderData,
+     currentTab?.orderId,
+     currentTab?.isEdited
+   ])
 
   // Update order amount when items, discount, or VAT changes
   useEffect(() => {
@@ -800,7 +806,8 @@ const ActionButtons: React.FC<Props> = ({
           qty,
           uom: item.uom || 'Nos',
           rate,
-          discount_percentage: discount,
+          discount_percentage: item.discount_type === 'Percentage' ? discount : 0,
+          discount_amount: item.discount_type === 'Amount' ? (item.discount_amount || 0) : 0,
           is_offer_applied: isOfferApplied,
           ...(resolvedWarehouse ? { warehouse: resolvedWarehouse } : {})
         }
@@ -827,7 +834,7 @@ const ActionButtons: React.FC<Props> = ({
 
       console.log('📊 UI Total (for reference):', orderAmount)
       console.log('📊 Items count:', items.length)
-      console.log('📊 Global discount percentage:', globalDiscountPercent)
+      console.log('📊 Global discount:', globalDiscount)
 
       // Prepare custom stock adjustment sources from multi-warehouse allocations
       const customStockAdjustmentSources: Array<{
@@ -915,8 +922,10 @@ const ActionButtons: React.FC<Props> = ({
         customer: finalCustomerId,
         posting_date: postingDate, // Use the date selected in the order details box
         selling_price_list: selectedPriceList,
-        taxes_and_charges: profile?.taxes_and_charges, // Default tax, can be made configurable
-        additional_discount_percentage: globalDiscountPercent, // Global discount from bottom section
+        taxes_and_charges: currentTab?.custom_is_exempt === 1 ? profile?.custom_exempt_taxes_and_charges : profile?.taxes_and_charges,
+        custom_is_exempt: currentTab?.custom_is_exempt || 0,
+        additional_discount_percentage: globalDiscount.type === 'Percentage' ? globalDiscount.percent : 0,
+        additional_discount_amount: globalDiscount.type === 'Amount' ? globalDiscount.amount : 0,
         items: mappedItems,
         custom_stock_adjustment_sources: customStockAdjustmentSources,
         is_reserved: isReserved,

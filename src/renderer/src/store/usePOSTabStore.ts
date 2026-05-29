@@ -32,6 +32,8 @@ interface Tab {
   taxAmount?: number
   invoiceData?: any
   globalDiscountPercent?: number
+  globalDiscountAmount?: number
+  globalDiscountType?: 'Percentage' | 'Amount'
   po_no?: string | null
   po_date?: string | null
   internal_note?: string | null
@@ -42,6 +44,7 @@ interface Tab {
   invoiceStatus?: string | null
   invoiceCustomReverseStatus?: string | null
   is_reserved?: number
+  custom_is_exempt?: number
 }
 
 interface POSTabStore {
@@ -71,8 +74,8 @@ interface POSTabStore {
   updateTabInvoiceData: (tabId: string, invoiceData: any) => void
 
   // Global discount methods
-  updateTabGlobalDiscount: (tabId: string, globalDiscountPercent: number) => void
-  getCurrentTabGlobalDiscount: () => number
+  updateTabGlobalDiscount: (tabId: string, globalDiscountPercent: number, globalDiscountAmount?: number, globalDiscountType?: 'Percentage' | 'Amount') => void
+  getCurrentTabGlobalDiscount: () => { percent: number, amount: number, type: 'Percentage' | 'Amount' }
 
   // Customer management methods
   updateTabCustomer: (tabId: string, customer: { name: string; gst: string; customer_id?: string; mobile_no?: string; email?: string; tax_id?: string }) => void
@@ -100,6 +103,10 @@ interface POSTabStore {
   // Reservation methods
   updateTabReservation: (tabId: string, is_reserved: number) => void
   getCurrentTabReservation: () => number
+
+  // Exempt methods
+  updateTabExempt: (tabId: string, custom_is_exempt: number) => void
+  getCurrentTabExempt: () => number
 
   // Helper methods
   getCurrentTab: () => Tab | undefined
@@ -166,6 +173,8 @@ export const usePOSTabStore = create<POSTabStore>()(
               quantity: Number(it.qty || it.quantity || 0),
               uom: it.uom || it.stock_uom,
               discount_percentage: Number(it.discount_percentage || 0),
+              discount_amount: Number(it.discount_amount || 0),
+              discount_type: it.discount_type || 'Percentage',
               standard_rate: Number(it.rate || it.price_list_rate || 0),
               credit_note_returned_qty: Number(it.credit_note_returned_qty || 0)
             }
@@ -261,7 +270,8 @@ export const usePOSTabStore = create<POSTabStore>()(
             }
             return null
           })(),
-          is_reserved: orderData?.is_reserved !== undefined ? Number(orderData.is_reserved) : 1
+          is_reserved: orderData?.is_reserved !== undefined ? Number(orderData.is_reserved) : 1,
+          custom_is_exempt: orderData?.custom_is_exempt !== undefined ? Number(orderData.custom_is_exempt) : 0
         }
 
         console.log('📋 [openTab] New tab created:', {
@@ -382,7 +392,8 @@ export const usePOSTabStore = create<POSTabStore>()(
           instantPrintUrl: null,
           isRoundingEnabled: true,
           invoiceNumber: null,
-          is_reserved: 1
+          is_reserved: 1,
+          custom_is_exempt: 0
         }
 
         set((state) => ({
@@ -460,7 +471,10 @@ export const usePOSTabStore = create<POSTabStore>()(
           isEdited: true,
           taxAmount: source.taxAmount || 0,
           invoiceData: null,
-          globalDiscountPercent: source.globalDiscountPercent || 0
+          globalDiscountPercent: source.globalDiscountPercent || 0,
+          globalDiscountAmount: source.globalDiscountAmount || 0,
+          globalDiscountType: source.globalDiscountType || 'Percentage',
+          custom_is_exempt: source.custom_is_exempt || 0
         }
         set((s) => ({ tabs: [...s.tabs, clone], activeTabId: clone.id, lastAction: 'duplicated' as const }))
         return true
@@ -578,6 +592,8 @@ export const usePOSTabStore = create<POSTabStore>()(
                     quantity: Number(it.qty || it.quantity || 0),
                     uom: it.uom || it.stock_uom,
                     discount_percentage: Number(it.discount_percentage || 0),
+                    discount_amount: Number(it.discount_amount || 0),
+                    discount_type: it.discount_type || 'Percentage',
                     standard_rate: Number(it.rate || it.price_list_rate || 0),
                     credit_note_returned_qty: Number(it.credit_note_returned_qty || 0)
                   }
@@ -598,7 +614,8 @@ export const usePOSTabStore = create<POSTabStore>()(
                 // Update Other Details fields from orderData if present
                 po_no: orderData?.po_no !== undefined ? orderData.po_no : tab.po_no,
                 po_date: orderData?.po_date !== undefined ? orderData.po_date : tab.po_date,
-                internal_note: orderData?.custom_internal_note !== undefined ? orderData.custom_internal_note : (orderData?.internal_note !== undefined ? orderData.internal_note : tab.internal_note)
+                internal_note: orderData?.custom_internal_note !== undefined ? orderData.custom_internal_note : (orderData?.internal_note !== undefined ? orderData.internal_note : tab.internal_note),
+                custom_is_exempt: orderData?.custom_is_exempt !== undefined ? Number(orderData.custom_is_exempt) : tab.custom_is_exempt
               }
             }
             return tab
@@ -625,16 +642,20 @@ export const usePOSTabStore = create<POSTabStore>()(
       },
 
       // Global discount methods
-      updateTabGlobalDiscount: (tabId: string, globalDiscountPercent: number) => {
+      updateTabGlobalDiscount: (tabId: string, globalDiscountPercent: number, globalDiscountAmount: number = 0, globalDiscountType: 'Percentage' | 'Amount' = 'Percentage') => {
         set((state) => ({
-          tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, globalDiscountPercent, isEdited: true } : tab))
+          tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, globalDiscountPercent, globalDiscountAmount, globalDiscountType, isEdited: true } : tab))
         }))
       },
 
       getCurrentTabGlobalDiscount: () => {
         const state = get()
         const currentTab = state.tabs.find(tab => tab.id === state.activeTabId)
-        return currentTab?.globalDiscountPercent || 0
+        return {
+          percent: currentTab?.globalDiscountPercent || 0,
+          amount: currentTab?.globalDiscountAmount || 0,
+          type: currentTab?.globalDiscountType || 'Percentage'
+        }
       },
 
       // Customer management methods
@@ -812,6 +833,26 @@ export const usePOSTabStore = create<POSTabStore>()(
         const state = get()
         const currentTab = state.tabs.find(tab => tab.id === state.activeTabId)
         return currentTab?.is_reserved !== undefined ? currentTab.is_reserved : 1
+      },
+
+      updateTabExempt: (tabId: string, custom_is_exempt: number) => {
+        set((state) => ({
+          tabs: state.tabs.map((tab) =>
+            tab.id === tabId
+              ? {
+                ...tab,
+                custom_is_exempt: custom_is_exempt,
+                isEdited: true
+              }
+              : tab
+          )
+        }))
+      },
+
+      getCurrentTabExempt: () => {
+        const state = get()
+        const currentTab = state.tabs.find(tab => tab.id === state.activeTabId)
+        return currentTab?.custom_is_exempt || 0
       },
 
       itemExistsInTab: (tabId: string, itemCode: string) => {

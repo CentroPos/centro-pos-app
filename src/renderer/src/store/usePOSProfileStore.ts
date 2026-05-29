@@ -27,6 +27,9 @@ interface POSProfile {
   custom_hide_alternate_products?: number
   custom_hide_item_offers?: number
   taxes_and_charges?: string
+  custom_tax_rate?: number
+  custom_exempt_taxes_and_charges?: string
+  custom_exempt_tax_rate?: number
   // Purchase-specific fields
   custom_buying_price_list?: string
   custom_purchase_taxes_and_charges?: string

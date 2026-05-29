@@ -48,10 +48,11 @@ type Props = {
 }
 
 const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem, shouldStartEditing = false, onEditingStarted, onAddItemClick, onSaveCompleted, isProductModalOpen = false, isCustomerModalOpen = false, isErrorBoxFocused = false, onEditingStateChange, errorItems = [], onClearItemError }) => {
-  const { getCurrentTabItems, activeTabId, updateItemInTab, updateItemInTabByIndex, getCurrentTab, setTabEdited, removeItemFromTabByIndex, updateTabOtherDetails, updateTabReservation, getCurrentTabReservation, updateTabCustomer, updateTabPostingDate, updateTabOrderData } = usePOSTabStore();
+  const { getCurrentTabItems, activeTabId, updateItemInTab, updateItemInTabByIndex, getCurrentTab, setTabEdited, removeItemFromTabByIndex, updateTabOtherDetails, updateTabReservation, getCurrentTabReservation, updateTabCustomer, updateTabPostingDate, updateTabOrderData, updateTabExempt, getCurrentTabExempt } = usePOSTabStore();
   const items = getCurrentTabItems();
   const [tableSearch, setTableSearch] = useState('')
   const isReserved = getCurrentTabReservation()
+  const isExempt = getCurrentTabExempt()
   const filteredItems = items.filter((it) => {
     const term = tableSearch.trim().toLowerCase()
     if (!term) return true
@@ -242,9 +243,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         case 'uom':
           setEditValue(String(rowItem.uom ?? 'Nos'))
           break
-        case 'discount_percentage':
-          setEditValue(String(rowItem.discount_percentage ?? '0'))
+        case 'discount_percentage': {
+          const currentDisc = (!rowItem.discount_type || rowItem.discount_type === 'Percentage') ? rowItem.discount_percentage : rowItem.discount_amount
+          setEditValue(String(currentDisc ?? '0'))
           break
+        }
         case 'standard_rate':
           setEditValue(String(rowItem.standard_rate ?? ''))
           break
@@ -301,9 +304,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       case 'uom':
         setEditValue(String(rowItem.uom ?? 'Nos'))
         break
-      case 'discount_percentage':
-        setEditValue(String(rowItem.discount_percentage ?? '0'))
+      case 'discount_percentage': {
+        const currentDisc = (!rowItem.discount_type || rowItem.discount_type === 'Percentage') ? rowItem.discount_percentage : rowItem.discount_amount
+        setEditValue(String(currentDisc ?? '0'))
         break
+      }
       case 'standard_rate':
         setEditValue(String(rowItem.standard_rate ?? ''))
         break
@@ -650,11 +655,6 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     // Check if this is the last item (newly added) by actual index
     const isLastItem = actualIndex === items.length - 1
 
-    // Only set if editValue is empty or we switched fields
-    if (editValue === '' || (activeField && String(item[activeField]) !== editValue)) {
-      // For quantity field: 
-      // - If it's the last item (newly added) and store value is 1/undefined/null, use '1'
-      // - Otherwise, use the store value for this specific item (by index)
       let value = item[activeField]
       if (activeField === 'quantity') {
         const storeQty = item.quantity
@@ -663,9 +663,13 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         } else {
           value = storeQty ?? item[activeField]
         }
+      } else if (activeField === 'discount_percentage') {
+        value = (!item.discount_type || item.discount_type === 'Percentage') ? item.discount_percentage : item.discount_amount
       }
-      setEditValue(value?.toString() || '')
-    }
+      
+      if (editValue === '' || (activeField && String(value) !== editValue)) {
+        setEditValue(value?.toString() || '')
+      }
     // Clear invalid UOM message when starting to edit
     if (activeField === 'uom') {
       setInvalidUomMessage('')
@@ -1764,22 +1768,42 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
               </TabsTrigger>
             </TabsList>
             {activeTabId && (
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="reservation-checkbox"
-                  checked={isReserved === 1}
-                  onCheckedChange={(checked) => {
-                    if (activeTabId) {
-                      updateTabReservation(activeTabId, checked ? 1 : 0)
-                    }
-                  }}
-                />
-                <label
-                  htmlFor="reservation-checkbox"
-                  className="text-sm font-medium text-gray-700 cursor-pointer"
-                >
-                  Reservation
-                </label>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="reservation-checkbox"
+                    checked={isReserved === 1}
+                    onCheckedChange={(checked) => {
+                      if (activeTabId) {
+                        updateTabReservation(activeTabId, checked ? 1 : 0)
+                      }
+                    }}
+                  />
+                  <label
+                    htmlFor="reservation-checkbox"
+                    className="text-sm font-medium text-gray-700 cursor-pointer"
+                  >
+                    Reservation
+                  </label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="exempt-tax-checkbox"
+                    checked={isExempt === 1}
+                    disabled={isReadOnly}
+                    onCheckedChange={(checked) => {
+                      if (activeTabId) {
+                        updateTabExempt(activeTabId, checked ? 1 : 0)
+                      }
+                    }}
+                  />
+                  <label
+                    htmlFor="exempt-tax-checkbox"
+                    className="text-sm font-medium text-gray-700 cursor-pointer"
+                  >
+                    Tax Exempt
+                  </label>
+                </div>
               </div>
             )}
           </div>
@@ -1849,6 +1873,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                         </div>
                       </TableHead>
                       <TableHead className="w-[80px] text-center px-1">UOM</TableHead>
+                      <TableHead className="w-[80px] text-center px-1">Disc. Type</TableHead>
                       <TableHead className="w-[80px] text-center">Discount</TableHead>
                       <TableHead className="w-[100px] text-center font-bold">Unit Price</TableHead>
                       <TableHead className="w-[100px] text-left pl-8">Total</TableHead>
@@ -2400,6 +2425,26 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             )}
                           </TableCell>
 
+                          {/* Disc. Type Cell */}
+                          <TableCell className="w-[80px] text-center p-1">
+                            <select
+                              className="w-full text-[10px] p-1 border border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer rounded text-center"
+                              value={item.discount_type || 'Percentage'}
+                              disabled={isReadOnly}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => {
+                                if (activeTabId && !isReadOnly) {
+                                  const newType = e.target.value as 'Percentage' | 'Amount';
+                                  updateItemInTabByIndex(activeTabId, index, { discount_type: newType });
+                                  setTabEdited(activeTabId, true);
+                                }
+                              }}
+                            >
+                              <option value="Percentage">Percent</option>
+                              <option value="Amount">Amount</option>
+                            </select>
+                          </TableCell>
+
                           {/* Discount Cell */}
                           <TableCell
                             className={`${hasError ? 'text-red-600 font-medium' : hasSplitWarehouse ? 'text-yellow-600 font-medium' : isSelected ? 'font-medium' : ''} w-[80px] text-center`}
@@ -2415,7 +2460,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                   setSelectedRowIndex(index)
                                   setActiveField('discount_percentage')
                                   setIsEditing(true)
-                                  setEditValue(String(item.discount_percentage ?? '0'))
+                                  const currentDisc = item.discount_type === 'Amount' ? item.discount_amount : item.discount_percentage;
+                                  setEditValue(String(currentDisc ?? '0'))
                                 }, 50)
                               }
                             }}
@@ -2432,10 +2478,14 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                   // Real-time update for discount (like quantity)
                                   if (activeTabId) {
                                     const numValue = parseFloat(newValue)
-                                    const valToSave = isNaN(numValue) ? 0 : numValue
-                                    if (valToSave >= 0 && valToSave <= 100) {
-                                      // Use index directly to handle duplicates correctly
-                                      updateItemInTabByIndex(activeTabId, index, { discount_percentage: valToSave })
+                                    const valToSave = isNaN(numValue) ? 0 : Math.max(0, numValue)
+                                    if (!item.discount_type || item.discount_type === 'Percentage') {
+                                      if (valToSave <= 100) {
+                                        updateItemInTabByIndex(activeTabId, index, { discount_percentage: valToSave })
+                                        setTabEdited(activeTabId, true)
+                                      }
+                                    } else {
+                                      updateItemInTabByIndex(activeTabId, index, { discount_amount: valToSave })
                                       setTabEdited(activeTabId, true)
                                     }
                                   }
@@ -2449,9 +2499,13 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                     handleSaveEdit()
                                     // Save discount value directly using index
                                     const numValue = parseFloat(editValue)
-                                    const valToSave = isNaN(numValue) ? 0 : numValue
-                                    if (valToSave >= 0 && valToSave <= 100 && activeTabId) {
-                                      updateItemInTabByIndex(activeTabId, index, { discount_percentage: valToSave })
+                                    const valToSave = isNaN(numValue) ? 0 : Math.max(0, numValue)
+                                    if (activeTabId) {
+                                      if ((!item.discount_type || item.discount_type === 'Percentage') && valToSave <= 100) {
+                                        updateItemInTabByIndex(activeTabId, index, { discount_percentage: valToSave })
+                                      } else if (item.discount_type === 'Amount') {
+                                        updateItemInTabByIndex(activeTabId, index, { discount_amount: valToSave })
+                                      }
                                       setTabEdited(activeTabId, true)
                                     }
                                     // Navigate to unit price
@@ -2467,20 +2521,26 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                   handleSaveEdit()
                                   // Save discount value directly using index
                                   const numValue = parseFloat(editValue)
-                                  const valToSave = isNaN(numValue) ? 0 : numValue
-                                  if (valToSave >= 0 && valToSave <= 100 && activeTabId) {
-                                    updateItemInTabByIndex(activeTabId, index, { discount_percentage: valToSave })
+                                  const valToSave = isNaN(numValue) ? 0 : Math.max(0, numValue)
+                                  if (activeTabId) {
+                                    if ((!item.discount_type || item.discount_type === 'Percentage') && valToSave <= 100) {
+                                      updateItemInTabByIndex(activeTabId, index, { discount_percentage: valToSave })
+                                    } else if (item.discount_type === 'Amount') {
+                                      updateItemInTabByIndex(activeTabId, index, { discount_amount: valToSave })
+                                    }
                                     setTabEdited(activeTabId, true)
                                   }
                                   setIsEditing(false)
                                 }}
                                 className="w-[60px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
                                 min="0"
-                                max="100"
+                                max={(!item.discount_type || item.discount_type === 'Percentage') ? "100" : undefined}
                                 step="0.01"
                               />
                             ) : (
-                              <div className={`px-2 py-1 ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>{item.discount_percentage ?? 0}</div>
+                              <div className={`px-2 py-1 text-[11px] ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>
+                                {(!item.discount_type || item.discount_type === 'Percentage') ? `${item.discount_percentage ?? 0}%` : (item.discount_amount ?? 0)}
+                              </div>
                             )}
                           </TableCell>
 
@@ -2551,9 +2611,10 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                           </TableCell>
                           <TableCell className={`font-semibold ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : isSelected ? 'text-blue-900' : ''} w-[100px] text-left pl-8`}>
                             {(
-                              Number(item.standard_rate || 0) *
-                              Number(item.quantity || 0) *
-                              (1 - Number(item.discount_percentage || 0) / 100)
+                              (Number(item.standard_rate || 0) * Number(item.quantity || 0)) -
+                              (item.discount_type === 'Amount' 
+                                ? Number(item.discount_amount || 0) * Number(item.quantity || 0)
+                                : (Number(item.standard_rate || 0) * Number(item.quantity || 0) * Number(item.discount_percentage || 0)) / 100)
                             ).toFixed(2)}
                           </TableCell>
                           {isReadOnly ? (

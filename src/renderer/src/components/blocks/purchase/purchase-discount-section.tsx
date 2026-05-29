@@ -56,7 +56,7 @@ const PurchaseDiscountSection: React.FC<Props> = ({
   const items = getCurrentTabItems()
   const currentTab = getCurrentTab()
   const selectedSupplier = getCurrentTabSupplier()
-  const globalDiscountPercent = getCurrentTabGlobalDiscount()
+  const { percent: globalDiscountPercent, amount: globalDiscountAmountStore, type: globalDiscountTypeStore } = getCurrentTabGlobalDiscount()
 
   const [isEditingGlobalDiscount, setIsEditingGlobalDiscount] = useState(false)
   const [globalDiscountValue, setGlobalDiscountValue] = useState('')
@@ -205,12 +205,24 @@ const PurchaseDiscountSection: React.FC<Props> = ({
     const individualDiscountSum = items.reduce((sum: number, it: any) => {
       const qty = Number(it.quantity || 0)
       const rate = Number(it.standard_rate || 0)
-      const disc = Number(it.discount_percentage || 0)
-      return sum + (qty * rate * disc) / 100
+      const discPercent = Number(it.discount_percentage || 0)
+      const discAmount = Number(it.discount_amount || 0)
+      const type = it.discount_type || 'Percentage'
+
+      const totalItemAmount = qty * rate
+      let itemDiscount = 0
+      if (type === 'Percentage') {
+        itemDiscount = (totalItemAmount * discPercent) / 100
+      } else {
+        itemDiscount = discAmount * qty
+      }
+      return sum + itemDiscount
     }, 0)
 
     const netAfterIndividualDiscount = untaxedSum - individualDiscountSum
-    const globalDiscountAmount = (netAfterIndividualDiscount * globalDiscountPercent) / 100
+    const globalDiscountAmount = globalDiscountTypeStore === 'Amount'
+      ? globalDiscountAmountStore
+      : (netAfterIndividualDiscount * globalDiscountPercent) / 100
     const netAfterGlobalDiscount = netAfterIndividualDiscount - globalDiscountAmount
     const vatCalc = netAfterGlobalDiscount * (vatPercentage / 100)
     const totalRaw = netAfterGlobalDiscount + vatCalc
@@ -268,6 +280,8 @@ const PurchaseDiscountSection: React.FC<Props> = ({
   }, [
     items,
     globalDiscountPercent,
+    globalDiscountAmountStore,
+    globalDiscountTypeStore,
     isRoundingEnabled,
     currentTab?.orderData,
     currentTab?.purchaseOrderId,
@@ -289,18 +303,25 @@ const PurchaseDiscountSection: React.FC<Props> = ({
       return
     }
     const numValue = parseFloat(inputValue)
-    if (!isNaN(numValue) && numValue >= 0 && numValue <= 100) {
-      setGlobalDiscountValue(inputValue)
-    } else if (!isNaN(numValue) && numValue > 100) {
-      setGlobalDiscountValue('100')
+    if (!isNaN(numValue) && numValue >= 0) {
+      if (globalDiscountTypeStore === 'Percentage' && numValue > 100) {
+        setGlobalDiscountValue('100')
+      } else {
+        setGlobalDiscountValue(inputValue)
+      }
     }
   }
 
   const handleGlobalDiscountBlur = () => {
     if (currentTab) {
       let newValue = parseFloat(globalDiscountValue) || 0
-      newValue = Math.max(0, Math.min(100, newValue))
-      updateTabGlobalDiscount(currentTab.id, newValue)
+      if (globalDiscountTypeStore === 'Percentage') {
+        newValue = Math.max(0, Math.min(100, newValue))
+        updateTabGlobalDiscount(currentTab.id, newValue, globalDiscountAmountStore, globalDiscountTypeStore)
+      } else {
+        newValue = Math.max(0, newValue)
+        updateTabGlobalDiscount(currentTab.id, globalDiscountPercent, newValue, globalDiscountTypeStore)
+      }
       setTabEdited(currentTab.id, true)
       setIsEditingGlobalDiscount(false)
     }
@@ -310,7 +331,9 @@ const PurchaseDiscountSection: React.FC<Props> = ({
     if (e.key === 'Enter') {
       handleGlobalDiscountBlur()
     } else if (e.key === 'Escape') {
-      setGlobalDiscountValue(globalDiscountPercent.toString())
+      setGlobalDiscountValue(
+        globalDiscountTypeStore === 'Percentage' ? globalDiscountPercent.toString() : globalDiscountAmountStore.toString()
+      )
       setIsEditingGlobalDiscount(false)
     }
   }
@@ -428,11 +451,40 @@ const PurchaseDiscountSection: React.FC<Props> = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-5 gap-3 items-end text-sm">
+      <div className="grid grid-cols-6 gap-2 items-end text-sm">
         <div className="text-center">
           <div className="text-xs text-gray-600">Untaxed</div>
           <div className="text-base font-semibold">
             {currencySymbol} {untaxed.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          </div>
+        </div>
+        <div className="text-center">
+          <div className="text-[10px] text-gray-600 mb-0.5">Disc. Type</div>
+          <div className="flex w-3/4 mx-auto bg-gray-100/80 p-0.5 rounded-md h-8 border border-gray-200">
+            <button
+              disabled={isReadOnly}
+              onClick={() => {
+                if (currentTab && !isReadOnly) {
+                  updateTabGlobalDiscount(currentTab.id, globalDiscountPercent, globalDiscountAmountStore, 'Percentage');
+                }
+              }}
+              className={`flex-1 text-[11px] rounded transition-all flex items-center justify-center ${globalDiscountTypeStore === 'Percentage' ? 'bg-white shadow-sm font-medium text-blue-600' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'}`}
+              title="Percentage"
+            >
+              %
+            </button>
+            <button
+              disabled={isReadOnly}
+              onClick={() => {
+                if (currentTab && !isReadOnly) {
+                  updateTabGlobalDiscount(currentTab.id, globalDiscountPercent, globalDiscountAmountStore, 'Amount');
+                }
+              }}
+              className={`flex-1 text-[11px] rounded transition-all flex items-center justify-center ${globalDiscountTypeStore === 'Amount' ? 'bg-white shadow-sm font-medium text-blue-600' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'}`}
+              title="Amount"
+            >
+              {currencySymbol || '$'}
+            </button>
           </div>
         </div>
         <div className="text-center">
@@ -449,18 +501,18 @@ const PurchaseDiscountSection: React.FC<Props> = ({
               className={`text-center text-base font-semibold w-16 h-8 mx-auto ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
               placeholder="0"
               min="0"
-              max="100"
-              step="0.1"
+              max={globalDiscountTypeStore === 'Percentage' ? "100" : undefined}
+              step={globalDiscountTypeStore === 'Percentage' ? "0.1" : "1"}
             />
           ) : (
             <div
               className={`text-base font-semibold text-blue-600 px-1 rounded flex flex-col items-center justify-center ${isReadOnly ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-gray-100'
                 }`}
               onClick={handleGlobalDiscountClick}
-              title={isReadOnly ? 'Discount cannot be edited for confirmed orders' : 'Click to edit global discount percentage'}
+              title={isReadOnly ? 'Discount cannot be edited for confirmed orders' : 'Click to edit global discount'}
             >
               <div>{currencySymbol} {globalDiscount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
-              {globalDiscountPercent > 0 && (
+              {globalDiscountTypeStore === 'Percentage' && globalDiscountPercent > 0 && (
                 <div className="text-[10px] text-gray-500">({globalDiscountPercent}%)</div>
               )}
             </div>

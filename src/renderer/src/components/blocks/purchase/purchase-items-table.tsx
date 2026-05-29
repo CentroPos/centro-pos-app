@@ -174,6 +174,51 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     }
   }, [profile?.selling_price_list])
 
+  // Background fetch for true Standard Selling rates
+  const [fetchedSellingRates, setFetchedSellingRates] = useState<Record<string, boolean>>({})
+  
+  useEffect(() => {
+    if (!activeTabId || items.length === 0) return
+    const fetchMissingRates = async () => {
+      const itemsToFetch = items.filter(
+        i => i.api_selling_rate === undefined && i.item_code && !fetchedSellingRates[`${i.item_code}-${i.uom}`]
+      )
+      if (itemsToFetch.length === 0) return
+
+      for (const item of itemsToFetch) {
+        const cacheKey = `${item.item_code}-${item.uom}`
+        setFetchedSellingRates(prev => ({ ...prev, [cacheKey]: true }))
+        try {
+          const resp = await window.electronAPI?.proxy?.request({
+            method: 'GET',
+            url: '/api/method/centro_pos_apis.api.product.product_list',
+            params: {
+              price_list: 'Standard Selling',
+              item: item.item_code,
+              limit_start: 0,
+              limit_page_length: 1
+            }
+          })
+          const allItems = Array.isArray(resp?.data?.data) ? resp.data.data : []
+          const exactItem = allItems.find((i: any) => i.item_id === item.item_code)
+          if (exactItem) {
+            const uomDetails = Array.isArray(exactItem.uom_details) ? exactItem.uom_details : []
+            const rate = uomDetails.find((d: any) => d.uom === item.uom)?.rate || exactItem.rate || exactItem.standard_rate || 0
+            
+            // Only update if it's still in the tab
+            const index = items.findIndex(i => i.item_code === item.item_code && i.uom === item.uom && i.api_selling_rate === undefined)
+            if (index !== -1) {
+              updateItemInTabByIndex(activeTabId, index, { api_selling_rate: rate })
+            }
+          }
+        } catch (e) {
+          console.error('Failed to fetch selling rate for', item.item_code, e)
+        }
+      }
+    }
+    fetchMissingRates()
+  }, [items, activeTabId, fetchedSellingRates])
+
   // Handle Price List Change
   const handlePriceListChange = (priceList: string) => {
     setSelectedPriceList(priceList)
@@ -207,8 +252,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   }
 
   // Editable field order and keyboard navigation between fields
-  type EditField = 'item_name' | 'item_description' | 'quantity' | 'uom' | 'discount_percentage' | 'standard_rate'
-  const fieldOrder: EditField[] = ['item_description', 'quantity', 'uom', 'discount_percentage', 'standard_rate']
+  type EditField = 'item_name' | 'item_description' | 'quantity' | 'uom' | 'discount_percentage' | 'standard_rate' | 'selling_rate'
+  const fieldOrder: EditField[] = ['item_description', 'quantity', 'uom', 'discount_percentage', 'standard_rate', 'selling_rate']
   // Virtual field for actions column (not editable input)
   const extendedFieldOrder: Array<EditField | 'actions'> = [...fieldOrder, 'actions']
 
@@ -248,12 +293,19 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         case 'uom':
           setEditValue(String(rowItem.uom ?? 'Nos'))
           break
-        case 'discount_percentage':
-          setEditValue(String(rowItem.discount_percentage ?? '0'))
+        case 'discount_percentage': {
+          const currentDisc = (!rowItem.discount_type || rowItem.discount_type === 'Percentage') ? rowItem.discount_percentage : rowItem.discount_amount
+          setEditValue(String(currentDisc ?? '0'))
           break
+        }
         case 'standard_rate':
           setEditValue(String(rowItem.standard_rate ?? ''))
           break
+        case 'selling_rate': {
+          const defaultSellingRate = rowItem.api_selling_rate ?? rowItem.uomRates?.[rowItem.uom] ?? (Array.isArray(rowItem.uom_details) ? rowItem.uom_details.find((d: any) => d.uom === rowItem.uom)?.rate || 0 : 0)
+          setEditValue(String(rowItem.selling_rate !== undefined ? rowItem.selling_rate : defaultSellingRate))
+          break
+        }
       }
       return
     }
@@ -307,12 +359,19 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       case 'uom':
         setEditValue(String(rowItem.uom ?? 'Nos'))
         break
-      case 'discount_percentage':
-        setEditValue(String(rowItem.discount_percentage ?? '0'))
+      case 'discount_percentage': {
+        const currentDisc = (!rowItem.discount_type || rowItem.discount_type === 'Percentage') ? rowItem.discount_percentage : rowItem.discount_amount
+        setEditValue(String(currentDisc ?? '0'))
         break
+      }
       case 'standard_rate':
         setEditValue(String(rowItem.standard_rate ?? ''))
         break
+      case 'selling_rate': {
+        const defaultSellingRate = rowItem.api_selling_rate ?? rowItem.uomRates?.[rowItem.uom] ?? (Array.isArray(rowItem.uom_details) ? rowItem.uom_details.find((d: any) => d.uom === rowItem.uom)?.rate || 0 : 0)
+        setEditValue(String(rowItem.selling_rate !== undefined ? rowItem.selling_rate : defaultSellingRate))
+        break
+      }
     }
   }
 
@@ -657,10 +716,6 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     const isLastItem = actualIndex === items.length - 1
 
     // Only set if editValue is empty or we switched fields
-    if (editValue === '' || (activeField && String(item[activeField]) !== editValue)) {
-      // For quantity field: 
-      // - If it's the last item (newly added) and store value is 1/undefined/null, use '1'
-      // - Otherwise, use the store value for this specific item (by index)
       let value = item[activeField]
       if (activeField === 'quantity') {
         const storeQty = item.quantity
@@ -669,9 +724,16 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
         } else {
           value = storeQty ?? item[activeField]
         }
+      } else if (activeField === 'discount_percentage') {
+        value = (!item.discount_type || item.discount_type === 'Percentage') ? item.discount_percentage : item.discount_amount
+      } else if (activeField === 'selling_rate') {
+        const defaultSellingRate = item.api_selling_rate ?? item.uomRates?.[item.uom] ?? (Array.isArray(item.uom_details) ? item.uom_details.find((d: any) => d.uom === item.uom)?.rate || 0 : 0)
+        value = item.selling_rate !== undefined ? item.selling_rate : defaultSellingRate
       }
-      setEditValue(value?.toString() || '')
-    }
+      
+      if (editValue === '' || (activeField && String(value) !== editValue)) {
+        setEditValue(value?.toString() || '')
+      }
     // Clear invalid UOM message when starting to edit
     if (activeField === 'uom') {
       setInvalidUomMessage('')
@@ -1769,8 +1831,10 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                         </div>
                       </TableHead>
                       <TableHead className="w-[80px] text-center px-1">UOM</TableHead>
+                      <TableHead className="w-[80px] text-center px-1">Disc. Type</TableHead>
                       <TableHead className="w-[80px] text-center">Discount</TableHead>
                       <TableHead className="w-[100px] text-center font-bold">Unit Price</TableHead>
+                      <TableHead className="w-[100px] text-center font-bold">Selling Rate</TableHead>
                       <TableHead className="w-[100px] text-left pl-8">Total</TableHead>
                       <TableHead className="w-[60px] text-center pl-1">Actions</TableHead>
                     </TableRow>
@@ -2311,6 +2375,26 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             )}
                           </TableCell>
 
+                          {/* Disc. Type Cell */}
+                          <TableCell className="w-[80px] text-center p-1">
+                            <select
+                              className="w-full text-[10px] p-1 border border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer rounded text-center"
+                              value={item.discount_type || 'Percentage'}
+                              disabled={isReadOnly}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => {
+                                if (activeTabId && !isReadOnly) {
+                                  const newType = e.target.value as 'Percentage' | 'Amount';
+                                  updateItemInTabByIndex(activeTabId, index, { discount_type: newType });
+                                  setTabEdited(activeTabId, true);
+                                }
+                              }}
+                            >
+                              <option value="Percentage">Percent</option>
+                              <option value="Amount">Amount</option>
+                            </select>
+                          </TableCell>
+
                           {/* Discount Cell */}
                           <TableCell
                             className={`${hasError ? 'text-red-600 font-medium' : hasSplitWarehouse ? 'text-yellow-600 font-medium' : isSelected ? 'font-medium' : ''} w-[80px] text-center`}
@@ -2327,7 +2411,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                   setSelectedRowIndex(index)
                                   setActiveField('discount_percentage')
                                   setIsEditing(true)
-                                  setEditValue(String(item.discount_percentage ?? '0'))
+                                  const currentDisc = item.discount_type === 'Amount' ? item.discount_amount : item.discount_percentage;
+                                  setEditValue(String(currentDisc ?? '0'))
                                 }, 50)
                               }
                             }}
@@ -2344,10 +2429,14 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                   // Real-time update for discount (like quantity)
                                   if (activeTabId) {
                                     const numValue = parseFloat(newValue)
-                                    const valToSave = isNaN(numValue) ? 0 : numValue
-                                    if (valToSave >= 0 && valToSave <= 100) {
-                                      // Use index directly to handle duplicates correctly
-                                      updateItemInTabByIndex(activeTabId, index, { discount_percentage: valToSave })
+                                    const valToSave = isNaN(numValue) ? 0 : Math.max(0, numValue)
+                                    if (!item.discount_type || item.discount_type === 'Percentage') {
+                                      if (valToSave <= 100) {
+                                        updateItemInTabByIndex(activeTabId, index, { discount_percentage: valToSave })
+                                        setTabEdited(activeTabId, true)
+                                      }
+                                    } else {
+                                      updateItemInTabByIndex(activeTabId, index, { discount_amount: valToSave })
                                       setTabEdited(activeTabId, true)
                                     }
                                   }
@@ -2361,9 +2450,13 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                     handleSaveEdit()
                                     // Save discount value directly using index
                                     const numValue = parseFloat(editValue)
-                                    const valToSave = isNaN(numValue) ? 0 : numValue
-                                    if (valToSave >= 0 && valToSave <= 100 && activeTabId) {
-                                      updateItemInTabByIndex(activeTabId, index, { discount_percentage: valToSave })
+                                    const valToSave = isNaN(numValue) ? 0 : Math.max(0, numValue)
+                                    if (activeTabId) {
+                                      if ((!item.discount_type || item.discount_type === 'Percentage') && valToSave <= 100) {
+                                        updateItemInTabByIndex(activeTabId, index, { discount_percentage: valToSave })
+                                      } else if (item.discount_type === 'Amount') {
+                                        updateItemInTabByIndex(activeTabId, index, { discount_amount: valToSave })
+                                      }
                                       setTabEdited(activeTabId, true)
                                     }
                                     // Navigate to unit price
@@ -2379,20 +2472,26 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                   handleSaveEdit()
                                   // Save discount value directly using index
                                   const numValue = parseFloat(editValue)
-                                  const valToSave = isNaN(numValue) ? 0 : numValue
-                                  if (valToSave >= 0 && valToSave <= 100 && activeTabId) {
-                                    updateItemInTabByIndex(activeTabId, index, { discount_percentage: valToSave })
+                                  const valToSave = isNaN(numValue) ? 0 : Math.max(0, numValue)
+                                  if (activeTabId) {
+                                    if ((!item.discount_type || item.discount_type === 'Percentage') && valToSave <= 100) {
+                                      updateItemInTabByIndex(activeTabId, index, { discount_percentage: valToSave })
+                                    } else if (item.discount_type === 'Amount') {
+                                      updateItemInTabByIndex(activeTabId, index, { discount_amount: valToSave })
+                                    }
                                     setTabEdited(activeTabId, true)
                                   }
                                   setIsEditing(false)
                                 }}
                                 className="w-[60px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
                                 min="0"
-                                max="100"
+                                max={(!item.discount_type || item.discount_type === 'Percentage') ? "100" : undefined}
                                 step="0.01"
                               />
                             ) : (
-                              <div className={`px-2 py-1 ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>{item.discount_percentage ?? 0}</div>
+                              <div className={`px-2 py-1 text-[11px] ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>
+                                {(!item.discount_type || item.discount_type === 'Percentage') ? `${item.discount_percentage ?? 0}%` : (item.discount_amount ?? 0)}
+                              </div>
                             )}
                           </TableCell>
 
@@ -2462,11 +2561,80 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                               <span className={`font-bold ${priceLimitHighlight.has(item.item_code) ? 'text-red-600' : hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>{Number(item.standard_rate || 0).toFixed(2)}</span>
                             )}
                           </TableCell>
+
+                          {/* Selling Rate Cell */}
+                          <TableCell
+                            className={`${hasError ? 'text-red-600 font-medium' : hasSplitWarehouse ? 'text-yellow-600 font-medium' : isSelected ? 'font-medium' : ''} w-[100px] text-center`}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (!isReadOnly) {
+                                // Always reset editing state first, regardless of current state
+                                resetEditingState()
+                                
+                                // Use a small delay to ensure reset is complete
+                                setTimeout(() => {
+                                  selectItem(item.item_code)
+                                  setSelectedRowIndex(index)
+                                  setActiveField('selling_rate')
+                                  setIsEditing(true)
+                                  const defaultSellingRate = item.api_selling_rate ?? item.uomRates?.[item.uom] ?? (Array.isArray(item.uom_details) ? item.uom_details.find((d: any) => d.uom === item.uom)?.rate || 0 : 0)
+                                  setEditValue(String(item.selling_rate !== undefined ? item.selling_rate : defaultSellingRate))
+                                }, 50)
+                              }
+                            }}
+                          >
+                            {isSelected && isEditing && activeField === 'selling_rate' && !isReadOnly ? (
+                              <input
+                                key={`selling-rate-${item.item_code}-${isSelected && isEditing && activeField === 'selling_rate'}-${forceFocus}`}
+                                ref={inputRef}
+                                type="number"
+                                value={editValue}
+                                onChange={(e) => {
+                                  const newValue = e.target.value
+                                  setEditValue(newValue)
+                                  // Real-time update
+                                  if (activeTabId) {
+                                    const numValue = parseFloat(newValue)
+                                    if (!isNaN(numValue) && numValue >= 0) {
+                                      updateItemInTabByIndex(activeTabId, index, { selling_rate: numValue })
+                                      setTabEdited(activeTabId, true)
+                                    }
+                                  }
+                                }}
+                                onKeyDown={(e) => {
+                                  handleArrowNavigation(e, 'selling_rate', item.item_code)
+                                  handleVerticalNavigation(e, 'selling_rate', item.item_code)
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault()
+                                    handleSaveEdit()
+                                    // Move to next line or open modal
+                                    setIsEditing(false)
+                                    if (index === filteredItems.length - 1) {
+                                      onAddItemClick?.()
+                                    }
+                                  } else if (e.key === 'Escape') {
+                                    e.preventDefault()
+                                    setIsEditing(false)
+                                  }
+                                }}
+                                onBlur={handleSaveEdit}
+                                min="0"
+                                step="0.01"
+                                className="w-[80px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
+                              />
+                            ) : (
+                              <span className="font-bold">
+                                {Number(item.selling_rate !== undefined ? item.selling_rate : (item.api_selling_rate ?? item.uomRates?.[item.uom] ?? (Array.isArray(item.uom_details) ? item.uom_details.find((d: any) => d.uom === item.uom)?.rate || 0 : 0))).toFixed(2)}
+                              </span>
+                            )}
+                          </TableCell>
+
                           <TableCell className={`font-semibold ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : isSelected ? 'text-blue-900' : ''} w-[100px] text-left pl-8`}>
                             {(
-                              Number(item.standard_rate || 0) *
-                              Number(item.quantity || 0) *
-                              (1 - Number(item.discount_percentage || 0) / 100)
+                              (Number(item.standard_rate || 0) * Number(item.quantity || 0)) -
+                              (item.discount_type === 'Amount' 
+                                ? Number(item.discount_amount || 0) * Number(item.quantity || 0)
+                                : (Number(item.standard_rate || 0) * Number(item.quantity || 0) * Number(item.discount_percentage || 0)) / 100)
                             ).toFixed(2)}
                           </TableCell>
                           <TableCell className="w-[60px] text-center">

@@ -36,6 +36,10 @@ interface PurchaseTab {
   is_reserved?: number
   buying_price_list?: string | null
   globalDiscountPercent?: number
+  globalDiscountAmount?: number
+  globalDiscountType?: 'Percentage' | 'Amount'
+  poNo?: string | null
+  poDate?: string | null
   isRoundingEnabled?: boolean
   instantPrintUrl?: string | null
   purchaseOrderPrintUrl?: string | null
@@ -79,8 +83,8 @@ interface PurchaseTabStore {
   getCurrentTabReservation: () => number
 
   // Global discount methods
-  updateTabGlobalDiscount: (tabId: string, globalDiscountPercent: number) => void
-  getCurrentTabGlobalDiscount: () => number
+  updateTabGlobalDiscount: (tabId: string, globalDiscountPercent: number, globalDiscountAmount?: number, globalDiscountType?: 'Percentage' | 'Amount') => void
+  getCurrentTabGlobalDiscount: () => { percent: number, amount: number, type: 'Percentage' | 'Amount' }
 
   // Rounding methods
   updateTabRoundingEnabled: (tabId: string, enabled: boolean) => void
@@ -212,6 +216,8 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
             quantity: Number(it.qty || it.quantity || 0),
             uom: it.uom || it.stock_uom || 'Nos',
             discount_percentage: Number(it.discount_percentage || 0),
+            discount_amount: Number(it.discount_amount || 0),
+            discount_type: it.discount_type || 'Percentage',
             standard_rate: Number(it.rate || it.price_list_rate || 0)
           }))
           : []
@@ -476,16 +482,20 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
       },
 
       // Global discount methods
-      updateTabGlobalDiscount: (tabId: string, globalDiscountPercent: number) => {
+      updateTabGlobalDiscount: (tabId: string, globalDiscountPercent: number, globalDiscountAmount: number = 0, globalDiscountType: 'Percentage' | 'Amount' = 'Percentage') => {
         set((state) => ({
-          tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, globalDiscountPercent, isEdited: true } : tab))
+          tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, globalDiscountPercent, globalDiscountAmount, globalDiscountType, isEdited: true } : tab))
         }))
       },
 
       getCurrentTabGlobalDiscount: () => {
         const state = get()
         const currentTab = state.tabs.find(tab => tab.id === state.activeTabId)
-        return currentTab?.globalDiscountPercent || 0
+        return {
+          percent: currentTab?.globalDiscountPercent || 0,
+          amount: currentTab?.globalDiscountAmount || 0,
+          type: currentTab?.globalDiscountType || 'Percentage'
+        }
       },
 
       // Rounding methods
