@@ -217,9 +217,27 @@ function makeErrorUserFriendly(message: string): string {
     return 'Not enough stock available'
   }
 
-  // Stock unavailable error
-  if (message.toLowerCase().includes('global stock unavailable') || message.toLowerCase().includes('insufficient stock')) {
-    return 'Not enough stock available for this item.'
+  // Stock unavailable or quantity errors
+  const lowerMsg = message.toLowerCase()
+  if (
+    lowerMsg.includes('global stock unavailable') || 
+    lowerMsg.includes('insufficient stock') ||
+    (lowerMsg.includes('qty') && lowerMsg.includes('available'))
+  ) {
+    const itemMatch = message.match(/Item\s+([a-zA-Z0-9_-]+)/i)
+    const availableMatch = message.match(/Available[:\s]*([\d.]+)/i)
+    const requiredMatch = message.match(/Required[:\s]*([\d.]+)/i)
+
+    let friendly = 'You do not have enough stock available for this item.'
+    if (itemMatch) {
+      friendly = `You do not have enough stock available for the item: ${itemMatch[1]}.`
+    }
+    
+    if (availableMatch && requiredMatch) {
+      friendly += `\n(You only have ${parseFloat(availableMatch[1])} left, but you are trying to sell ${parseFloat(requiredMatch[1])})`
+    }
+    
+    return friendly
   }
   
   // Return original message if no transformation needed

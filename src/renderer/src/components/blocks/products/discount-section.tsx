@@ -396,7 +396,7 @@ const DiscountSection: React.FC<Props> = ({
     }
 
     return {
-      untaxed: Number(untaxedSum.toFixed(2)),
+      untaxed: Number(netAfterGlobalDiscount.toFixed(2)),
       individualDiscount: Number(individualDiscountSum.toFixed(2)),
       globalDiscount: Number(globalDiscountAmount.toFixed(2)),
       vat: Number(vatCalc.toFixed(2)),

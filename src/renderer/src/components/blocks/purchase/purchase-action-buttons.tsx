@@ -778,16 +778,29 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
     try {
       const enableReceiptWisePurchase = profile?.custom_enable_receipt_wise_purchase === 1
 
-      const mappedItems = items.map((it) => ({
-        item_code: it.item_code,
-        qty: Number(it.quantity || 0),
-        uom: it.uom,
-        rate: Number(it.standard_rate || 0),
-        discount_percentage: it.discount_type === 'Percentage' ? Number(it.discount_percentage || 0) : 0,
-        discount_amount: it.discount_type === 'Amount' ? Number(it.discount_amount || 0) : 0,
-        new_selling_rate: it.selling_rate !== undefined ? Number(it.selling_rate) : null,
-        ...(enableReceiptWisePurchase && it.pr_item_id ? { pr_item_id: it.pr_item_id } : {})
-      }))
+      const mappedItems = items.map((it) => {
+        const rate = Number(it.standard_rate || 0)
+        let finalDiscPercent = 0
+        if (it.discount_type === 'Amount') {
+           const discAmount = Number(it.discount_amount || 0)
+           if (rate > 0) {
+             finalDiscPercent = (discAmount / rate) * 100
+           }
+        } else {
+           finalDiscPercent = Number(it.discount_percentage || 0)
+        }
+        
+        return {
+          item_code: it.item_code,
+          qty: Number(it.quantity || 0),
+          uom: it.uom,
+          rate: rate,
+          discount_percentage: finalDiscPercent,
+          discount_amount: it.discount_type === 'Amount' ? Number(it.discount_amount || 0) : 0,
+          new_selling_rate: it.selling_rate !== undefined ? Number(it.selling_rate) : null,
+          ...(enableReceiptWisePurchase && it.pr_item_id ? { pr_item_id: it.pr_item_id } : {})
+        }
+      })
 
       // Get posting date from store or use transaction date
       const selectedPostingDate = getCurrentTabPostingDate()
@@ -899,8 +912,34 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
         console.error('❌ Response Status:', response?.status)
         console.error('❌ Full Response:', JSON.stringify(response, null, 2))
 
-        // Handle server error messages
-        handleError(response?.data?._server_messages || response?.data?.message || response?.message || 'Failed to save purchase order')
+        // Check for item errors and show friendly toast
+        let handledItemError = false
+        if (response?.data?.item_error && Array.isArray(response.data.item_error)) {
+          response.data.item_error.forEach((itemErr: any) => {
+            if (itemErr.item_code && itemErr.error) {
+              handledItemError = true
+              const lowerErr = itemErr.error.toLowerCase()
+              
+              let friendlyMsg = itemErr.error
+              if (lowerErr.includes('stock') || lowerErr.includes('available')) {
+                const reqMatch = itemErr.error.match(/Required[:\s]*([\d.]+)/i)
+                const availMatch = itemErr.error.match(/Available[:\s]*([\d.]+)/i)
+                
+                friendlyMsg = `You do not have enough stock available for the item: ${itemErr.item_code}.`
+                if (reqMatch && availMatch) {
+                   friendlyMsg += `\n(You only have ${parseFloat(availMatch[1])} left, but you are trying to order/receive ${parseFloat(reqMatch[1])})`
+                }
+              }
+              
+              toast.error(friendlyMsg, { duration: 8000 })
+            }
+          })
+        }
+
+        if (!handledItemError) {
+          // Handle server error messages
+          handleError(response?.data?._server_messages || response?.data?.message || response?.message || 'Failed to save purchase order')
+        }
         return
       }
 
@@ -929,9 +968,24 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
         console.log('✅ ===== PURCHASE ORDER ID SUCCESSFULLY EXTRACTED =====')
         console.log('✅ Purchase Order ID:', purchaseOrderId)
 
-        // Update tab with order data if available
-        if (response?.data?.data) {
-          updateTabOrderData(activeTabId, response.data.data)
+        // Fetch fresh order details from server to ensure all fields (like qty, rate) are populated correctly
+        try {
+          const res = await window.electronAPI?.proxy?.request({
+            url: '/api/method/centro_pos_apis.api.purchase.get_purchase_order_details',
+            params: { purchase_order_id: purchaseOrderId },
+            method: 'GET'
+          })
+          if (res?.data?.data) {
+            updateTabOrderData(activeTabId, res.data.data)
+          } else if (response?.data?.data) {
+            updateTabOrderData(activeTabId, response.data.data)
+          }
+        } catch (fetchErr) {
+          console.error('Failed to refresh order details after save:', fetchErr)
+          // Fallback to response data if fetch fails
+          if (response?.data?.data) {
+            updateTabOrderData(activeTabId, response.data.data)
+          }
         }
 
         updateTabPurchaseOrderId(activeTabId, String(purchaseOrderId))

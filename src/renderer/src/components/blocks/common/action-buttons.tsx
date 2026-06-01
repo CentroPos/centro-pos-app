@@ -699,6 +699,7 @@ const ActionButtons: React.FC<Props> = ({
     }
 
     setIsSaving(true)
+    let saveSuccessful = false
 
     try {
       // Get current customer
@@ -801,12 +802,22 @@ const ActionButtons: React.FC<Props> = ({
           (profile as any)?.default_warehouse ||
           null
 
+        let finalDiscPercent = 0
+        if (item.discount_type === 'Amount') {
+           const discAmount = Number(item.discount_amount || 0)
+           if (rate > 0) {
+             finalDiscPercent = (discAmount / rate) * 100
+           }
+        } else {
+           finalDiscPercent = Number(discount || 0)
+        }
+
         return {
           item_code: item.item_code || item.code,
           qty,
           uom: item.uom || 'Nos',
           rate,
-          discount_percentage: item.discount_type === 'Percentage' ? discount : 0,
+          discount_percentage: finalDiscPercent,
           discount_amount: item.discount_type === 'Amount' ? (item.discount_amount || 0) : 0,
           is_offer_applied: isOfferApplied,
           ...(resolvedWarehouse ? { warehouse: resolvedWarehouse } : {})
@@ -992,7 +1003,8 @@ const ActionButtons: React.FC<Props> = ({
         console.log('📝 ===== END UPDATE ORDER API RESPONSE =====')
 
         if (response?.success) {
-          console.log('✅ Order updated successfully!')
+          saveSuccessful = true
+          onInsufficientStockErrors?.([])
           // Extract pdf_download_url from response
           const pdfUrl = response.data?.data?.pdf_download_url || response.data?.pdf_download_url
           if (pdfUrl) {
@@ -1034,51 +1046,44 @@ const ActionButtons: React.FC<Props> = ({
             console.error('Failed to refresh order details after edit:', e)
           }
         } else {
-          // Parse item_error array if present
-          const itemErrors: Array<{ message: string; title: string; indicator: string; itemCode: string; idx?: number }> = []
+          // Check for item errors
+          let handledItemError = false
+          const allErrors: any[] = []
           if (response?.data?.item_error && Array.isArray(response.data.item_error)) {
             response.data.item_error.forEach((itemErr: any) => {
               if (itemErr.item_code && itemErr.error) {
-                itemErrors.push({
-                  message: itemErr.error,
-                  title: 'Item Validation Error',
-                  indicator: 'red',
+                handledItemError = true
+                const lowerErr = itemErr.error.toLowerCase()
+                
+                let friendlyMsg = itemErr.error
+                if (lowerErr.includes('stock') || lowerErr.includes('available')) {
+                  const reqMatch = itemErr.error.match(/Required[:\s]*([\d.]+)/i)
+                  const availMatch = itemErr.error.match(/Available[:\s]*([\d.]+)/i)
+                  
+                  friendlyMsg = `You do not have enough stock available for the item: ${itemErr.item_code}.`
+                  if (reqMatch && availMatch) {
+                     friendlyMsg += `\n(You only have ${parseFloat(availMatch[1])} left, but you are trying to sell ${parseFloat(reqMatch[1])})`
+                  }
+                }
+                
+                toast.error(friendlyMsg, { duration: 8000 })
+                allErrors.push({
                   itemCode: itemErr.item_code,
-                  idx: itemErr.idx !== undefined ? Number(itemErr.idx) : undefined
+                  message: friendlyMsg
                 })
               }
             })
-            console.log('📦 Found item errors:', itemErrors)
+          }
+          
+          if (allErrors.length > 0) {
+            onInsufficientStockErrors?.(allErrors)
+          } else {
+            onInsufficientStockErrors?.([])
           }
 
-          // Check for insufficient stock errors in server messages
-          if (response?.data?._server_messages) {
-            try {
-              const serverMessages = JSON.parse(response.data._server_messages)
-              const stockErrors = parseInsufficientStockErrors(serverMessages)
-              if (stockErrors.length > 0) {
-                console.log('📝 Found insufficient stock errors:', stockErrors)
-                // Combine item errors with stock errors
-                const allErrors = [...itemErrors, ...stockErrors]
-                if (allErrors.length > 0) {
-                  onInsufficientStockErrors?.(allErrors)
-                }
-                return
-              }
-            } catch (parseError) {
-              console.error('Error parsing server messages for stock errors:', parseError)
-            }
-          }
-
-          // If we have item errors, show them in bottom error box
-          if (itemErrors.length > 0) {
-            onInsufficientStockErrors?.(itemErrors)
-          }
-
-          // Handle server error messages in toast popup (only if present)
-          if (response?.data?._server_messages) {
-            handleError(response.data._server_messages)
-            return
+          // Handle server error messages in toast popup if not already handled
+          if (!handledItemError && response?.data?._server_messages) {
+            handleError({ response: { data: { _server_messages: response.data._server_messages } } })
           }
         }
       } else {
@@ -1106,6 +1111,8 @@ const ActionButtons: React.FC<Props> = ({
         console.log('📦 ===== END CREATE ORDER API RESPONSE =====')
 
         if (response?.success) {
+          saveSuccessful = true
+          onInsufficientStockErrors?.([])
           // Update tab with order ID
           const orderId =
             response.data?.data?.sales_order_id ||
@@ -1172,51 +1179,44 @@ const ActionButtons: React.FC<Props> = ({
           // Navigate to prints tab
           onNavigateToPrints?.()
         } else {
-          // Parse item_error array if present
-          const itemErrors: Array<{ message: string; title: string; indicator: string; itemCode: string; idx?: number }> = []
+          // Check for item errors
+          let handledItemError = false
+          const allErrors: any[] = []
           if (response?.data?.item_error && Array.isArray(response.data.item_error)) {
             response.data.item_error.forEach((itemErr: any) => {
               if (itemErr.item_code && itemErr.error) {
-                itemErrors.push({
-                  message: itemErr.error,
-                  title: 'Item Validation Error',
-                  indicator: 'red',
+                handledItemError = true
+                const lowerErr = itemErr.error.toLowerCase()
+                
+                let friendlyMsg = itemErr.error
+                if (lowerErr.includes('stock') || lowerErr.includes('available')) {
+                  const reqMatch = itemErr.error.match(/Required[:\s]*([\d.]+)/i)
+                  const availMatch = itemErr.error.match(/Available[:\s]*([\d.]+)/i)
+                  
+                  friendlyMsg = `You do not have enough stock available for the item: ${itemErr.item_code}.`
+                  if (reqMatch && availMatch) {
+                     friendlyMsg += `\n(You only have ${parseFloat(availMatch[1])} left, but you are trying to sell ${parseFloat(reqMatch[1])})`
+                  }
+                }
+                
+                toast.error(friendlyMsg, { duration: 8000 })
+                allErrors.push({
                   itemCode: itemErr.item_code,
-                  idx: itemErr.idx !== undefined ? Number(itemErr.idx) : undefined
+                  message: friendlyMsg
                 })
               }
             })
-            console.log('📦 Found item errors:', itemErrors)
+          }
+          
+          if (allErrors.length > 0) {
+            onInsufficientStockErrors?.(allErrors)
+          } else {
+            onInsufficientStockErrors?.([])
           }
 
-          // Check for insufficient stock errors in server messages
-          if (response?.data?._server_messages) {
-            try {
-              const serverMessages = JSON.parse(response.data._server_messages)
-              const stockErrors = parseInsufficientStockErrors(serverMessages)
-              if (stockErrors.length > 0) {
-                console.log('📦 Found insufficient stock errors:', stockErrors)
-                // Combine item errors with stock errors
-                const allErrors = [...itemErrors, ...stockErrors]
-                if (allErrors.length > 0) {
-                  onInsufficientStockErrors?.(allErrors)
-                }
-                return
-              }
-            } catch (parseError) {
-              console.error('Error parsing server messages for stock errors:', parseError)
-            }
-          }
-
-          // If we have item errors, show them in bottom error box
-          if (itemErrors.length > 0) {
-            onInsufficientStockErrors?.(itemErrors)
-          }
-
-          // Handle server error messages in toast popup (only if present)
-          if (response?.data?._server_messages) {
-            handleError(response.data._server_messages)
-            return
+          // Handle server error messages in toast popup if not already handled
+          if (!handledItemError && response?.data?._server_messages) {
+            handleError({ response: { data: { _server_messages: response.data._server_messages } } })
           }
         }
       }
@@ -1227,7 +1227,8 @@ const ActionButtons: React.FC<Props> = ({
     } finally {
       setIsSaving(false)
       // Refresh order details so status badges and linked invoice info update immediately
-      try {
+      if (saveSuccessful) {
+        try {
         const latestOrderId = currentTab?.orderId
         if (currentTab?.id && latestOrderId) {
           const res = await window.electronAPI?.proxy?.request({
@@ -1265,6 +1266,7 @@ const ActionButtons: React.FC<Props> = ({
         }
       } catch (e) {
         console.warn('⚠️ Failed to refresh order details after save:', e)
+      }
       }
     }
   }

@@ -585,9 +585,14 @@ export const usePOSTabStore = create<POSTabStore>()(
                   })
                 }
 
-                updatedItems = orderData.items.map((it: any) => {
+                updatedItems = orderData.items.map((it: any, index: number) => {
+                  let existingItem = tab.items[index]
+                  if (existingItem?.item_code !== it.item_code) {
+                    existingItem = tab.items.find((t: any) => t.item_code === it.item_code)
+                  }
                   const itemCode = it.item_code
                   const baseItem = {
+                    ...existingItem, // Preserve client-side fields
                     item_code: itemCode,
                     item_name: it.item_name,
                     item_part_no: it.item_part_no,
@@ -596,7 +601,7 @@ export const usePOSTabStore = create<POSTabStore>()(
                     uom: it.uom || it.stock_uom,
                     discount_percentage: Number(it.discount_percentage || 0),
                     discount_amount: Number(it.discount_amount || 0),
-                    discount_type: it.discount_type || 'Percentage',
+                    discount_type: it.discount_type || existingItem?.discount_type || 'Percentage',
                     standard_rate: Number(it.price_list_rate || it.rate || 0),
                     credit_note_returned_qty: Number(it.credit_note_returned_qty || 0)
                   }

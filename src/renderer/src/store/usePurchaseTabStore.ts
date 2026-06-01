@@ -315,19 +315,27 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
             const pdfUrl = orderData?.pdf_download_url || orderData?.data?.pdf_download_url
             let updatedItems = tab.items
             if (orderData && Array.isArray(orderData.items)) {
-              updatedItems = orderData.items.map((it: any) => ({
-                item_code: it.item_code,
-                item_name: it.item_name,
-                item_part_no: it.item_part_no,
-                item_description: it.description || it.item_name,
-                quantity: Number(it.qty || it.quantity || 0),
-                uom: it.uom || it.stock_uom || 'Nos',
-                discount_percentage: Number(it.discount_percentage || 0),
-                discount_amount: Number(it.discount_amount || 0),
-                discount_type: it.discount_type || 'Percentage',
-                standard_rate: Number(it.price_list_rate || it.rate || 0),
-                selling_rate: it.selling_rate !== undefined && it.selling_rate !== null ? Number(it.selling_rate) : undefined
-              }))
+              updatedItems = orderData.items.map((it: any, index: number) => {
+                let existingItem = tab.items[index]
+                if (existingItem?.item_code !== it.item_code) {
+                   existingItem = tab.items.find((tIt: any) => tIt.item_code === it.item_code)
+                }
+                
+                return {
+                  ...existingItem, // Preserve client-side fields like api_selling_rate, uomMinMax
+                  item_code: it.item_code,
+                  item_name: it.item_name,
+                  item_part_no: it.item_part_no,
+                  item_description: it.description || it.item_name,
+                  quantity: Number(it.qty || it.quantity || 0),
+                  uom: it.uom || it.stock_uom || 'Nos',
+                  discount_percentage: Number(it.discount_percentage || 0),
+                  discount_amount: Number(it.discount_amount || 0),
+                  discount_type: it.discount_type || existingItem?.discount_type || 'Percentage',
+                  standard_rate: Number(it.price_list_rate || it.rate || 0),
+                  selling_rate: it.selling_rate !== undefined && it.selling_rate !== null ? Number(it.selling_rate) : undefined
+                }
+              })
             }
 
             return {
