@@ -807,8 +807,9 @@ const ActionButtons: React.FC<Props> = ({
           qty,
           uom: item.uom || 'Nos',
           rate,
-          discount_percentage: item.discount_type === 'Percentage' ? discount : 0,
-          discount_amount: item.discount_type === 'Amount' ? (item.discount_amount || 0) : 0,
+          ...(item.discount_type === 'Percentage' 
+            ? { discount_percentage: Number(discount || 0) } 
+            : { discount_amount: Number(item.discount_amount || 0) }),
           is_offer_applied: isOfferApplied,
           ...(resolvedWarehouse ? { warehouse: resolvedWarehouse } : {})
         }
