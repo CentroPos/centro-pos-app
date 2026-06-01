@@ -175,19 +175,18 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   }, [profile?.selling_price_list])
 
   // Background fetch for true Standard Selling rates
-  const [fetchedSellingRates, setFetchedSellingRates] = useState<Record<string, boolean>>({})
+  const fetchedItemsRef = useRef(new WeakSet<any>())
   
   useEffect(() => {
     if (!activeTabId || items.length === 0) return
     const fetchMissingRates = async () => {
-      const itemsToFetch = items.filter(
-        i => i.api_selling_rate === undefined && i.item_code && !fetchedSellingRates[`${i.item_code}-${i.uom}`]
+      const itemsToFetch = items.map((item, index) => ({ item, index })).filter(
+        ({ item }) => item.api_selling_rate === undefined && item.item_code && !fetchedItemsRef.current.has(item)
       )
       if (itemsToFetch.length === 0) return
 
-      for (const item of itemsToFetch) {
-        const cacheKey = `${item.item_code}-${item.uom}`
-        setFetchedSellingRates(prev => ({ ...prev, [cacheKey]: true }))
+      for (const { item, index } of itemsToFetch) {
+        fetchedItemsRef.current.add(item)
         try {
           const resp = await window.electronAPI?.proxy?.request({
             method: 'GET',
@@ -205,10 +204,10 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
             const uomDetails = Array.isArray(exactItem.uom_details) ? exactItem.uom_details : []
             const rate = uomDetails.find((d: any) => d.uom === item.uom)?.rate || exactItem.rate || exactItem.standard_rate || 0
             
-            // Only update if it's still in the tab
-            const index = items.findIndex(i => i.item_code === item.item_code && i.uom === item.uom && i.api_selling_rate === undefined)
-            if (index !== -1) {
-              updateItemInTabByIndex(activeTabId, index, { api_selling_rate: rate })
+            // Re-find the item index just in case it shifted
+            const currentIndex = items.findIndex(i => i.item_code === item.item_code && i.uom === item.uom && i.api_selling_rate === undefined)
+            if (currentIndex !== -1) {
+              updateItemInTabByIndex(activeTabId, currentIndex, { api_selling_rate: rate })
             }
           }
         } catch (e) {
@@ -217,7 +216,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       }
     }
     fetchMissingRates()
-  }, [items, activeTabId, fetchedSellingRates])
+  }, [items, activeTabId])
 
   // Handle Price List Change
   const handlePriceListChange = (priceList: string) => {

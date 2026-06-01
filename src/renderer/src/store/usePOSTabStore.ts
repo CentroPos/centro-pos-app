@@ -175,7 +175,7 @@ export const usePOSTabStore = create<POSTabStore>()(
               discount_percentage: Number(it.discount_percentage || 0),
               discount_amount: Number(it.discount_amount || 0),
               discount_type: it.discount_type || 'Percentage',
-              standard_rate: Number(it.rate || it.price_list_rate || 0),
+              standard_rate: Number(it.price_list_rate || it.rate || 0),
               credit_note_returned_qty: Number(it.credit_note_returned_qty || 0)
             }
 
@@ -226,6 +226,9 @@ export const usePOSTabStore = create<POSTabStore>()(
           po_date: orderData?.po_date || null,
           internal_note: orderData?.custom_internal_note || orderData?.internal_note || null,
           posting_date: orderData?.posting_date || null,
+          globalDiscountPercent: Number(orderData?.additional_discount_percentage || 0),
+          globalDiscountAmount: Number(orderData?.discount_amount || 0),
+          globalDiscountType: orderData?.global_discount_type || (Number(orderData?.additional_discount_percentage) > 0 ? 'Percentage' : 'Amount'),
           instantPrintUrl: null,
           isRoundingEnabled: true,
           invoiceNumber: (() => {
@@ -594,7 +597,7 @@ export const usePOSTabStore = create<POSTabStore>()(
                     discount_percentage: Number(it.discount_percentage || 0),
                     discount_amount: Number(it.discount_amount || 0),
                     discount_type: it.discount_type || 'Percentage',
-                    standard_rate: Number(it.rate || it.price_list_rate || 0),
+                    standard_rate: Number(it.price_list_rate || it.rate || 0),
                     credit_note_returned_qty: Number(it.credit_note_returned_qty || 0)
                   }
 
@@ -615,6 +618,9 @@ export const usePOSTabStore = create<POSTabStore>()(
                 po_no: orderData?.po_no !== undefined ? orderData.po_no : tab.po_no,
                 po_date: orderData?.po_date !== undefined ? orderData.po_date : tab.po_date,
                 internal_note: orderData?.custom_internal_note !== undefined ? orderData.custom_internal_note : (orderData?.internal_note !== undefined ? orderData.internal_note : tab.internal_note),
+                globalDiscountPercent: orderData?.additional_discount_percentage !== undefined ? Number(orderData.additional_discount_percentage) : tab.globalDiscountPercent,
+                globalDiscountAmount: orderData?.discount_amount !== undefined ? Number(orderData.discount_amount) : tab.globalDiscountAmount,
+                globalDiscountType: orderData?.global_discount_type !== undefined ? orderData.global_discount_type : tab.globalDiscountType,
                 custom_is_exempt: orderData?.custom_is_exempt !== undefined ? Number(orderData.custom_is_exempt) : tab.custom_is_exempt
               }
             }

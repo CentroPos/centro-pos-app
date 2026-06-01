@@ -218,7 +218,8 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
             discount_percentage: Number(it.discount_percentage || 0),
             discount_amount: Number(it.discount_amount || 0),
             discount_type: it.discount_type || 'Percentage',
-            standard_rate: Number(it.rate || it.price_list_rate || 0)
+            standard_rate: Number(it.price_list_rate || it.rate || 0),
+            selling_rate: it.selling_rate !== undefined && it.selling_rate !== null ? Number(it.selling_rate) : undefined
           }))
           : []
 
@@ -264,6 +265,9 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
           internal_note: orderData?.custom_internal_note || orderData?.internal_note || null,
           buying_price_list: orderData?.buying_price_list || 'Standard Buying',
           is_reserved: orderData?.is_reserved !== undefined ? Number(orderData.is_reserved) : 1,
+          globalDiscountPercent: Number(orderData?.additional_discount_percentage || 0),
+          globalDiscountAmount: Number(orderData?.discount_amount || 0),
+          globalDiscountType: orderData?.global_discount_type || (Number(orderData?.additional_discount_percentage) > 0 ? 'Percentage' : 'Amount'),
           instantPrintUrl: orderData?.pdf_download_url || orderData?.data?.pdf_download_url || null,
           purchaseOrderPrintUrl: (tabStatus === 'draft' && (orderData?.pdf_download_url || orderData?.data?.pdf_download_url)) || null,
           purchaseInvoicePrintUrl: (tabStatus === 'confirmed' && (orderData?.pdf_download_url || orderData?.data?.pdf_download_url)) || null,
@@ -309,9 +313,30 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
             if (tab.id !== tabId) return tab
             const docstatus = Number(orderData.docstatus)
             const pdfUrl = orderData?.pdf_download_url || orderData?.data?.pdf_download_url
+            let updatedItems = tab.items
+            if (orderData && Array.isArray(orderData.items)) {
+              updatedItems = orderData.items.map((it: any) => ({
+                item_code: it.item_code,
+                item_name: it.item_name,
+                item_part_no: it.item_part_no,
+                item_description: it.description || it.item_name,
+                quantity: Number(it.qty || it.quantity || 0),
+                uom: it.uom || it.stock_uom || 'Nos',
+                discount_percentage: Number(it.discount_percentage || 0),
+                discount_amount: Number(it.discount_amount || 0),
+                discount_type: it.discount_type || 'Percentage',
+                standard_rate: Number(it.price_list_rate || it.rate || 0),
+                selling_rate: it.selling_rate !== undefined && it.selling_rate !== null ? Number(it.selling_rate) : undefined
+              }))
+            }
+
             return {
               ...tab,
               orderData,
+              items: updatedItems,
+              globalDiscountPercent: Number(orderData?.additional_discount_percentage || 0),
+              globalDiscountAmount: Number(orderData?.discount_amount || 0),
+              globalDiscountType: orderData?.global_discount_type || (Number(orderData?.additional_discount_percentage) > 0 ? 'Percentage' : 'Amount'),
               instantPrintUrl: pdfUrl || tab.instantPrintUrl,
               purchaseOrderPrintUrl: (docstatus === 0 && pdfUrl) ? pdfUrl : tab.purchaseOrderPrintUrl,
               purchaseInvoicePrintUrl: (docstatus === 1 && pdfUrl) ? pdfUrl : tab.purchaseInvoicePrintUrl,
