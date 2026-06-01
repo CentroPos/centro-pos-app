@@ -778,29 +778,16 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
     try {
       const enableReceiptWisePurchase = profile?.custom_enable_receipt_wise_purchase === 1
 
-      const mappedItems = items.map((it) => {
-        const rate = Number(it.standard_rate || 0)
-        let finalDiscPercent = 0
-        if (it.discount_type === 'Amount') {
-           const discAmount = Number(it.discount_amount || 0)
-           if (rate > 0) {
-             finalDiscPercent = (discAmount / rate) * 100
-           }
-        } else {
-           finalDiscPercent = Number(it.discount_percentage || 0)
-        }
-        
-        return {
-          item_code: it.item_code,
-          qty: Number(it.quantity || 0),
-          uom: it.uom,
-          rate: rate,
-          discount_percentage: finalDiscPercent,
-          discount_amount: it.discount_type === 'Amount' ? Number(it.discount_amount || 0) : 0,
-          new_selling_rate: it.selling_rate !== undefined ? Number(it.selling_rate) : null,
-          ...(enableReceiptWisePurchase && it.pr_item_id ? { pr_item_id: it.pr_item_id } : {})
-        }
-      })
+      const mappedItems = items.map((it) => ({
+        item_code: it.item_code,
+        qty: Number(it.quantity || 0),
+        uom: it.uom,
+        rate: Number(it.standard_rate || 0),
+        discount_percentage: it.discount_type === 'Percentage' ? Number(it.discount_percentage || 0) : 0,
+        discount_amount: it.discount_type === 'Amount' ? Number(it.discount_amount || 0) : 0,
+        new_selling_rate: it.selling_rate !== undefined ? Number(it.selling_rate) : null,
+        ...(enableReceiptWisePurchase && it.pr_item_id ? { pr_item_id: it.pr_item_id } : {})
+      }))
 
       // Get posting date from store or use transaction date
       const selectedPostingDate = getCurrentTabPostingDate()

@@ -3241,7 +3241,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                   <div className="p-4">
                     <div className="text-xs text-gray-500 mb-2">
                       {selectedItemId
-                        ? 'Supplier history for selected product'
+                        ? `Supplier history for ${selectedItem?.item_name || selectedItemId}`
                         : 'Select a product to view supplier history'}
                     </div>
 

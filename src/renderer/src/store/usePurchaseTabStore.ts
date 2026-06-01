@@ -391,14 +391,15 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
       addItemToTab: (tabId: string, item: any) => {
         set((state) => ({
           tabs: state.tabs.map((tab) =>
-            tab.id === tabId ? { ...tab, items: [...tab.items, item], isEdited: true } : tab
+            tab.id === tabId ? { ...tab, items: [...tab.items, { ...item, discount_type: item.discount_type || 'Percentage', discount_amount: item.discount_amount || 0, discount_percentage: item.discount_percentage || 0 }], isEdited: true } : tab
           )
         }))
       },
       addItemsToTab: (tabId: string, items: any[]) => {
+        const processedItems = items.map(item => ({ ...item, discount_type: item.discount_type || 'Percentage', discount_amount: item.discount_amount || 0, discount_percentage: item.discount_percentage || 0 }))
         set((state) => ({
           tabs: state.tabs.map((tab) =>
-            tab.id === tabId ? { ...tab, items: [...tab.items, ...items], isEdited: true } : tab
+            tab.id === tabId ? { ...tab, items: [...tab.items, ...processedItems], isEdited: true } : tab
           )
         }))
       },

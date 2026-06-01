@@ -802,22 +802,12 @@ const ActionButtons: React.FC<Props> = ({
           (profile as any)?.default_warehouse ||
           null
 
-        let finalDiscPercent = 0
-        if (item.discount_type === 'Amount') {
-           const discAmount = Number(item.discount_amount || 0)
-           if (rate > 0) {
-             finalDiscPercent = (discAmount / rate) * 100
-           }
-        } else {
-           finalDiscPercent = Number(discount || 0)
-        }
-
         return {
           item_code: item.item_code || item.code,
           qty,
           uom: item.uom || 'Nos',
           rate,
-          discount_percentage: finalDiscPercent,
+          discount_percentage: item.discount_type === 'Percentage' ? discount : 0,
           discount_amount: item.discount_type === 'Amount' ? (item.discount_amount || 0) : 0,
           is_offer_applied: isOfferApplied,
           ...(resolvedWarehouse ? { warehouse: resolvedWarehouse } : {})

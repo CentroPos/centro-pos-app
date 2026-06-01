@@ -136,13 +136,13 @@ const ProductSearch: React.FC<{
   // Handle keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent) => {
     switch (e.key) {
-      case 'N':
-      case 'n':
-        if (e.shiftKey) {
-          e.preventDefault()
-          onOpenWizard()
-        }
-        break
+      // case 'N':
+      // case 'n':
+      //   if (e.shiftKey) {
+      //     e.preventDefault()
+      //     onOpenWizard()
+      //   }
+      //   break
       case 'ArrowDown':
         e.preventDefault()
         if (selectedIndex === -1) {
@@ -220,7 +220,7 @@ const ProductSearch: React.FC<{
           autoFocus
         />
         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
-          <Button
+          {/* <Button
             variant="outline"
             size="sm"
             onClick={onOpenWizard}
@@ -231,7 +231,7 @@ const ProductSearch: React.FC<{
               New
             </div>
             <span className="text-xs bg-gray-200 px-1 rounded text-muted-foreground">Shift+N</span>
-          </Button>
+          </Button> */}
         </div>
       </div>
 
@@ -394,12 +394,12 @@ const ProductSearchModal: React.FC<ProductSearchModalProps> = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="max-w-2xl max-h-[90vh] bg-white"
-        onKeyDown={(e) => {
-          if (e.shiftKey && (e.key === 'N' || e.key === 'n')) {
-            e.preventDefault()
-            setIsWizardOpen(true)
-          }
-        }}
+        // onKeyDown={(e) => {
+        //   if (e.shiftKey && (e.key === 'N' || e.key === 'n')) {
+        //     e.preventDefault()
+        //     setIsWizardOpen(true)
+        //   }
+        // }}
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
