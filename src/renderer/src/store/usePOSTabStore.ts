@@ -45,6 +45,7 @@ interface Tab {
   invoiceCustomReverseStatus?: string | null
   is_reserved?: number
   custom_is_exempt?: number
+  lineItemDiscountMode?: 'Per Unit' | 'Row Total'
 }
 
 interface POSTabStore {
@@ -107,6 +108,10 @@ interface POSTabStore {
   // Exempt methods
   updateTabExempt: (tabId: string, custom_is_exempt: number) => void
   getCurrentTabExempt: () => number
+
+  // Discount Mode methods
+  updateTabDiscountMode: (tabId: string, mode: 'Per Unit' | 'Row Total') => void
+  getCurrentTabDiscountMode: () => 'Per Unit' | 'Row Total' | undefined
 
   // Helper methods
   getCurrentTab: () => Tab | undefined
@@ -172,8 +177,8 @@ export const usePOSTabStore = create<POSTabStore>()(
               label: it.description || it.item_name,
               quantity: Number(it.qty || it.quantity || 0),
               uom: it.uom || it.stock_uom,
-              discount_percentage: Number(it.discount_percentage || 0),
-              discount_amount: Number(it.discount_amount || 0),
+              discount_percentage: Number(orderData?.custom_line_item_discount_mode === 'Row Total' ? (it.custom_discount_percentage_on_total_amount || 0) : (it.discount_percentage || 0)),
+              discount_amount: Number(orderData?.custom_line_item_discount_mode === 'Row Total' ? (it.custom_discount_amount_on_total_amount || 0) : (it.discount_amount || 0)),
               discount_type: it.discount_type || 'Percentage',
               standard_rate: Number(it.price_list_rate || it.rate || 0),
               credit_note_returned_qty: Number(it.credit_note_returned_qty || 0)
@@ -231,6 +236,7 @@ export const usePOSTabStore = create<POSTabStore>()(
           globalDiscountType: orderData?.global_discount_type || (Number(orderData?.additional_discount_percentage) > 0 ? 'Percentage' : 'Amount'),
           instantPrintUrl: null,
           isRoundingEnabled: true,
+          lineItemDiscountMode: orderData?.custom_line_item_discount_mode || undefined,
           invoiceNumber: (() => {
             // Extract invoice number from linked_invoices if available
             console.log('📋 [openTab] Extracting invoice number from linked_invoices...')
@@ -396,7 +402,8 @@ export const usePOSTabStore = create<POSTabStore>()(
           isRoundingEnabled: true,
           invoiceNumber: null,
           is_reserved: 1,
-          custom_is_exempt: 0
+          custom_is_exempt: 0,
+          lineItemDiscountMode: undefined
         }
 
         set((state) => ({
@@ -599,8 +606,8 @@ export const usePOSTabStore = create<POSTabStore>()(
                     label: it.description || it.item_name,
                     quantity: Number(it.qty || it.quantity || 0),
                     uom: it.uom || it.stock_uom,
-                    discount_percentage: Number(it.discount_percentage || 0),
-                    discount_amount: Number(it.discount_amount || 0),
+                    discount_percentage: Number(orderData?.custom_line_item_discount_mode === 'Row Total' ? (it.custom_discount_percentage_on_total_amount || 0) : (it.discount_percentage || 0)),
+                    discount_amount: Number(orderData?.custom_line_item_discount_mode === 'Row Total' ? (it.custom_discount_amount_on_total_amount || 0) : (it.discount_amount || 0)),
                     discount_type: it.discount_type || existingItem?.discount_type || 'Percentage',
                     standard_rate: Number(it.price_list_rate || it.rate || 0),
                     credit_note_returned_qty: Number(it.credit_note_returned_qty || 0)
@@ -862,8 +869,22 @@ export const usePOSTabStore = create<POSTabStore>()(
 
       getCurrentTabExempt: () => {
         const state = get()
-        const currentTab = state.tabs.find(tab => tab.id === state.activeTabId)
-        return currentTab?.custom_is_exempt || 0
+        const activeTab = state.tabs.find((tab) => tab.id === state.activeTabId)
+        return activeTab?.custom_is_exempt || 0
+      },
+
+      updateTabDiscountMode: (tabId: string, mode: 'Per Unit' | 'Row Total') => {
+        set((state) => ({
+          tabs: state.tabs.map((tab) =>
+            tab.id === tabId ? { ...tab, lineItemDiscountMode: mode } : tab
+          )
+        }))
+      },
+
+      getCurrentTabDiscountMode: () => {
+        const state = get()
+        const activeTab = state.tabs.find((tab) => tab.id === state.activeTabId)
+        return activeTab?.lineItemDiscountMode
       },
 
       itemExistsInTab: (tabId: string, itemCode: string) => {

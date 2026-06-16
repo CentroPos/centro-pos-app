@@ -134,9 +134,9 @@ class ElectronAuthStore {
   // Frappe-specific methods
   async setFrappeAuth(userData: any): Promise<void> {
     await this.setAuthData({
-      user: userData.full_name || userData.user || userData.name,
+      user: userData?.full_name || userData?.user || userData?.name,
       userData: userData,
-      isAuthenticated: userData?.message === 'Logged In' || true
+      isAuthenticated: userData?.message === 'Logged In'
     })
   }
 

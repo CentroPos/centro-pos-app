@@ -30,6 +30,7 @@ interface POSProfile {
   custom_tax_rate?: number
   custom_exempt_taxes_and_charges?: string
   custom_exempt_tax_rate?: number
+  custom_default_line_item_discount_mode?: 'Per Unit' | 'Row Total'
   // Purchase-specific fields
   custom_buying_price_list?: string
   custom_purchase_taxes_and_charges?: string

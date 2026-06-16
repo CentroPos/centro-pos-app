@@ -184,12 +184,14 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
       return sum + qty * rate
     }, 0)
 
+    const effectiveDiscountMode = currentTab?.lineItemDiscountMode || profile?.custom_default_line_item_discount_mode || 'Per Unit'
+
     const individualDiscountSum = items.reduce((sum: number, it: any) => {
       const qty = Number(it.quantity || 0)
       const rate = Number(it.standard_rate || 0)
       if (it.discount_type === 'Amount') {
         const discAmt = Number(it.discount_amount || 0)
-        return sum + (discAmt * qty)
+        return sum + (discAmt * (effectiveDiscountMode === 'Row Total' ? 1 : qty))
       } else {
         const discPct = Number(it.discount_percentage || 0)
         return sum + (qty * rate * discPct) / 100
@@ -786,6 +788,7 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
           qty: Number(it.quantity || 0),
           uom: it.uom,
           rate,
+          custom_original_rate: rate,
           ...(it.discount_type === 'Percentage' 
             ? { discount_percentage: Number(it.discount_percentage || 0) } 
             : { discount_amount: Number(it.discount_amount || 0) }),
@@ -810,6 +813,7 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
         transaction_date: postingDate,
         schedule_date: '', // Empty as per user's example
         buying_price_list: finalBuyingPriceList,
+        custom_line_item_discount_mode: currentTab?.lineItemDiscountMode || profile?.custom_default_line_item_discount_mode || 'Per Unit',
         internal_note: currentTab.internal_note || '',
         disable_rounded_total: disable_rounded_total,
         additional_discount_percentage: globalDiscount.type === 'Percentage' ? globalDiscount.percent : 0,

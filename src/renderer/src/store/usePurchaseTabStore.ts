@@ -46,6 +46,7 @@ interface PurchaseTab {
   purchaseInvoicePrintUrl?: string | null
   returnInvoicePrintUrl?: string | null
   invoiceNumber?: string | null
+  lineItemDiscountMode?: 'Per Unit' | 'Row Total'
 }
 
 interface PurchaseTabStore {
@@ -89,6 +90,10 @@ interface PurchaseTabStore {
   // Rounding methods
   updateTabRoundingEnabled: (tabId: string, enabled: boolean) => void
   getCurrentTabRoundingEnabled: () => boolean
+
+  // Discount Mode methods
+  updateTabDiscountMode: (tabId: string, mode: 'Per Unit' | 'Row Total') => void
+  getCurrentTabDiscountMode: () => 'Per Unit' | 'Row Total' | undefined
 
   // Instant Print methods
   updateTabInstantPrintUrl: (tabId: string, url: string | null) => void
@@ -152,7 +157,8 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
           po_date: getCurrentDate(),
           internal_note: null,
           is_reserved: 1,
-          buying_price_list: 'Standard Buying'
+          buying_price_list: 'Standard Buying',
+          lineItemDiscountMode: undefined
         }
 
         set((s) => ({
@@ -208,19 +214,28 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
 
         // Map API order items (if provided) to cart item structure
         const mappedItems = Array.isArray(orderData?.items)
-          ? orderData.items.map((it: any) => ({
-            item_code: it.item_code,
-            item_name: it.item_name,
-            item_part_no: it.item_part_no,
-            item_description: it.description || it.item_name,
-            quantity: Number(it.qty || it.quantity || 0),
-            uom: it.uom || it.stock_uom || 'Nos',
-            discount_percentage: Number(it.discount_percentage || 0),
-            discount_amount: Number(it.discount_amount || 0),
-            discount_type: it.discount_type || 'Percentage',
-            standard_rate: Number(it.price_list_rate || it.rate || 0),
-            selling_rate: it.selling_rate !== undefined && it.selling_rate !== null ? Number(it.selling_rate) : undefined
-          }))
+          ? orderData.items.map((it: any) => {
+            const discountMode = orderData?.custom_line_item_discount_mode || 'Per Unit'
+            return {
+              item_code: it.item_code,
+              item_name: it.item_name,
+              item_part_no: it.item_part_no,
+              item_description: it.description || it.item_name,
+              quantity: Number(it.qty || it.quantity || 0),
+              uom: it.uom || it.stock_uom || 'Nos',
+              discount_percentage: discountMode === 'Row Total'
+                ? Number(it.custom_discount_percentage_on_total_amount || 0)
+                : Number(it.discount_percentage || 0),
+              discount_amount: discountMode === 'Row Total'
+                ? Number(it.custom_discount_amount_on_total_amount || 0)
+                : Number(it.discount_amount || 0),
+              discount_type: it.discount_type || 'Percentage',
+              standard_rate: it.custom_original_rate !== undefined && it.custom_original_rate !== null && it.custom_original_rate !== 0
+                ? Number(it.custom_original_rate)
+                : Number(it.price_list_rate || it.rate || 0),
+              selling_rate: it.selling_rate !== undefined && it.selling_rate !== null ? Number(it.selling_rate) : undefined
+            }
+          })
           : []
 
         // Determine status
@@ -281,7 +296,8 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
               }
             }
             return orderData?.purchase_invoice_no || null
-          })()
+          })(),
+          lineItemDiscountMode: orderData?.custom_line_item_discount_mode || undefined
         }
 
         set((s) => ({
@@ -314,6 +330,7 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
             const docstatus = Number(orderData.docstatus)
             const pdfUrl = orderData?.pdf_download_url || orderData?.data?.pdf_download_url
             let updatedItems = tab.items
+            const discountMode = orderData?.custom_line_item_discount_mode || 'Per Unit'
             if (orderData && Array.isArray(orderData.items)) {
               updatedItems = orderData.items.map((it: any, index: number) => {
                 let existingItem = tab.items[index]
@@ -329,10 +346,16 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
                   item_description: it.description || it.item_name,
                   quantity: Number(it.qty || it.quantity || 0),
                   uom: it.uom || it.stock_uom || 'Nos',
-                  discount_percentage: Number(it.discount_percentage || 0),
-                  discount_amount: Number(it.discount_amount || 0),
+                  discount_percentage: discountMode === 'Row Total'
+                    ? Number(it.custom_discount_percentage_on_total_amount || 0)
+                    : Number(it.discount_percentage || 0),
+                  discount_amount: discountMode === 'Row Total'
+                    ? Number(it.custom_discount_amount_on_total_amount || 0)
+                    : Number(it.discount_amount || 0),
                   discount_type: it.discount_type || existingItem?.discount_type || 'Percentage',
-                  standard_rate: Number(it.price_list_rate || it.rate || 0),
+                  standard_rate: it.custom_original_rate !== undefined && it.custom_original_rate !== null && it.custom_original_rate !== 0
+                    ? Number(it.custom_original_rate)
+                    : Number(it.price_list_rate || it.rate || 0),
                   selling_rate: it.selling_rate !== undefined && it.selling_rate !== null ? Number(it.selling_rate) : undefined
                 }
               })
@@ -543,6 +566,20 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
         const state = get()
         const currentTab = state.tabs.find(tab => tab.id === state.activeTabId)
         return currentTab?.isRoundingEnabled ?? true
+      },
+
+      updateTabDiscountMode: (tabId: string, mode: 'Per Unit' | 'Row Total') => {
+        set((state) => ({
+          tabs: state.tabs.map((tab) =>
+            tab.id === tabId ? { ...tab, lineItemDiscountMode: mode } : tab
+          )
+        }))
+      },
+
+      getCurrentTabDiscountMode: () => {
+        const state = get()
+        const activeTab = state.tabs.find((tab) => tab.id === state.activeTabId)
+        return activeTab?.lineItemDiscountMode
       },
 
       // Instant Print methods

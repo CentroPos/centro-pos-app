@@ -6,7 +6,7 @@ import { Checkbox } from '@renderer/components/ui/checkbox'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@renderer/components/ui/dialog'
 import { Button } from '@renderer/components/ui/button'
 import {
-  Table,
+  
   TableBody,
   TableCell,
   TableHead,
@@ -48,7 +48,7 @@ type Props = {
 }
 
 const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem, shouldStartEditing = false, onEditingStarted, onAddItemClick, onSaveCompleted, isProductModalOpen = false, isCustomerModalOpen = false, isErrorBoxFocused = false, onEditingStateChange, errorItems = [], onClearItemError }) => {
-  const { getCurrentTabItems, activeTabId, updateItemInTab, updateItemInTabByIndex, getCurrentTab, setTabEdited, removeItemFromTabByIndex, updateTabOtherDetails, updateTabReservation, getCurrentTabReservation, updateTabCustomer, updateTabPostingDate, updateTabOrderData, updateTabExempt, getCurrentTabExempt } = usePOSTabStore();
+  const { getCurrentTabItems, activeTabId, updateItemInTab, updateItemInTabByIndex, getCurrentTab, setTabEdited, removeItemFromTabByIndex, updateTabOtherDetails, updateTabReservation, getCurrentTabReservation, updateTabCustomer, updateTabPostingDate, updateTabOrderData, updateTabExempt, getCurrentTabExempt, updateTabDiscountMode } = usePOSTabStore();
   const items = getCurrentTabItems();
   const [tableSearch, setTableSearch] = useState('')
   const isReserved = getCurrentTabReservation()
@@ -81,6 +81,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
   // --- Date & Price List Logic (Migrated from OrderDetails) ---
   const { profile } = usePOSProfileStore()
+  
+  const effectiveDiscountMode = currentTab?.lineItemDiscountMode || profile?.custom_default_line_item_discount_mode || 'Per Unit';
 
   // Price List State
   const [selectedPriceList, setSelectedPriceList] = useState<string>('Standard Selling')
@@ -211,7 +213,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
   // Editable field order and keyboard navigation between fields
   type EditField = 'item_name' | 'item_description' | 'quantity' | 'uom' | 'discount_type' | 'discount_percentage' | 'standard_rate'
-  const fieldOrder: EditField[] = ['item_description', 'quantity', 'uom', 'discount_type', 'discount_percentage', 'standard_rate']
+  const fieldOrder: EditField[] = ['item_description', 'quantity', 'uom', 'discount_percentage', 'standard_rate']
   // Virtual field for actions column (not editable input)
   const extendedFieldOrder: Array<EditField | 'actions'> = [...fieldOrder, 'actions']
 
@@ -1862,45 +1864,10 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
           <TabsContent value="items" className="absolute inset-0 flex flex-col min-h-0 data-[state=inactive]:hidden">
             <div className="border rounded-lg flex flex-col min-h-0">
               {/* Sticky table head, scrollable body only */}
-              <div className="bg-white sticky top-0 z-10">
-                <Table className="table-fixed w-full">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[50px] text-center font-bold">S.No</TableHead>
-                      <TableHead className="w-[110px]">
-                        <div className="flex items-center gap-2">
-                          <span>Product</span>
-                          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-200 text-[10px] font-semibold">
-                            {totalProducts}
-                          </span>
-                        </div>
-                      </TableHead>
-                      <TableHead className="w-[300px]">Label</TableHead>
-                      <TableHead className="w-[70px] text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          <span>Qty</span>
-                          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-200 text-[10px] font-semibold">
-                            {totalQuantity}
-                          </span>
-                        </div>
-                      </TableHead>
-                      <TableHead className="w-[80px] text-center px-1">UOM</TableHead>
-                      <TableHead className="w-[80px] text-center px-1">Disc. Type</TableHead>
-                      <TableHead className="w-[80px] text-center">Discount</TableHead>
-                      <TableHead className="w-[100px] text-center font-bold">Rate</TableHead>
-                      <TableHead className="w-[100px] text-left pl-8">Total</TableHead>
-                      {isReadOnly ? (
-                        <TableHead className="w-[80px] text-center">Returned Qty</TableHead>
-                      ) : (
-                        <TableHead className="w-[60px] text-center pl-1">Actions</TableHead>
-                      )}
-                    </TableRow>
-                  </TableHeader>
-                </Table>
-              </div>
+              
               {/* Only the body scrolls. Dynamically reduce height when error box is visible */}
               <div
-                className={`flex-1 min-h-0 overflow-y-auto transition-[max-height] duration-200`}
+                className={`flex-1 min-h-0 overflow-auto transition-[max-height] duration-200`}
                 ref={tableScrollRef}
                 tabIndex={0}
                 onKeyDown={(e) => {
@@ -1966,8 +1933,59 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                   ; (e.currentTarget as HTMLElement).focus()
                 }}
               >
-                <Table className="table-fixed w-full">
-                  <TableBody>
+                <table className="w-full min-w-[1070px] text-sm table-fixed border-collapse">
+<TableHeader className="bg-white sticky top-0 z-20 shadow-sm">
+                    <TableRow>
+                      <TableHead className="w-[50px] text-center font-bold">S.No</TableHead>
+                      <TableHead className="w-[110px]">
+                        <div className="flex items-center gap-2">
+                          <span>Product</span>
+                          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-200 text-[10px] font-semibold">
+                            {totalProducts}
+                          </span>
+                        </div>
+                      </TableHead>
+                      <TableHead className="w-[300px]">Label</TableHead>
+                      <TableHead className="w-[70px] text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <span>Qty</span>
+                          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-200 text-[10px] font-semibold">
+                            {totalQuantity}
+                          </span>
+                        </div>
+                      </TableHead>
+                      <TableHead className="w-[80px] text-center px-1">UOM</TableHead>
+                      <TableHead className="w-[75px] text-center px-1">Disc.Type</TableHead>
+                      <TableHead className="w-[100px] text-center px-1">
+                        <Select
+                          disabled={isReadOnly}
+                          value={effectiveDiscountMode}
+                          onValueChange={(value) => {
+                            if (activeTabId) {
+                              updateTabDiscountMode(activeTabId, value as 'Per Unit' | 'Row Total')
+                              setTabEdited(activeTabId, true)
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="mx-auto h-7 w-auto px-1 border-none shadow-none bg-transparent hover:bg-gray-100 rounded focus:ring-0 text-black font-bold text-center flex items-center justify-center gap-1 transition-colors [&>svg]:w-3 [&>svg]:h-3">
+                            <span>Discount</span>
+                          </SelectTrigger>
+                          <SelectContent>
+                              <SelectItem className="text-[10px] py-1" value="Per Unit">Per Unit</SelectItem>
+                              <SelectItem className="text-[10px] py-1" value="Row Total">Row Total</SelectItem>
+                            </SelectContent>
+                          </Select>
+                      </TableHead>
+                      <TableHead className="w-[100px] text-center font-bold">Rate</TableHead>
+                      <TableHead className="w-[100px] text-left pl-8">Total</TableHead>
+                      {isReadOnly ? (
+                        <TableHead className="w-[80px] text-center">Returned Qty</TableHead>
+                      ) : (
+                        <TableHead className="w-[60px] text-center pl-1">Actions</TableHead>
+                      )}
+                    </TableRow>
+                  </TableHeader>
+<TableBody>
                     {filteredItems.map((item, index) => {
                       const isSelected = item.item_code === selectedItemId && index === selectedRowIndex
                       const isEditingQuantity = isSelected && isEditing && activeField === 'quantity' && !isReadOnly
@@ -2437,112 +2455,25 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             )}
                           </TableCell>
 
-                          {/* Disc. Type Cell */}
-                          <TableCell
-                            className={`w-[80px] text-center p-1 ${isSelected && activeField === 'discount_type' ? 'font-medium' : ''}`}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              if (item.fromReceipt === true || (item.pr_item_id && String(item.pr_item_id).trim() !== '')) return
-                              if (!isReadOnly) {
-                                resetEditingState()
-                                setTimeout(() => {
-                                  selectItem(item.item_code)
-                                  setSelectedRowIndex(index)
-                                  setActiveField('discount_type')
-                                  setIsEditing(true)
-                                  setEditValue(item.discount_type || 'Percentage')
-                                }, 50)
-                              }
-                            }}
-                          >
-                            {isEditing && activeField === 'discount_type' && isSelected ? (
-                              <div
-                                ref={inputRef as React.RefObject<HTMLDivElement>}
-                                tabIndex={0}
-                                onKeyDown={(e) => {
-                                  handleArrowNavigation(e, 'discount_type', item.item_code)
-                                  handleVerticalNavigation(e, 'discount_type', item.item_code)
-                                  if (e.key === ' ') {
-                                    e.preventDefault()
-                                    e.stopPropagation()
-                                    const newType = editValue === 'Percentage' ? 'Amount' : 'Percentage'
-                                    setEditValue(newType)
-                                    if (activeTabId) {
-                                      updateItemInTabByIndex(activeTabId, index, { discount_type: newType, discount_percentage: 0, discount_amount: 0 })
-                                      setTabEdited(activeTabId, true)
-                                    }
-                                  }
-                                  if (e.key.toLowerCase() === 'p' || e.key === '%') {
-                                    e.preventDefault()
-                                    e.stopPropagation()
-                                    setEditValue('Percentage')
-                                    if (activeTabId) {
-                                      updateItemInTabByIndex(activeTabId, index, { discount_type: 'Percentage', discount_percentage: 0, discount_amount: 0 })
-                                      setTabEdited(activeTabId, true)
-                                    }
-                                  }
-                                  if (e.key.toLowerCase() === 'a' || e.key === '$') {
-                                    e.preventDefault()
-                                    e.stopPropagation()
-                                    setEditValue('Amount')
-                                    if (activeTabId) {
-                                      updateItemInTabByIndex(activeTabId, index, { discount_type: 'Amount', discount_percentage: 0, discount_amount: 0 })
-                                      setTabEdited(activeTabId, true)
-                                    }
-                                  }
-                                  if (e.key === 'Enter') {
-                                    e.preventDefault()
-                                    e.stopPropagation()
-                                    handleSaveEdit()
-                                  }
-                                  if (e.key === 'Escape') {
-                                    e.preventDefault()
-                                    setIsEditing(false)
-                                  }
-                                }}
-                                onBlur={() => {
-                                  if (navigatingRef.current) return
-                                  handleSaveEdit()
-                                }}
-                                className="flex w-full bg-gray-100/80 p-[2px] rounded h-6 border border-blue-400 outline-none ring-2 ring-blue-100 cursor-pointer"
-                              >
-                                <div
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    setEditValue('Percentage')
-                                    if (activeTabId) {
-                                      updateItemInTabByIndex(activeTabId, index, { discount_type: 'Percentage', discount_percentage: 0, discount_amount: 0 })
-                                      setTabEdited(activeTabId, true)
-                                    }
-                                  }}
-                                  className={`flex-1 text-[10px] rounded transition-all flex items-center justify-center ${editValue === 'Percentage' ? 'bg-white shadow-sm font-medium text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                                >
-                                  %
-                                </div>
-                                <div
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    setEditValue('Amount')
-                                    if (activeTabId) {
-                                      updateItemInTabByIndex(activeTabId, index, { discount_type: 'Amount', discount_percentage: 0, discount_amount: 0 })
-                                      setTabEdited(activeTabId, true)
-                                    }
-                                  }}
-                                  className={`flex-1 text-[10px] rounded transition-all flex items-center justify-center ${editValue === 'Amount' ? 'bg-white shadow-sm font-medium text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                                >
-                                  {profile?.custom_currency_symbol || '$'}
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="flex w-full bg-gray-100/50 p-[2px] rounded h-6 border border-gray-200 cursor-pointer hover:bg-gray-100/80 transition-colors">
-                                <div className={`flex-1 text-[10px] rounded flex items-center justify-center ${(!item.discount_type || item.discount_type === 'Percentage') ? 'bg-white shadow-sm font-medium text-gray-700' : 'text-gray-400'}`}>
-                                  %
-                                </div>
-                                <div className={`flex-1 text-[10px] rounded flex items-center justify-center ${item.discount_type === 'Amount' ? 'bg-white shadow-sm font-medium text-gray-700' : 'text-gray-400'}`}>
-                                  {profile?.custom_currency_symbol || '$'}
-                                </div>
-                              </div>
-                            )}
+                          {/* Disc.Type Cell */}
+                          <TableCell className="w-[75px] text-center px-3 py-1">
+                            <select
+                              value={item.discount_type || 'Percentage'}
+                              disabled={isReadOnly || item.fromReceipt === true || !!(item.pr_item_id && String(item.pr_item_id).trim() !== '')}
+                              className="w-full text-[11px] py-0.5 px-0 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white disabled:bg-gray-100 disabled:text-gray-500 cursor-pointer text-center"
+                              onClick={(e) => e.stopPropagation()}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onChange={(e) => {
+                                const newType = e.target.value as 'Percentage' | 'Amount'
+                                if (activeTabId) {
+                                  updateItemInTabByIndex(activeTabId, index, { discount_type: newType, discount_percentage: 0, discount_amount: 0 })
+                                  setTabEdited(activeTabId, true)
+                                }
+                              }}
+                            >
+                              <option value="Percentage">%</option>
+                              <option value="Amount">{profile?.custom_currency_symbol || '$'}</option>
+                            </select>
                           </TableCell>
 
                           {/* Discount Cell */}
@@ -2707,17 +2638,51 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                               />
                             ) : (
                               <span className={`font-bold ${priceLimitHighlight.has(item.item_code) ? 'text-red-600' : hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>
-                                {(Number(item.standard_rate || 0) - (item.discount_type === 'Amount' ? Number(item.discount_amount || 0) : (Number(item.standard_rate || 0) * Number(item.discount_percentage || 0)) / 100)).toFixed(2)}
+                                {(() => {
+                                  const flt = (val: number, precision: number = 2) => Math.round((val + Number.EPSILON) * Math.pow(10, precision)) / Math.pow(10, precision)
+                                  const rawRate = Number(item.standard_rate || 0)
+                                  const rawQty = Number(item.quantity || 0)
+                                  let discAmtPerUnit = 0
+                                  
+                                  if (item.discount_type === 'Amount') {
+                                    const totalDiscAmt = flt(Number(item.discount_amount || 0))
+                                    if (effectiveDiscountMode === 'Row Total') {
+                                      discAmtPerUnit = rawQty > 0 ? flt(totalDiscAmt / rawQty) : 0
+                                    } else {
+                                      discAmtPerUnit = totalDiscAmt
+                                    }
+                                  } else {
+                                    const discPercent = flt(Number(item.discount_percentage || 0))
+                                    discAmtPerUnit = flt((rawRate * discPercent) / 100)
+                                  }
+                                  
+                                  return flt(rawRate - discAmtPerUnit).toFixed(2)
+                                })()}
                               </span>
                             )}
                           </TableCell>
                           <TableCell className={`font-semibold ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : isSelected ? 'text-blue-900' : ''} w-[100px] text-left pl-8`}>
-                            {(
-                              (Number(item.standard_rate || 0) * Number(item.quantity || 0)) -
-                              (item.discount_type === 'Amount' 
-                                ? Number(item.discount_amount || 0) * Number(item.quantity || 0)
-                                : (Number(item.standard_rate || 0) * Number(item.quantity || 0) * Number(item.discount_percentage || 0)) / 100)
-                            ).toFixed(2)}
+                            {(() => {
+                              const flt = (val: number, precision: number = 2) => Math.round((val + Number.EPSILON) * Math.pow(10, precision)) / Math.pow(10, precision)
+                              const rawRate = Number(item.standard_rate || 0)
+                              const rawQty = Number(item.quantity || 0)
+                              const baseTotal = flt(rawRate * rawQty)
+                              
+                              let discountAmt = 0
+                              if (item.discount_type === 'Amount') {
+                                discountAmt = flt(Number(item.discount_amount || 0))
+                                if (effectiveDiscountMode !== 'Row Total') {
+                                  discountAmt = flt(discountAmt * rawQty)
+                                }
+                              } else {
+                                const discountPercent = flt(Number(item.discount_percentage || 0))
+                                discountAmt = flt((baseTotal * discountPercent) / 100)
+                              }
+                              
+                              // The user explicitly requested rounding to the nearest whole integer (e.g. 36518.74 -> 36519.00)
+                              const exactTotal = baseTotal - discountAmt
+                              return Math.round(exactTotal).toFixed(2)
+                            })()}
                           </TableCell>
                           {isReadOnly ? (
                             <TableCell className="w-[80px] text-center font-bold">
@@ -2814,7 +2779,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                       )
                     })}
                   </TableBody>
-                </Table>
+                </table>
               </div>
 
               {/* Add Item button sticky at bottom of table card (compact) */}

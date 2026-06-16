@@ -57,114 +57,6 @@ type Props = {
 }
 
 
-// Helper function to parse server messages and extract insufficient stock errors
-const parseInsufficientStockErrors = (
-  serverMessages: any
-): Array<{ message: string; title: string; indicator: string; itemCode: string }> => {
-  const errors: Array<{ message: string; title: string; indicator: string; itemCode: string }> = []
-
-  try {
-    let messages = serverMessages
-    if (typeof serverMessages === 'string') {
-      messages = JSON.parse(serverMessages)
-    }
-
-    if (Array.isArray(messages)) {
-      messages.forEach((msg: any) => {
-        let messageObj = msg
-        if (typeof msg === 'string') {
-          try {
-            messageObj = JSON.parse(msg)
-          } catch {
-            return // Skip invalid messages
-          }
-        }
-
-        // Check if it's an insufficient stock error
-        if (
-          messageObj.message &&
-          (messageObj.message.toLowerCase().includes('insufficient stock') ||
-            messageObj.message.toLowerCase().includes('stock unavailable') ||
-            messageObj.title?.toLowerCase().includes('stock'))
-        ) {
-          // First clean the HTML content
-          const cleanMessage = messageObj.message
-            .replace(/<br\s*\/?>/gi, '\n') // Convert <br> to newlines
-            .replace(/<[^>]*>/g, '') // Remove all HTML tags
-            .trim()
-
-          // Split the message by "Item:" to separate individual item errors
-          const parts = cleanMessage.split(/Item:\s*/)
-
-          // Filter out empty parts and parts that only contain "Insufficient Stock:"
-          const itemErrors = parts.filter((part: string) => {
-            const trimmed = part.trim()
-            // Must have content and not be just "Insufficient Stock:" or empty
-            return (
-              trimmed &&
-              trimmed !== 'Insufficient Stock:' &&
-              !trimmed.match(/^Insufficient Stock:\s*$/i) &&
-              trimmed.length > 10 // Reduced threshold since we removed HTML
-            )
-          })
-
-          if (itemErrors.length > 1) {
-            // Multiple items in one message - split them
-            itemErrors.forEach((itemError: string) => {
-              const cleanError = itemError.trim()
-              // Remove "Insufficient Stock:" prefix if present
-              const messageWithoutPrefix = cleanError.replace(/^Insufficient Stock:\s*/i, '')
-
-              // Extract item code from the error message
-              const itemCodeMatch = messageWithoutPrefix.match(/^([A-Z0-9-]+)/)
-              const itemCode = itemCodeMatch ? itemCodeMatch[1] : ''
-
-              errors.push({
-                message: `Not enough stock for Item: ${itemCode}`,
-                title: messageObj.title || 'Stock Unavailable',
-                indicator: messageObj.indicator || 'red',
-                itemCode: itemCode
-              })
-            })
-          } else if (itemErrors.length === 1) {
-            // Single item error - remove "Insufficient Stock:" prefix if present
-            const messageWithoutPrefix = itemErrors[0].replace(/^Insufficient Stock:\s*/i, '')
-
-            // Extract item code from the error message
-            const itemCodeMatch = messageWithoutPrefix.match(/^([A-Z0-9-]+)/)
-            const itemCode = itemCodeMatch ? itemCodeMatch[1] : ''
-
-            errors.push({
-              message: `Not enough stock for Item: ${itemCode}`,
-              title: messageObj.title || 'Stock Error',
-              indicator: messageObj.indicator || 'red',
-              itemCode: itemCode
-            })
-          } else {
-            // Fallback: treat the whole message as one error
-            const messageWithoutPrefix = cleanMessage.replace(/^Insufficient Stock:\s*/i, '')
-
-            // Try to extract item code from the fallback message
-            const itemCodeMatch = messageWithoutPrefix.match(/Item:\s*([A-Z0-9-]+)/)
-            const itemCode = itemCodeMatch ? itemCodeMatch[1] : ''
-
-            errors.push({
-              message: 'Not enough stock available for this item.',
-              title: messageObj.title || 'Stock Error',
-              indicator: messageObj.indicator || 'red',
-              itemCode: itemCode
-            })
-          }
-        }
-      })
-    }
-  } catch (error) {
-    console.error('Error parsing server messages:', error)
-  }
-
-  return errors
-}
-
 const ActionButtons: React.FC<Props> = ({
   onNavigateToPrints,
   onSaveCompleted,
@@ -547,12 +439,14 @@ const ActionButtons: React.FC<Props> = ({
       return sum + qty * rate
     }, 0)
 
+    const effectiveDiscountMode = currentTab?.lineItemDiscountMode || profile?.custom_default_line_item_discount_mode || 'Per Unit'
+
     const individualDiscountSum = items.reduce((sum: number, it: any) => {
       const qty = Number(it.quantity || 0)
       const rate = Number(it.standard_rate || 0)
       if (it.discount_type === 'Amount') {
         const discAmt = Number(it.discount_amount || 0)
-        return sum + (discAmt * qty)
+        return sum + (discAmt * (effectiveDiscountMode === 'Row Total' ? 1 : qty))
       } else {
         const discPct = Number(it.discount_percentage || 0)
         return sum + (qty * rate * discPct) / 100
@@ -795,18 +689,27 @@ const ActionButtons: React.FC<Props> = ({
         // IMPORTANT:
         // Do NOT hardcode warehouses like "Main WH - NB". That can fail on other deployments and causes:
         // "Could not find Row #1: Delivery Warehouse: <warehouse>"
-        // Prefer item-provided warehouse, then POS profile warehouse, otherwise omit and let backend default.
         const resolvedWarehouse =
           item.default_warehouse ||
           (profile as any)?.warehouse ||
           (profile as any)?.default_warehouse ||
           null
 
+        // Ensure delivery date is not before po_date
+        const poDateStr = currentTab?.po_date?.trim()
+        const selectedPostingDate = getCurrentTabPostingDate()
+        const currentPostingDate = selectedPostingDate || getCurrentDate()
+        let deliveryDate = currentPostingDate
+        if (poDateStr && new Date(currentPostingDate) < new Date(poDateStr)) {
+          deliveryDate = poDateStr
+        }
+
         return {
           item_code: item.item_code || item.code,
           qty,
           uom: item.uom || 'Nos',
           rate,
+          delivery_date: deliveryDate,
           ...(item.discount_type === 'Percentage' 
             ? { discount_percentage: Number(discount || 0) } 
             : { discount_amount: Number(item.discount_amount || 0) }),
@@ -923,8 +826,10 @@ const ActionButtons: React.FC<Props> = ({
       const orderData: any = {
         customer: finalCustomerId,
         posting_date: postingDate, // Use the date selected in the order details box
+        delivery_date: (currentTab?.po_date?.trim() && new Date(postingDate) < new Date(currentTab.po_date.trim())) ? currentTab.po_date.trim() : postingDate,
         selling_price_list: selectedPriceList,
         taxes_and_charges: currentTab?.custom_is_exempt === 1 ? profile?.custom_exempt_taxes_and_charges : profile?.taxes_and_charges,
+        custom_line_item_discount_mode: currentTab?.lineItemDiscountMode || profile?.custom_default_line_item_discount_mode || 'Per Unit',
         custom_is_exempt: currentTab?.custom_is_exempt || 0,
         additional_discount_percentage: globalDiscount.type === 'Percentage' ? globalDiscount.percent : 0,
         additional_discount_amount: globalDiscount.type === 'Amount' ? globalDiscount.amount : 0,

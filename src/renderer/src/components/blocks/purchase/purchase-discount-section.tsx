@@ -4,6 +4,7 @@ import { Input } from '@renderer/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@renderer/components/ui/dialog'
 import { useMemo, useState, useRef, useEffect } from 'react'
 import { usePurchaseTabStore } from '@renderer/store/usePurchaseTabStore'
+import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 import { useHotkeys } from 'react-hotkeys-hook'
 import BottomErrorBox from '../common/bottom-error-box'
 import SupplierModal from '../supplier/supplier-modal'
@@ -71,6 +72,7 @@ const PurchaseDiscountSection: React.FC<Props> = ({
   const [showSupplierModal, setShowSupplierModal] = useState(false)
 
   // Extract paid_amount and outstanding_amount from linked_invoices
+  const { profile } = usePOSProfileStore()
   const { paidAmount, outstandingAmount } = useMemo(() => {
     const linkedInvoices = currentTab?.orderData?.linked_invoices
 
@@ -196,30 +198,33 @@ const PurchaseDiscountSection: React.FC<Props> = ({
   }, [globalDiscountPercent])
 
   const { untaxed, globalDiscount, vat, rounding, total } = useMemo(() => {
-    const untaxedSum = items.reduce((sum: number, it: any) => {
+    const effectiveDiscountMode = currentTab?.lineItemDiscountMode || profile?.custom_default_line_item_discount_mode || 'Per Unit'
+
+    let individualDiscountSum = 0
+    let untaxedSum = 0
+
+    const netAfterIndividualDiscount = items.reduce((sum: number, it: any) => {
+      const flt = (val: number, precision: number = 2) => Math.round((val + Number.EPSILON) * Math.pow(10, precision)) / Math.pow(10, precision)
       const qty = Number(it.quantity || 0)
       const rate = Number(it.standard_rate || 0)
-      return sum + qty * rate
-    }, 0)
-
-    const individualDiscountSum = items.reduce((sum: number, it: any) => {
-      const qty = Number(it.quantity || 0)
-      const rate = Number(it.standard_rate || 0)
-      const discPercent = Number(it.discount_percentage || 0)
-      const discAmount = Number(it.discount_amount || 0)
-      const type = it.discount_type || 'Percentage'
-
-      const totalItemAmount = qty * rate
+      const baseTotal = flt(qty * rate)
+      
       let itemDiscount = 0
+      const type = it.discount_type || 'Percentage'
       if (type === 'Percentage') {
-        itemDiscount = (totalItemAmount * discPercent) / 100
+        itemDiscount = flt((baseTotal * Number(it.discount_percentage || 0)) / 100)
       } else {
-        itemDiscount = discAmount * qty
+        const discAmount = flt(Number(it.discount_amount || 0))
+        itemDiscount = effectiveDiscountMode === 'Row Total' ? discAmount : flt(discAmount * qty)
       }
-      return sum + itemDiscount
+      
+      untaxedSum += baseTotal
+      individualDiscountSum += itemDiscount
+      
+      const exactTotal = baseTotal - itemDiscount
+      // As requested: Line items are rounded to the nearest whole integer
+      return sum + Math.round(exactTotal)
     }, 0)
-
-    const netAfterIndividualDiscount = untaxedSum - individualDiscountSum
     const globalDiscountAmount = globalDiscountTypeStore === 'Amount'
       ? globalDiscountAmountStore
       : (netAfterIndividualDiscount * globalDiscountPercent) / 100
@@ -459,7 +464,7 @@ const PurchaseDiscountSection: React.FC<Props> = ({
           </div>
         </div>
         <div className="text-center">
-          <div className="text-[10px] text-gray-600 mb-0.5">Disc. Type</div>
+          <div className="text-[10px] text-gray-600 mb-0.5">Disc.Type</div>
           <div className="flex w-3/4 mx-auto bg-gray-100/80 p-0.5 rounded-md h-8 border border-gray-200">
             <button
               disabled={isReadOnly}

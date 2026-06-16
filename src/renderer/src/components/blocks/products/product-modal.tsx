@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react'
-import { Search, Plus, Package } from 'lucide-react'
+import { Search, Package } from 'lucide-react'
 
 import {
   Dialog,
@@ -40,7 +40,7 @@ const ProductSearch: React.FC<{
   onOpenWizard: () => void
   selectedPriceList?: string
   isOpen?: boolean
-}> = ({ onSelect, onOpenWizard, selectedPriceList = 'Standard Selling', isOpen = true }) => {
+}> = ({ onSelect, onOpenWizard: _onOpenWizard, selectedPriceList = 'Standard Selling', isOpen = true }) => {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(-1)
   const { profile } = usePOSProfileStore()
