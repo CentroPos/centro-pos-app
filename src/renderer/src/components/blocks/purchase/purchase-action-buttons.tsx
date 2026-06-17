@@ -508,6 +508,9 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
       // Confirmation mode or not confirmed yet
       const confirmationData = {
         purchase_order_id: currentTab.purchaseOrderId,
+        mode_of_payment: paymentsArray.length > 0 ? paymentsArray[0].mode : 'Cash',
+        paid_amount: paymentsArray.length > 0 ? (parseFloat(paymentsArray[0].amount) || 0) : 0,
+        // Send payments array as a backup in case the backend was updated to support it
         payments: paymentsArray.map(p => ({
           mode_of_payment: p.mode,
           amount: parseFloat(p.amount) || 0,
@@ -810,6 +813,7 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
 
       const payload: any = {
         supplier: currentTab.supplier.supplier_id,
+        company: profile?.company,
         transaction_date: postingDate,
         schedule_date: '', // Empty as per user's example
         buying_price_list: finalBuyingPriceList,
@@ -819,6 +823,50 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
         additional_discount_percentage: globalDiscount.type === 'Percentage' ? globalDiscount.percent : 0,
         additional_discount_amount: globalDiscount.type === 'Amount' ? globalDiscount.amount : 0,
         items: mappedItems
+      }
+
+      if (profile?.custom_enable_landed_cost_entry === 1 && currentTab.landedCost?.items?.length) {
+        payload.custom_lcv_date = currentTab.landedCost.date || postingDate
+        payload.custom_distribute_charges_based_on = currentTab.landedCost.distributeChargesBasedOn || 'Amount'
+        
+        const totalLcvAmount = currentTab.landedCost.items.reduce((sum, it) => sum + Number(it.amount || 0), 0)
+        const totalLcvTaxes = currentTab.landedCost.items.reduce((sum, it) => {
+          const taxAmt = Number(it.total_amount || 0) - Number(it.amount || 0)
+          return sum + (taxAmt > 0 ? taxAmt : 0)
+        }, 0)
+        
+        payload.custom_total_lcv_amount = totalLcvAmount
+        payload.custom_total_lcv_taxes = totalLcvTaxes
+        payload.total_lcv_amount = totalLcvAmount
+        payload.total_lcv_taxes = totalLcvTaxes
+        
+        payload.custom_lcv_service_items = currentTab.landedCost.items.map(it => ({
+          item_code: it.item_code,
+          item: it.item_code,
+          description: it.description || '',
+          party: it.supplier || '',
+          supplier: it.supplier || '',
+          supplier_name: it.supplier || '',
+          custom_supplier: it.supplier || '',
+          supplier_id: it.supplier || '',
+          amount: it.amount || 0,
+          total_amount: it.total_amount || 0,
+          account: it.expense_account || '',
+          expense_account: it.expense_account || '',
+          tax_template: it.tax_template || ''
+        }))
+        
+        console.log('🚀 Sending Landed Cost Data:', {
+          amount: payload.custom_total_lcv_amount,
+          taxes: payload.custom_total_lcv_taxes,
+          items: payload.custom_lcv_service_items
+        })
+      } else if (profile?.custom_enable_landed_cost_entry === 1) {
+        payload.custom_lcv_service_items = []
+        payload.custom_total_lcv_amount = 0
+        payload.custom_total_lcv_taxes = 0
+        payload.total_lcv_amount = 0
+        payload.total_lcv_taxes = 0
       }
 
       // Use purchase-specific tax template from profile

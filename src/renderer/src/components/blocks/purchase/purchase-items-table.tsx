@@ -1,3 +1,4 @@
+import { LandedCostEntry } from "./landed-cost-entry"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs'
 import { Input } from '@renderer/components/ui/input'
 import { Textarea } from '@renderer/components/ui/textarea'
@@ -98,6 +99,10 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
   // Check if date change is allowed from POS profile
   const isDateChangeAllowed = profile?.custom_allow_order_date_change === 1
+
+  // Check if Landed Cost Entry is enabled in POS Profile
+  const isLandedCostEnabled = Number(profile?.custom_enable_landed_cost_entry) === 1
+  console.log('📦 Landed Cost Entry Enabled Flag:', profile?.custom_enable_landed_cost_entry, 'Is Enabled:', isLandedCostEnabled)
 
   // Other Details State (Moved from bottom)
   const [poRef, setPoRef] = useState<string>(currentTab?.po_no || '')
@@ -735,7 +740,18 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
       value = item.selling_rate !== undefined ? item.selling_rate : defaultSellingRate
     }
 
-    if (editValue === '' || (activeField && String(value) !== editValue)) {
+    if (editValue === '') {
+      setEditValue(value?.toString() || '')
+    } else if (activeField && String(value) !== editValue) {
+      // Prevent resetting the user's input if they are typing a decimal point or trailing zero
+      const isNumberField = ['quantity', 'standard_rate', 'selling_rate', 'discount_percentage'].includes(activeField)
+      if (isNumberField) {
+        const numEdit = parseFloat(editValue)
+        const numVal = parseFloat(String(value))
+        if (!isNaN(numEdit) && !isNaN(numVal) && numEdit === numVal) {
+          return // Values are mathematically equal (e.g. "171." and 171, or "171.0" and 171)
+        }
+      }
       setEditValue(value?.toString() || '')
     }
     // Clear invalid UOM message when starting to edit
@@ -1775,6 +1791,15 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
               >
                 Other Details
               </TabsTrigger>
+              {isLandedCostEnabled && (
+                <TabsTrigger
+                  value="landed_cost"
+                  className="rounded-t-md px-4 py-2 text-gray-700 hover:text-black hover:bg-gray-50 data-[state=active]:text-blue-700 data-[state=active]:bg-white data-[state=active]:border-b-2 data-[state=active]:border-blue-600"
+                >
+                  Landed Cost Entry
+                </TabsTrigger>
+              )}
+
             </TabsList>
             {/* Reservation option removed for purchase section */}
           </div>
@@ -2863,6 +2888,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
               </div>
             </div>
           </TabsContent>
+          {isLandedCostEnabled && (
+            <TabsContent value="landed_cost" className="absolute inset-0 flex flex-col min-h-0 data-[state=inactive]:hidden p-4 overflow-auto">
+              <LandedCostEntry />
+            </TabsContent>
+          )}
         </div>
       </Tabs>
 

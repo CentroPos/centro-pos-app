@@ -12,6 +12,7 @@ interface POSProfileUser {
 
 interface POSProfile {
   name: string
+  company?: string
   selling_price_list: string
   applicable_for_users: POSProfileUser[]
   currency?: string
@@ -37,6 +38,7 @@ interface POSProfile {
   custom_purchase_tax_rate?: number
   custom_default_purchase_warehouse?: string
   custom_enable_receipt_wise_purchase?: number
+  custom_enable_landed_cost_entry?: number
   // Allowed warehouses for returns
   allowed_warehouses?: Array<{ name: string }>
 }

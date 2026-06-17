@@ -47,6 +47,20 @@ interface PurchaseTab {
   returnInvoicePrintUrl?: string | null
   invoiceNumber?: string | null
   lineItemDiscountMode?: 'Per Unit' | 'Row Total'
+  landedCost?: {
+    date: string | null
+    distributeChargesBasedOn: 'Amount' | 'Qty'
+    items: Array<{
+      id: string
+      item_code: string
+      description: string
+      supplier: string
+      amount: number
+      total_amount?: number
+      expense_account: string
+      tax_template: string
+    }>
+  }
 }
 
 interface PurchaseTabStore {
@@ -85,7 +99,8 @@ interface PurchaseTabStore {
 
   // Global discount methods
   updateTabGlobalDiscount: (tabId: string, globalDiscountPercent: number, globalDiscountAmount?: number, globalDiscountType?: 'Percentage' | 'Amount') => void
-  getCurrentTabGlobalDiscount: () => { percent: number, amount: number, type: 'Percentage' | 'Amount' }
+  getCurrentTabGlobalDiscount: () => { percent: number, amount: number
+      total_amount?: number, type: 'Percentage' | 'Amount' }
 
   // Rounding methods
   updateTabRoundingEnabled: (tabId: string, enabled: boolean) => void
@@ -104,6 +119,10 @@ interface PurchaseTabStore {
   // Duplicate tab method
   duplicateCurrentTab: () => boolean
   updateTabStatus: (tabId: string, status: PurchaseTab['status']) => void
+
+  // Landed Cost methods
+  updateTabLandedCost: (tabId: string, landedCost: PurchaseTab['landedCost']) => void
+  getCurrentTabLandedCost: () => PurchaseTab['landedCost']
 }
 
 export const usePurchaseTabStore = create<PurchaseTabStore>()(
@@ -158,7 +177,12 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
           internal_note: null,
           is_reserved: 1,
           buying_price_list: 'Standard Buying',
-          lineItemDiscountMode: undefined
+          lineItemDiscountMode: undefined,
+          landedCost: {
+            date: getCurrentDate(),
+            distributeChargesBasedOn: 'Amount',
+            items: []
+          }
         }
 
         set((s) => ({
@@ -297,7 +321,21 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
             }
             return orderData?.purchase_invoice_no || null
           })(),
-          lineItemDiscountMode: orderData?.custom_line_item_discount_mode || undefined
+          lineItemDiscountMode: orderData?.custom_line_item_discount_mode || undefined,
+          landedCost: {
+            date: orderData?.custom_lcv_date || orderData?.posting_date || getCurrentDate(),
+            distributeChargesBasedOn: orderData?.custom_distribute_charges_based_on || 'Amount',
+            items: Array.isArray(orderData?.custom_lcv_service_items) ? orderData.custom_lcv_service_items.map((it: any) => ({
+              id: `lc-item-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+              item_code: it.item_code || it.item || '',
+              description: it.description || '',
+              supplier: it.party || it.supplier || it.supplier_name || it.custom_supplier || it.supplier_id || '',
+              amount: Number(it.amount || 0),
+              total_amount: Number(it.total_amount || 0),
+              expense_account: it.account || it.expense_account || '',
+              tax_template: it.tax_template || ''
+            })) : []
+          }
         }
 
         set((s) => ({
@@ -381,7 +419,24 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
                   }
                 }
                 return orderData?.purchase_invoice_no || null
-              })()
+              })(),
+              landedCost: {
+                date: orderData?.custom_lcv_date || tab.landedCost?.date || orderData?.posting_date || null,
+                distributeChargesBasedOn: orderData?.custom_distribute_charges_based_on || tab.landedCost?.distributeChargesBasedOn || 'Amount',
+                items: Array.isArray(orderData?.custom_lcv_service_items) ? orderData.custom_lcv_service_items.map((it: any, i: number) => {
+                  const existingItem = tab.landedCost?.items?.[i]
+                  return {
+                    id: existingItem?.id || `lc-item-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+                    item_code: it.item_code || it.item || '',
+                    description: it.description || '',
+                    supplier: it.party || it.supplier || it.supplier_name || it.custom_supplier || it.supplier_id || '',
+                    amount: Number(it.amount || 0),
+                    total_amount: Number(it.total_amount || 0),
+                    expense_account: it.account || it.expense_account || '',
+                    tax_template: it.tax_template || ''
+                  }
+                }) : tab.landedCost?.items || []
+              }
             }
           })
         }))
@@ -667,6 +722,18 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
         set((state) => ({
           tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, status } : tab))
         }))
+      },
+
+      updateTabLandedCost: (tabId: string, landedCost: PurchaseTab['landedCost']) => {
+        set((state) => ({
+          tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, landedCost, isEdited: true } : tab))
+        }))
+      },
+
+      getCurrentTabLandedCost: () => {
+        const state = get()
+        const currentTab = state.tabs.find(tab => tab.id === state.activeTabId)
+        return currentTab?.landedCost
       }
     }),
     {
