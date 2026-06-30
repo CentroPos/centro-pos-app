@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react'
-import { RefreshCcw, Pencil } from 'lucide-react'
+import { RefreshCcw } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@renderer/components/ui/dialog'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
+import { useSystemSettingsStore } from '@renderer/store/useSystemSettingsStore'
 import { useScopedHotkeys } from '@renderer/hooks/useScopedHotkeys'
 import { formatDate, formatTime } from '@renderer/lib/date-utils'
 import PaymentTab from '../payment/payment-tab'
@@ -836,6 +837,9 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
   const [currencySymbol, setCurrencySymbol] = useState('$')
   const { profile, currentUserPrivileges } = usePOSProfileStore()
+  const { settings } = useSystemSettingsStore()
+  const currencyPrecision = settings?.currency_precision || 2
+  // const floatPrecision = settings?.float_precision || 3
   const hideCostAndMargin = profile?.custom_hide_cost_and_margin_info === 1
   const hideAlternateProducts = profile?.custom_hide_alternate_products === 1
   const hideItemOffers = profile?.custom_hide_item_offers === 1
@@ -3100,14 +3104,14 @@ const RightPanel: React.FC<RightPanelProps> = ({
                         >
                           <RefreshCcw className="h-4 w-4" />
                         </button>
-                        <button
+                        {/* <button
                           type="button"
                           onClick={() => setIsEditModalOpen(true)}
                           className="inline-flex items-center justify-center rounded-full p-2 text-gray-500 hover:text-black hover:bg-gray-100 transition-colors"
                           title="Edit product"
                         >
                           <Pencil className="h-4 w-4" />
-                        </button>
+                        </button> */}
                       </div>
                     </div>
                     <div className="font-semibold text-sm text-gray-800">{productData.item_name}</div>
@@ -3131,7 +3135,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                   <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl">
                     <div className="text-xs text-gray-600">Unit Price</div>
                     <div className="font-bold text-blue-600">
-                      {currencySymbol} {productData.standard_rate.toFixed(2)}
+                      {currencySymbol} {productData.standard_rate.toFixed(currencyPrecision)}
                     </div>
                   </div>
                   <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50/40 rounded-xl">
@@ -3139,13 +3143,13 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       <div className="text-sm">
                         <span className="text-gray-600">Min Price: </span>
                         <span className="font-bold text-purple-600">
-                          {currencySymbol} {productData.min_price.toFixed(2)}
+                          {currencySymbol} {productData.min_price.toFixed(currencyPrecision)}
                         </span>
                       </div>
                       <div className="text-sm">
                         <span className="text-gray-600">Max Price: </span>
                         <span className="font-bold text-blue-600">
-                          {currencySymbol} {productData.max_price.toFixed(2)}
+                          {currencySymbol} {productData.max_price.toFixed(currencyPrecision)}
                         </span>
                       </div>
                     </div>
@@ -3155,7 +3159,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                       <div className="p-3 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl">
                         <div className="text-xs text-gray-600">Cost</div>
                         <div className="font-bold text-orange-600">
-                          {currencySymbol} {productData.cost.toFixed(2)}
+                          {currencySymbol} {productData.cost.toFixed(currencyPrecision)}
                         </div>
                       </div>
                       <div className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl">
@@ -3463,7 +3467,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                                 return `${day}/${month}/${year}`
                               }
                               // const totalAmount = (Number(item.qty || 0) * Number(item.unit_price || 0)).toFixed(2) // Unused
-                              const unitPrice = Number(item.unit_price || 0).toFixed(2)
+                              const unitPrice = Number(item.unit_price || 0).toFixed(currencyPrecision)
                               // Extract order ID from item
                               const orderId = item.sales_order_id || item.sales_order_no || item.invoice_no || item.name
 
@@ -3615,7 +3619,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                               const year = date.getFullYear()
                               return `${day}/${month}/${year}`
                             }
-                            const unitPrice = Number(item.unit_price || 0).toFixed(2)
+                            const unitPrice = Number(item.unit_price || 0).toFixed(currencyPrecision)
                             // Extract order ID from item
                             const orderId = item.sales_order_id || item.sales_order_no || item.invoice_no || item.name
 
@@ -3763,8 +3767,8 @@ const RightPanel: React.FC<RightPanelProps> = ({
                               return `${day}/${month}/${year}`
                             }
                             const quantity = item.quantity || item.qty || 0
-                            const totalAmount = item.total_amount ? Number(item.total_amount).toFixed(2) : (Number(quantity) * Number(item.unit_price || 0)).toFixed(2)
-                            const unitPrice = Number(item.unit_price || 0).toFixed(2)
+                            const totalAmount = item.total_amount ? Number(item.total_amount).toFixed(currencyPrecision) : (Number(quantity) * Number(item.unit_price || 0)).toFixed(currencyPrecision)
+                            const unitPrice = Number(item.unit_price || 0).toFixed(currencyPrecision)
                             const invoiceId = item.invoice_no || item.purchase_invoice_no || item.purchase_invoice_id || item.invoice_id
                             return (
                               <div

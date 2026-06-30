@@ -6,6 +6,7 @@ import { useMemo, useState, useRef, useEffect } from 'react'
 import { usePurchaseTabStore } from '@renderer/store/usePurchaseTabStore'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 import { useHotkeys } from 'react-hotkeys-hook'
+import { useSystemSettingsStore } from '@renderer/store/useSystemSettingsStore'
 import BottomErrorBox from '../common/bottom-error-box'
 import SupplierModal from '../supplier/supplier-modal'
 import { toast } from 'sonner'
@@ -27,10 +28,6 @@ type Props = {
   onSupplierSelect?: (supplier: any) => void
 }
 
-function roundToNearest(value: number, step = 0.05) {
-  const rounded = Math.round(value / step) * step
-  return Number(rounded.toFixed(2))
-}
 
 const PurchaseDiscountSection: React.FC<Props> = ({
   errors = [],
@@ -73,6 +70,8 @@ const PurchaseDiscountSection: React.FC<Props> = ({
 
   // Extract paid_amount and outstanding_amount from linked_invoices
   const { profile } = usePOSProfileStore()
+  const { settings } = useSystemSettingsStore()
+  const currencyPrecision = settings?.currency_precision || 2
   const { paidAmount, outstandingAmount } = useMemo(() => {
     const linkedInvoices = currentTab?.orderData?.linked_invoices
 
@@ -222,8 +221,7 @@ const PurchaseDiscountSection: React.FC<Props> = ({
       individualDiscountSum += itemDiscount
       
       const exactTotal = baseTotal - itemDiscount
-      // As requested: Line items are rounded to the nearest whole integer
-      return sum + Math.round(exactTotal)
+      return sum + exactTotal
     }, 0)
     const globalDiscountAmount = globalDiscountTypeStore === 'Amount'
       ? globalDiscountAmountStore
@@ -231,12 +229,9 @@ const PurchaseDiscountSection: React.FC<Props> = ({
     const netAfterGlobalDiscount = netAfterIndividualDiscount - globalDiscountAmount
     const vatCalc = netAfterGlobalDiscount * (vatPercentage / 100)
     const totalRaw = netAfterGlobalDiscount + vatCalc
-    const totalRoundedCandidate = roundToNearest(totalRaw, 0.05)
-    const roundingCandidate = Number((totalRoundedCandidate - totalRaw).toFixed(2))
 
-    const useRounding = isRoundingEnabled
-    let totalFinal = useRounding ? totalRoundedCandidate : Number(totalRaw.toFixed(2))
-    let roundingAdj = useRounding ? roundingCandidate : 0
+    let totalFinal = Number(totalRaw.toFixed(currencyPrecision))
+    let roundingAdj = 0
 
     const hasSavedOrder = Boolean(currentTab?.purchaseOrderId)
     const docstatus = currentTab?.orderData ? Number(currentTab.orderData.docstatus) : null
@@ -261,7 +256,7 @@ const PurchaseDiscountSection: React.FC<Props> = ({
 
     const normalize = (value: any) => {
       const num = Number(value)
-      return Number.isFinite(num) ? Number(num.toFixed(2)) : null
+      return Number.isFinite(num) ? Number(num.toFixed(currencyPrecision)) : null
     }
 
     const serverRoundedTotal =
@@ -271,14 +266,14 @@ const PurchaseDiscountSection: React.FC<Props> = ({
 
     if (hasSavedOrder && serverRoundedTotal !== null && (isConfirmed || !isEdited)) {
       totalFinal = serverRoundedTotal
-      roundingAdj = Number((serverRoundedTotal - totalRaw).toFixed(2))
+      roundingAdj = Number(currentTab?.orderData?.rounding_adjustment || 0)
     }
 
     return {
-      untaxed: Number(netAfterGlobalDiscount.toFixed(2)),
-      individualDiscount: Number(individualDiscountSum.toFixed(2)),
-      globalDiscount: Number(globalDiscountAmount.toFixed(2)),
-      vat: Number(vatCalc.toFixed(2)),
+      untaxed: Number(netAfterGlobalDiscount.toFixed(currencyPrecision)),
+      individualDiscount: Number(individualDiscountSum.toFixed(currencyPrecision)),
+      globalDiscount: Number(globalDiscountAmount.toFixed(currencyPrecision)),
+      vat: Number(vatCalc.toFixed(currencyPrecision)),
       rounding: roundingAdj,
       total: totalFinal
     }
@@ -398,7 +393,7 @@ const PurchaseDiscountSection: React.FC<Props> = ({
               <div className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md bg-green-50">
                 <span className="text-xs text-gray-600 font-medium">Paid:</span>
                 <span className="text-sm font-semibold text-green-700">
-                  {currencySymbol} {paidAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  {currencySymbol} {paidAmount.toLocaleString(undefined, { minimumFractionDigits: currencyPrecision, maximumFractionDigits: currencyPrecision })}
                 </span>
               </div>
             )}
@@ -406,7 +401,7 @@ const PurchaseDiscountSection: React.FC<Props> = ({
               <div className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md bg-orange-50">
                 <span className="text-xs text-gray-600 font-medium">Outstanding:</span>
                 <span className="text-sm font-semibold text-orange-700">
-                  {currencySymbol} {outstandingAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  {currencySymbol} {outstandingAmount.toLocaleString(undefined, { minimumFractionDigits: currencyPrecision, maximumFractionDigits: currencyPrecision })}
                 </span>
               </div>
             )}
@@ -460,7 +455,7 @@ const PurchaseDiscountSection: React.FC<Props> = ({
         <div className="text-center">
           <div className="text-xs text-gray-600">Untaxed</div>
           <div className="text-base font-semibold">
-            {currencySymbol} {untaxed.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            {currencySymbol} {untaxed.toLocaleString(undefined, { minimumFractionDigits: currencyPrecision, maximumFractionDigits: currencyPrecision })}
           </div>
         </div>
         <div className="text-center">
@@ -516,7 +511,7 @@ const PurchaseDiscountSection: React.FC<Props> = ({
               onClick={handleGlobalDiscountClick}
               title={isReadOnly ? 'Discount cannot be edited for confirmed orders' : 'Click to edit global discount'}
             >
-              <div>{currencySymbol} {globalDiscount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+              <div>{currencySymbol} {globalDiscount.toLocaleString(undefined, { minimumFractionDigits: currencyPrecision, maximumFractionDigits: currencyPrecision })}</div>
               {globalDiscountTypeStore === 'Percentage' && globalDiscountPercent > 0 && (
                 <div className="text-[10px] text-gray-500">({globalDiscountPercent}%)</div>
               )}
@@ -526,7 +521,7 @@ const PurchaseDiscountSection: React.FC<Props> = ({
         <div className="text-center">
           <div className="text-xs text-gray-600">VAT ({vatPercentage}%)</div>
           <div className="text-base font-semibold text-red-600">
-            {currencySymbol} {vat.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            {currencySymbol} {vat.toLocaleString(undefined, { minimumFractionDigits: currencyPrecision, maximumFractionDigits: currencyPrecision })}
           </div>
         </div>
         <div
@@ -540,13 +535,13 @@ const PurchaseDiscountSection: React.FC<Props> = ({
             <div className={`w-2 h-2 rounded-full ${isRoundingEnabled ? 'bg-green-500' : 'bg-gray-300'}`} />
           </div>
           <div className={`text-base font-semibold ${rounding !== 0 ? 'text-orange-600' : 'text-gray-900'} ${!isRoundingEnabled ? 'opacity-50' : ''}`}>
-            {currencySymbol} {Math.abs(rounding).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            {currencySymbol} {Math.abs(rounding).toLocaleString(undefined, { minimumFractionDigits: currencyPrecision, maximumFractionDigits: currencyPrecision })}
           </div>
         </div>
         <div className="text-center bg-gradient-to-r from-primary to-slate-700 text-white p-2 rounded shadow-sm">
           <div className="text-xs text-white/80 font-bold">Total</div>
           <div className="text-lg font-bold text-white">
-            {currencySymbol} {total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            {currencySymbol} {total.toLocaleString(undefined, { minimumFractionDigits: currencyPrecision, maximumFractionDigits: currencyPrecision })}
           </div>
         </div>
       </div>

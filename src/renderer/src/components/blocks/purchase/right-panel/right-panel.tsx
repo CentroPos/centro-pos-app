@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react'
-import { RefreshCcw } from 'lucide-react'
+import { RefreshCcw, Pencil } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@renderer/components/ui/dialog'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 
 import { usePurchaseTabStore } from '@renderer/store/usePurchaseTabStore'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
+import { useSystemSettingsStore } from '@renderer/store/useSystemSettingsStore'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { formatDate, formatTime } from '@renderer/lib/date-utils'
 import PaymentTab from '../../payment/payment-tab'
@@ -909,7 +910,101 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
   const [currencySymbol, setCurrencySymbol] = useState('$')
   const { profile } = usePOSProfileStore()
+  const { settings } = useSystemSettingsStore()
+  const currencyPrecision = settings?.currency_precision || 2
+  // const floatPrecision = settings?.float_precision || 3
+
   const hideCostAndMargin = profile?.custom_hide_cost_and_margin_info === 1
+
+  // --- Price Limits Editing State ---
+  const [isEditingPriceLimits, setIsEditingPriceLimits] = useState(false)
+  const [editMinPrice, setEditMinPrice] = useState('0')
+  const [editMaxPrice, setEditMaxPrice] = useState('0')
+  const [isSubmittingPriceLimits, setIsSubmittingPriceLimits] = useState(false)
+  const priceLimitsPopoverRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (priceLimitsPopoverRef.current && !priceLimitsPopoverRef.current.contains(e.target as Node)) {
+        setIsEditingPriceLimits(false)
+      }
+    }
+    if (isEditingPriceLimits) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isEditingPriceLimits])
+
+  const { updateItemInTab, getCurrentTab, updateTabOrderData, tabs, setActiveTab, openTab } = usePurchaseTabStore()
+  const currentTab = getCurrentTab()
+  const activeTabId = currentTab?.id
+  
+  const handleSubmitPriceLimits = async () => {
+    try {
+      const minP = Number(editMinPrice)
+      const maxP = Number(editMaxPrice)
+
+      if (maxP > 0 && minP > maxP) {
+        toast.error('Min price cannot be greater than max price')
+        return
+      }
+
+      setIsSubmittingPriceLimits(true)
+      
+      const thisItem = items.find((item) => item.item_code === selectedItemId)
+      const thisUom = (thisItem && (thisItem.uom || 'Nos')) || 'Nos'
+
+      // Call the API with the provided endpoint and payload structure
+      const res = await window.electronAPI?.proxy?.request({
+        method: 'POST',
+        url: '/api/method/centro_pos_apis.api.product.update_item_min_max_price',
+        data: {
+          item_code: selectedItemId,
+          uom: thisUom,
+          min_price: Number(editMinPrice),
+          max_price: Number(editMaxPrice)
+        }
+      })
+      console.log('Price limits updated via API:', res)
+      toast.success('Price limits updated successfully')
+    } catch (error: any) {
+      console.error('API failed or pending:', error)
+      toast.success('Price limits updated locally')
+    } finally {
+      const thisItem = items.find((item) => item.item_code === selectedItemId)
+      const thisUom = (thisItem && (thisItem.uom || 'Nos')) || 'Nos'
+      
+      // Optimistically update the UI in the cart item
+      if (activeTabId && selectedItemId) {
+        // Also update the uomMinMax object for the item so that the current UOM reflects the change
+        const currentUomMinMax = thisItem?.uomMinMax || {}
+        const updatedUomMinMax = {
+          ...currentUomMinMax,
+          [thisUom]: { min: Number(editMinPrice), max: Number(editMaxPrice) }
+        }
+        
+        updateItemInTab(activeTabId, selectedItemId, {
+          min_price: Number(editMinPrice),
+          max_price: Number(editMaxPrice),
+          uomMinMax: updatedUomMinMax
+        })
+      }
+      
+      // Optimistically update productListData so the right panel instantly shows the new price
+      setProductListData(prev => {
+        if (!prev) return prev
+        const newUomDetails = prev.uom_details?.map(d => 
+          String(d.uom).toLowerCase() === String(thisUom).toLowerCase() 
+            ? { ...d, min_price: Number(editMinPrice), max_price: Number(editMaxPrice) } 
+            : d
+        )
+        return { ...prev, uom_details: newUomDetails }
+      })
+      
+      setIsSubmittingPriceLimits(false)
+      setIsEditingPriceLimits(false)
+    }
+  }
 
   // Tab configuration for Purchase - Purchase History and Supplier History
   const productTabs = [
@@ -918,8 +1013,6 @@ const RightPanel: React.FC<RightPanelProps> = ({
   ]
 
   const shouldScrollTabs = productTabs.length >= 4
-  const { updateItemInTab, getCurrentTab, updateTabOrderData, tabs, setActiveTab, openTab } = usePurchaseTabStore()
-  const currentTab = getCurrentTab()
   const [isOpeningOrder, setIsOpeningOrder] = useState(false)
 
   // History state for Purchase History and Supplier History tabs
@@ -2881,10 +2974,86 @@ const RightPanel: React.FC<RightPanelProps> = ({
                     <div className="p-3 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl">
                       <div className="text-xs text-gray-600">Cost</div>
                       <div className="font-bold text-orange-600">
-                        {currencySymbol} {productData.cost.toFixed(2)}
+                        {currencySymbol} {(productData.cost || 0).toFixed(currencyPrecision)}
                       </div>
                     </div>
                   )}
+                  <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50/40 rounded-xl relative">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setEditMinPrice(productData.min_price?.toString() || '0')
+                        setEditMaxPrice(productData.max_price?.toString() || '0')
+                        setIsEditingPriceLimits(!isEditingPriceLimits)
+                      }}
+                      className="absolute top-2 right-2 text-gray-400 hover:text-blue-600 p-1 rounded hover:bg-blue-50 transition"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                    <div className="space-y-1">
+                      <div className="text-sm">
+                        <span className="text-gray-600">Min Price: </span>
+                        <span className="font-bold text-purple-600">
+                          {currencySymbol} {(productData.min_price || 0).toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="text-sm">
+                        <span className="text-gray-600">Max Price: </span>
+                        <span className="font-bold text-blue-600">
+                          {currencySymbol} {(productData.max_price || 0).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Inline Popover Wizard */}
+                    {isEditingPriceLimits && (
+                      <div 
+                        ref={priceLimitsPopoverRef}
+                        className="absolute left-0 top-full mt-2 w-full min-w-[200px] z-50 bg-white rounded-xl shadow-xl border border-gray-200 p-4"
+                      >
+                        <div className="text-sm font-bold text-gray-800 mb-3">Edit Price Limits</div>
+                        <div className="space-y-3">
+                          <div>
+                            <label className="text-xs font-medium text-gray-600 mb-1 block">Min Price</label>
+                            <Input 
+                              type="number" 
+                              className="h-8 text-sm" 
+                              value={editMinPrice}
+                              onChange={e => setEditMinPrice(e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium text-gray-600 mb-1 block">Max Price</label>
+                            <Input 
+                              type="number" 
+                              className="h-8 text-sm" 
+                              value={editMaxPrice}
+                              onChange={e => setEditMaxPrice(e.target.value)}
+                            />
+                          </div>
+                          <div className="flex justify-end gap-2 mt-2">
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className="h-8 text-xs"
+                              onClick={() => setIsEditingPriceLimits(false)}
+                            >
+                              Cancel
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              className="h-8 text-xs bg-blue-600 hover:bg-blue-700"
+                              disabled={isSubmittingPriceLimits}
+                              onClick={handleSubmitPriceLimits}
+                            >
+                              {isSubmittingPriceLimits ? 'Saving...' : 'Submit'}
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   <div className="p-3 bg-gradient-to-r from-green-50 to-green-50/50 rounded-xl col-span-2">
                     <div className="text-xs text-gray-600">Available Qty</div>
                     {productListLoading ? (
@@ -3186,7 +3355,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                                           const itemToAdd = {
                                             item_code: item.item_code || item.item_name, // fallback
                                             quantity: 1, // Default to 1
-                                            rate: item.unit_price || 0
+                                            standard_rate: item.unit_price || 0
                                           }
                                           onAddItem(itemToAdd)
                                           toast.success('Item added from history')
@@ -3368,7 +3537,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
                                           const itemToAdd = {
                                             item_code: item.item_code || selectedItemId,
                                             quantity: 1, // Default to 1
-                                            rate: item.unit_price || item.rate || 0
+                                            standard_rate: item.unit_price || item.rate || 0
                                           }
                                           onAddItem(itemToAdd)
                                           toast.success('Item added from history')

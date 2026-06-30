@@ -10,6 +10,7 @@ import { useScopedHotkeys } from '@renderer/hooks/useScopedHotkeys'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { usePosProfile } from '@renderer/hooks/useProfile'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
+import { useSystemSettingsStore } from '@renderer/store/useSystemSettingsStore'
 import { useAuthStore } from '@renderer/store/useAuthStore'
 import { toast } from 'sonner'
 import { ReturnInvoiceStack } from '../blocks/return-invoice/return-invoice-stack'
@@ -209,6 +210,7 @@ const POSInterface: React.FC = () => {
   const { user, isAuthenticated } = useAuthStore()
   const { setProfile, setCurrentUserPrivileges } = usePOSProfileStore()
   const { profile } = usePOSProfileStore()
+  const { fetchSettings } = useSystemSettingsStore()
 
   const selectedPriceList = currentTab?.orderData?.price_list || profile?.selling_price_list || 'Standard Selling'
 
@@ -256,8 +258,9 @@ const POSInterface: React.FC = () => {
       }
     }
 
+    fetchSettings()
     loadPOSProfile()
-  }, [user?.email, setProfile, setCurrentUserPrivileges])
+  }, [user?.email, setProfile, setCurrentUserPrivileges, fetchSettings])
 
   // Set POS profile data when loaded
   React.useEffect(() => {

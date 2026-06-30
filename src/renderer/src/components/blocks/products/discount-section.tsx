@@ -6,6 +6,7 @@ import { useMemo, useState, useRef, useEffect } from 'react'
 import { usePOSTabStore } from '@renderer/store/usePOSTabStore'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 import { useHotkeys } from 'react-hotkeys-hook'
+import { useSystemSettingsStore } from '@renderer/store/useSystemSettingsStore'
 import BottomErrorBox from '../common/bottom-error-box'
 // import BottomZatcaBox from '../common/bottom-zatca-box'
 import CustomerSearchModal from '../customer/customer-modal'
@@ -46,10 +47,6 @@ type Props = {
   onCustomerSelect?: (customer: any) => void
 }
 
-function roundToNearest(value: number, step = 0.05) {
-  const rounded = Math.round(value / step) * step
-  return Number(rounded.toFixed(2))
-}
 
 const DiscountSection: React.FC<Props> = ({
   errors = [],
@@ -95,6 +92,8 @@ const DiscountSection: React.FC<Props> = ({
   const duplicateCancelBtnRef = useRef<HTMLButtonElement>(null)
   const [showCustomerModal, setShowCustomerModal] = useState(false)
 
+  const { settings } = useSystemSettingsStore()
+  const currencyPrecision = settings?.currency_precision || 2
   // Extract paid_amount and outstanding_amount from linked_invoices
   // Check both confirmed orders (docstatus === 1) and orders with linked invoices
   const { paidAmount, outstandingAmount } = useMemo(() => {
@@ -330,8 +329,7 @@ const DiscountSection: React.FC<Props> = ({
       individualDiscountSum += itemDiscount
       
       const exactTotal = baseTotal - itemDiscount
-      // As requested: Line items are rounded to the nearest whole integer
-      return sum + Math.round(exactTotal)
+      return sum + exactTotal
     }, 0)
 
     // Net amount after individual discounts (before VAT)
@@ -347,12 +345,9 @@ const DiscountSection: React.FC<Props> = ({
 
     // Final total = discounted net amount + VAT
     const totalRaw = netAfterGlobalDiscount + vatCalc
-    const totalRoundedCandidate = roundToNearest(totalRaw, 0.05)
-    const roundingCandidate = Number((totalRoundedCandidate - totalRaw).toFixed(2))
-
-    const useRounding = isRoundingEnabled
-    let totalFinal = useRounding ? totalRoundedCandidate : Number(totalRaw.toFixed(2))
-    let roundingAdj = useRounding ? roundingCandidate : 0
+    
+    let totalFinal = Number(totalRaw.toFixed(2))
+    let roundingAdj = 0
 
     // Prefer final_total returned from backend once the order exists
     // For confirmed orders (docstatus = 1), always use API value
@@ -383,7 +378,7 @@ const DiscountSection: React.FC<Props> = ({
 
     const normalize = (value: any) => {
       const num = Number(value)
-      return Number.isFinite(num) ? Number(num.toFixed(2)) : null
+      return Number.isFinite(num) ? Number(num.toFixed(currencyPrecision)) : null
     }
 
     const serverRoundedTotal =
@@ -396,14 +391,14 @@ const DiscountSection: React.FC<Props> = ({
     // 2. Order is saved and not edited (just saved/updated)
     if (hasSavedOrder && serverRoundedTotal !== null && (isConfirmed || !isEdited)) {
       totalFinal = serverRoundedTotal
-      roundingAdj = Number((serverRoundedTotal - totalRaw).toFixed(2))
+      roundingAdj = Number(currentTab?.orderData?.rounding_adjustment || 0)
     }
 
     return {
-      untaxed: Number(netAfterGlobalDiscount.toFixed(2)),
-      individualDiscount: Number(individualDiscountSum.toFixed(2)),
-      globalDiscount: Number(globalDiscountAmount.toFixed(2)),
-      vat: Number(vatCalc.toFixed(2)),
+      untaxed: Number(netAfterGlobalDiscount.toFixed(currencyPrecision)),
+      individualDiscount: Number(individualDiscountSum.toFixed(currencyPrecision)),
+      globalDiscount: Number(globalDiscountAmount.toFixed(currencyPrecision)),
+      vat: Number(vatCalc.toFixed(currencyPrecision)),
       rounding: roundingAdj,
       total: totalFinal
     }
@@ -530,7 +525,7 @@ const DiscountSection: React.FC<Props> = ({
               <div className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md bg-green-50">
                 <span className="text-xs text-gray-600 font-medium">Paid:</span>
                 <span className="text-sm font-semibold text-green-700">
-                  {currencySymbol} {paidAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  {currencySymbol} {paidAmount.toLocaleString(undefined, { minimumFractionDigits: currencyPrecision, maximumFractionDigits: currencyPrecision })}
                 </span>
               </div>
             )}
@@ -538,7 +533,7 @@ const DiscountSection: React.FC<Props> = ({
               <div className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md bg-orange-50">
                 <span className="text-xs text-gray-600 font-medium">Outstanding:</span>
                 <span className="text-sm font-semibold text-orange-700">
-                  {currencySymbol} {outstandingAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  {currencySymbol} {outstandingAmount.toLocaleString(undefined, { minimumFractionDigits: currencyPrecision, maximumFractionDigits: currencyPrecision })}
                 </span>
               </div>
             )}
@@ -620,7 +615,7 @@ const DiscountSection: React.FC<Props> = ({
         <div className="text-center">
           <div className="text-xs text-gray-600">Untaxed</div>
           <div className="text-base font-semibold">
-            {currencySymbol} {untaxed.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            {currencySymbol} {untaxed.toLocaleString(undefined, { minimumFractionDigits: currencyPrecision, maximumFractionDigits: currencyPrecision })}
           </div>
         </div>
         <div className="text-center">
@@ -677,7 +672,7 @@ const DiscountSection: React.FC<Props> = ({
               onClick={handleGlobalDiscountClick}
               title={isReadOnly ? 'Discount cannot be edited for confirmed orders' : 'Click to edit global discount'}
             >
-              <div>{currencySymbol} {globalDiscount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+              <div>{currencySymbol} {globalDiscount.toLocaleString(undefined, { minimumFractionDigits: currencyPrecision, maximumFractionDigits: currencyPrecision })}</div>
               {globalDiscountTypeStore === 'Percentage' && globalDiscountPercent > 0 && (
                 <div className="text-[10px] text-gray-500">({globalDiscountPercent}%)</div>
               )}
@@ -687,7 +682,7 @@ const DiscountSection: React.FC<Props> = ({
         <div className="text-center">
           <div className="text-xs text-gray-600">VAT ({vatPercentage}%)</div>
           <div className="text-base font-semibold text-red-600">
-            {currencySymbol} {vat.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            {currencySymbol} {vat.toLocaleString(undefined, { minimumFractionDigits: currencyPrecision, maximumFractionDigits: currencyPrecision })}
           </div>
         </div>
         <div 
@@ -702,13 +697,13 @@ const DiscountSection: React.FC<Props> = ({
             <div className={`w-2 h-2 rounded-full ${isRoundingEnabled ? 'bg-green-500' : 'bg-gray-300'}`} />
           </div>
           <div className={`text-base font-semibold ${rounding !== 0 ? 'text-orange-600' : 'text-gray-900'} ${!isRoundingEnabled ? 'opacity-50' : ''}`}>
-            {currencySymbol} {Math.abs(rounding).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            {currencySymbol} {Math.abs(rounding).toLocaleString(undefined, { minimumFractionDigits: currencyPrecision, maximumFractionDigits: currencyPrecision })}
           </div>
         </div>
         <div className="text-center bg-gradient-to-r from-primary to-slate-700 text-white p-2 rounded shadow-sm">
           <div className="text-xs text-white/80 font-bold">Total</div>
           <div className="text-lg font-bold text-white">
-            {currencySymbol} {total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            {currencySymbol} {total.toLocaleString(undefined, { minimumFractionDigits: currencyPrecision, maximumFractionDigits: currencyPrecision })}
           </div>
         </div>
       </div>

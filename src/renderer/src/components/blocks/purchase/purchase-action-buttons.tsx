@@ -119,7 +119,6 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
     return `${year}-${month}-${day}`
   }
 
-  const buyingPriceList = currentTab?.buying_price_list || profile?.custom_buying_price_list || 'Standard Buying'
   const transactionDate = currentTab?.posting_date || new Date().toISOString().slice(0, 10)
 
   // Check if order is confirmed (docstatus = 1)
@@ -209,15 +208,7 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
     const vatCalc = netAfterGlobalDiscount * (vatPercentage / 100)
     const totalRaw = netAfterGlobalDiscount + vatCalc
 
-    // Rounding logic
-    const roundToNearest = (value: number, step = 0.05) => {
-      const rounded = Math.round(value / step) * step
-      return Number(rounded.toFixed(2))
-    }
-    const totalRoundedCandidate = roundToNearest(totalRaw, 0.05)
-    const useRounding = isRoundingEnabled
-    const totalFinal = useRounding ? totalRoundedCandidate : Number(totalRaw.toFixed(2))
-
+    const totalFinal = Number(totalRaw.toFixed(2))
     return totalFinal.toFixed(2)
   }, [
     items,
@@ -779,6 +770,44 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
       return
     }
 
+    // Validate selling rate against min/max price limits
+    const violatingItem = items.find((it) => {
+      const uomKey = String(it.uom || 'Nos').trim()
+      
+      // Extract Min/Max Price robustly
+      let minPrice = Number(it.uomMinMax?.[uomKey]?.min ?? 0)
+      let maxPrice = Number(it.uomMinMax?.[uomKey]?.max ?? 0)
+      
+      if (!minPrice && !maxPrice && Array.isArray(it.uom_details)) {
+        const uomEntry = it.uom_details.find((d: any) => String(d.uom || '').trim().toLowerCase() === uomKey.toLowerCase())
+        if (uomEntry) {
+          minPrice = Number(uomEntry.min_price ?? 0)
+          maxPrice = Number(uomEntry.max_price ?? 0)
+        }
+      }
+      if (!minPrice && it.min_price) minPrice = Number(it.min_price)
+      if (!maxPrice && it.max_price) maxPrice = Number(it.max_price)
+
+      // Extract Selling Rate robustly (matching UI fallback)
+      const sellingRate = Number(
+        it.selling_rate !== undefined && it.selling_rate !== null 
+          ? it.selling_rate 
+          : (it.api_selling_rate ?? it.uomRates?.[it.uom] ?? (Array.isArray(it.uom_details) ? it.uom_details.find((d: any) => d.uom === it.uom)?.rate || 0 : 0))
+      )
+
+      // Skip validation if selling rate is 0
+      if (sellingRate === 0) return false
+
+      if (minPrice > 0 && sellingRate < minPrice) return true
+      if (maxPrice > 0 && sellingRate > maxPrice) return true
+      return false
+    })
+
+    if (violatingItem) {
+      toast.error(`Selling Rate for ${violatingItem.item_code} is outside allowed Min/Max limits.`)
+      return
+    }
+
     setIsSaving(true)
     try {
       const enableReceiptWisePurchase = profile?.custom_enable_receipt_wise_purchase === 1
@@ -787,6 +816,7 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
         const rate = Number(it.standard_rate || 0)
 
         return {
+          ...(it.name ? { name: it.name } : {}),
           item_code: it.item_code,
           qty: Number(it.quantity || 0),
           uom: it.uom,
@@ -807,15 +837,16 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
       // If rounding is enabled, disable_rounded_total = 0, else 1
       const disable_rounded_total = isRoundingEnabled ? 0 : 1
 
-      // Use purchase-specific buying price list from profile if available
-      const finalBuyingPriceList = profile?.custom_buying_price_list || buyingPriceList
-
+      // Use purchase-specific buying price list from profile if available, hardcoded to 'Standard Buying' as requested
+      const finalBuyingPriceList = 'Standard Buying'
 
       const payload: any = {
         supplier: currentTab.supplier.supplier_id,
         company: profile?.company,
         transaction_date: postingDate,
-        schedule_date: '', // Empty as per user's example
+        schedule_date: postingDate,
+        order_confirmation_date: postingDate,
+        custom_lcv_date: postingDate,
         buying_price_list: finalBuyingPriceList,
         custom_line_item_discount_mode: currentTab?.lineItemDiscountMode || profile?.custom_default_line_item_discount_mode || 'Per Unit',
         internal_note: currentTab.internal_note || '',
@@ -825,48 +856,60 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
         items: mappedItems
       }
 
-      if (profile?.custom_enable_landed_cost_entry === 1 && currentTab.landedCost?.items?.length) {
-        payload.custom_lcv_date = currentTab.landedCost.date || postingDate
-        payload.custom_distribute_charges_based_on = currentTab.landedCost.distributeChargesBasedOn || 'Amount'
-        
-        const totalLcvAmount = currentTab.landedCost.items.reduce((sum, it) => sum + Number(it.amount || 0), 0)
-        const totalLcvTaxes = currentTab.landedCost.items.reduce((sum, it) => {
-          const taxAmt = Number(it.total_amount || 0) - Number(it.amount || 0)
-          return sum + (taxAmt > 0 ? taxAmt : 0)
-        }, 0)
-        
-        payload.custom_total_lcv_amount = totalLcvAmount
-        payload.custom_total_lcv_taxes = totalLcvTaxes
-        payload.total_lcv_amount = totalLcvAmount
-        payload.total_lcv_taxes = totalLcvTaxes
-        
-        payload.custom_lcv_service_items = currentTab.landedCost.items.map(it => ({
-          item_code: it.item_code,
-          item: it.item_code,
-          description: it.description || '',
-          party: it.supplier || '',
-          supplier: it.supplier || '',
-          supplier_name: it.supplier || '',
-          custom_supplier: it.supplier || '',
-          supplier_id: it.supplier || '',
-          amount: it.amount || 0,
-          total_amount: it.total_amount || 0,
-          account: it.expense_account || '',
-          expense_account: it.expense_account || '',
-          tax_template: it.tax_template || ''
-        }))
-        
-        console.log('🚀 Sending Landed Cost Data:', {
-          amount: payload.custom_total_lcv_amount,
-          taxes: payload.custom_total_lcv_taxes,
-          items: payload.custom_lcv_service_items
-        })
-      } else if (profile?.custom_enable_landed_cost_entry === 1) {
-        payload.custom_lcv_service_items = []
-        payload.custom_total_lcv_amount = 0
-        payload.custom_total_lcv_taxes = 0
-        payload.total_lcv_amount = 0
-        payload.total_lcv_taxes = 0
+      if (currentTab.purchaseOrderId) {
+        if (profile?.custom_enable_landed_cost_entry === 1 && currentTab.landedCost?.items?.length) {
+          payload.custom_lcv_date = postingDate
+          payload.custom_distribute_charges_based_on = currentTab.landedCost.distributeChargesBasedOn || 'Amount'
+          
+          const totalLcvAmount = currentTab.landedCost.items.reduce((sum, it) => sum + Number(it.amount || 0), 0)
+          const totalLcvTaxes = currentTab.landedCost.items.reduce((sum, it) => {
+            const taxAmt = Number(it.total_amount || 0) - Number(it.amount || 0)
+            return sum + (taxAmt > 0 ? taxAmt : 0)
+          }, 0)
+          
+          payload.custom_total_lcv_amount = totalLcvAmount
+          payload.custom_total_lcv_taxes = totalLcvTaxes
+          payload.total_lcv_amount = totalLcvAmount
+          payload.total_lcv_taxes = totalLcvTaxes
+          
+          payload.custom_lcv_service_items = currentTab.landedCost.items.map(it => ({
+            name: it.name,
+            item_code: it.item_code,
+            item: it.item_code,
+            description: it.description || '',
+            party: it.supplier || '',
+            supplier: it.supplier || '',
+            supplier_name: it.supplier || '',
+            custom_supplier: it.supplier || '',
+            supplier_id: it.supplier || '',
+            amount: it.amount || 0,
+            total_amount: it.total_amount || 0,
+            account: it.expense_account || '',
+            expense_account: it.expense_account || '',
+            tax_template: it.tax_template || '',
+            custom_target_line_ids: (it.allocated_items || [])
+              .map((alloc: any) => {
+                const matchedItem = currentTab.items.find(pi => pi.item_code === alloc.item_code)
+                if (!matchedItem) return null // Drop allocation if the physical item was deleted
+                return {
+                  po_line_item_id: matchedItem.name || matchedItem.item_code
+                }
+              })
+              .filter(Boolean)
+          }))
+          
+          console.log('🚀 Sending Landed Cost Data:', {
+            amount: payload.custom_total_lcv_amount,
+            taxes: payload.custom_total_lcv_taxes,
+            items: payload.custom_lcv_service_items
+          })
+        } else if (profile?.custom_enable_landed_cost_entry === 1) {
+          payload.custom_lcv_service_items = []
+          payload.custom_total_lcv_amount = 0
+          payload.custom_total_lcv_taxes = 0
+          payload.total_lcv_amount = 0
+          payload.total_lcv_taxes = 0
+        }
       }
 
       // Use purchase-specific tax template from profile
@@ -885,10 +928,7 @@ const PurchaseActionButtons: React.FC<PurchaseActionButtonsProps> = ({ isItemTab
 
       // Add other details if present
       if (currentTab.po_no) {
-        payload.po_no = currentTab.po_no
-      }
-      if (currentTab.po_date) {
-        payload.po_date = currentTab.po_date
+        payload.custom_supplier_reference_number = currentTab.po_no
       }
 
       let response: any

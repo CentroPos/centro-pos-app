@@ -402,7 +402,7 @@ export const usePOSTabStore = create<POSTabStore>()(
           isRoundingEnabled: true,
           invoiceNumber: null,
           is_reserved: 1,
-          custom_is_exempt: 0,
+          custom_is_exempt: 1,
           lineItemDiscountMode: undefined
         }
 

@@ -18,12 +18,12 @@ import {
   Select,
   SelectContent,
   SelectItem,
-  SelectTrigger,
-  SelectValue
+  SelectTrigger
 } from '@renderer/components/ui/select'
 
 import React, { useState, useRef, useEffect } from 'react'
 import { usePurchaseTabStore } from '@renderer/store/usePurchaseTabStore'
+import { useSystemSettingsStore } from '@renderer/store/useSystemSettingsStore'
 import { useHotkeys } from 'react-hotkeys-hook'
 import MultiWarehousePopup from '../common/multi-warehouse-popup'
 import api from '@renderer/services/api'
@@ -79,13 +79,14 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
   // --- Date & Price List Logic (Migrated from OrderDetails) ---
   const { profile } = usePOSProfileStore()
+  const { settings } = useSystemSettingsStore()
+  const currencyPrecision = settings?.currency_precision || 2
+  // const floatPrecision = settings?.float_precision || 3
 
   const effectiveDiscountMode = currentTab?.lineItemDiscountMode || profile?.custom_default_line_item_discount_mode || 'Per Unit';
 
   // Price List State
   const [selectedPriceList, setSelectedPriceList] = useState<string>('Standard Selling')
-  const [priceLists, setPriceLists] = useState<string[]>([])
-  const [loadingPriceLists, setLoadingPriceLists] = useState(false)
 
   // Date State
   const getCurrentDate = () => {
@@ -98,7 +99,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   const [orderDate, setOrderDate] = useState<string>(getCurrentDate())
 
   // Check if date change is allowed from POS profile
-  const isDateChangeAllowed = profile?.custom_allow_order_date_change === 1
+  const isDateChangeAllowed = Number(profile?.custom_allow_backdated_purchases) === 1
 
   // Check if Landed Cost Entry is enabled in POS Profile
   const isLandedCostEnabled = Number(profile?.custom_enable_landed_cost_entry) === 1
@@ -109,32 +110,6 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   const [poRefDate, setPoRefDate] = useState<string>(currentTab?.po_date || getCurrentDate())
   const [internalNote, setInternalNote] = useState<string>(currentTab?.internal_note || '')
 
-  // Fetch Price Lists
-  useEffect(() => {
-    const fetchPriceLists = async () => {
-      setLoadingPriceLists(true)
-      try {
-        const response = await window.electronAPI?.proxy?.request({
-          method: 'GET',
-          url: '/api/resource/Price List',
-          params: { limit_start: 1, limit_page_length: 10 }
-        })
-        if (response?.data?.data && Array.isArray(response.data.data)) {
-          const names = response.data.data.map((item: any) => item.name).filter(Boolean)
-          setPriceLists(names)
-          if (names.length === 0) setPriceLists(['Standard Selling'])
-        } else {
-          setPriceLists(['Standard Selling'])
-        }
-      } catch (error) {
-        console.error('❌ Error fetching price lists:', error)
-        setPriceLists(['Standard Selling'])
-      } finally {
-        setLoadingPriceLists(false)
-      }
-    }
-    fetchPriceLists()
-  }, [])
 
   // Sync Price List from Store -> Local State
   useEffect(() => {
@@ -209,12 +184,25 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
           const exactItem = allItems.find((i: any) => i.item_id === item.item_code)
           if (exactItem) {
             const uomDetails = Array.isArray(exactItem.uom_details) ? exactItem.uom_details : []
-            const rate = uomDetails.find((d: any) => d.uom === item.uom)?.rate || exactItem.rate || exactItem.standard_rate || 0
+            const currentUomEntry = uomDetails.find((d: any) => d.uom === item.uom)
+            const rate = currentUomEntry?.rate || exactItem.rate || exactItem.standard_rate || 0
+            
+            const limitsMap = Object.fromEntries(
+              uomDetails.map((d: any) => [d.uom, { min: Number(d.min_price ?? 0), max: Number(d.max_price ?? 0) }])
+            )
+            const min_price = Number(currentUomEntry?.min_price ?? exactItem.min_price ?? 0)
+            const max_price = Number(currentUomEntry?.max_price ?? exactItem.max_price ?? 0)
 
             // Re-find the item index just in case it shifted
             const currentIndex = items.findIndex(i => i.item_code === item.item_code && i.uom === item.uom && i.api_selling_rate === undefined)
             if (currentIndex !== -1) {
-              updateItemInTabByIndex(activeTabId, currentIndex, { api_selling_rate: rate })
+              updateItemInTabByIndex(activeTabId, currentIndex, { 
+                api_selling_rate: rate,
+                uomMinMax: limitsMap,
+                min_price,
+                max_price,
+                uom_details: uomDetails
+              })
             }
           }
         } catch (e) {
@@ -224,15 +212,6 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     }
     fetchMissingRates()
   }, [items, activeTabId])
-
-  // Handle Price List Change
-  const handlePriceListChange = (priceList: string) => {
-    setSelectedPriceList(priceList)
-    if (activeTabId && currentTab?.orderData) {
-      updateTabOrderData(activeTabId, { ...currentTab.orderData, price_list: priceList })
-      setTabEdited(activeTabId, true)
-    }
-  }
 
   // Handle Date Change
   const handleDateChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1098,8 +1077,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     // Warehouse popup is now only triggered manually via Ctrl+Shift+W
     // Removed automatic popup trigger on quantity change
 
-    // If editing unit price, validate against min/max from product_list for current UOM
-    if (activeField === 'standard_rate') {
+    // If editing selling price, validate against min/max from product_list for current UOM
+    if (activeField === 'selling_rate') {
       try {
         const numeric = typeof finalValue === 'number' ? finalValue : parseFloat(String(finalValue))
         // Skip validation if zero
@@ -1131,14 +1110,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
             maxPrice = Number(uomEntry?.max_price ?? 0)
           }
 
-          let clamped = numeric
           let violated = false
           if (minPrice && numeric < minPrice) {
-            clamped = minPrice
             violated = true
           }
           if (maxPrice && numeric > maxPrice) {
-            clamped = maxPrice
             violated = true
           }
           if (violated) {
@@ -1148,7 +1124,24 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
             })
             triggerPriceHighlight(item.item_code)
           }
-          finalValue = clamped
+          finalValue = numeric
+
+          // Preserve the fetched min/max limits so validation on save works!
+          const currentUomKeyForUpdate = String(item.uom || 'Nos').trim()
+          const updatedUomMinMax = { ...item.uomMinMax }
+          updatedUomMinMax[currentUomKeyForUpdate] = { 
+            min: Number(minPrice || 0), 
+            max: Number(maxPrice || 0) 
+          }
+          
+          updateItemAndMarkEdited(selectedItemId, { 
+            [activeField]: finalValue,
+            min_price: minPrice || item.min_price,
+            max_price: maxPrice || item.max_price,
+            uomMinMax: updatedUomMinMax
+          })
+          setIsEditing(false)
+          return
         }
       } catch (err) {
         // If validation API fails, proceed without blocking
@@ -1794,7 +1787,9 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
               {isLandedCostEnabled && (
                 <TabsTrigger
                   value="landed_cost"
-                  className="rounded-t-md px-4 py-2 text-gray-700 hover:text-black hover:bg-gray-50 data-[state=active]:text-blue-700 data-[state=active]:bg-white data-[state=active]:border-b-2 data-[state=active]:border-blue-600"
+                  disabled={!currentTab?.purchaseOrderId}
+                  title={!currentTab?.purchaseOrderId ? "Please save the order first to enter Landed Cost" : ""}
+                  className="rounded-t-md px-4 py-2 text-gray-700 hover:text-black hover:bg-gray-50 data-[state=active]:text-blue-700 data-[state=active]:bg-white data-[state=active]:border-b-2 data-[state=active]:border-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Landed Cost Entry
                 </TabsTrigger>
@@ -1979,6 +1974,27 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                       // Find the actual index in items array (Sno) for this item
                       // This handles cases where there are duplicate items
                       const actualItemIndex = items.findIndex((i) => i === item)
+
+                      // Dynamic Price Violation Check
+                      const uomKey = String(item.uom || 'Nos').trim()
+                      let minPrice = Number(item.uomMinMax?.[uomKey]?.min ?? 0)
+                      let maxPrice = Number(item.uomMinMax?.[uomKey]?.max ?? 0)
+                      if (!minPrice && !maxPrice && Array.isArray(item.uom_details)) {
+                        const uomEntry = item.uom_details.find((d: any) => String(d.uom || '').trim().toLowerCase() === uomKey.toLowerCase())
+                        if (uomEntry) {
+                          minPrice = Number(uomEntry.min_price ?? 0)
+                          maxPrice = Number(uomEntry.max_price ?? 0)
+                        }
+                      }
+                      if (!minPrice && item.min_price) minPrice = Number(item.min_price)
+                      if (!maxPrice && item.max_price) maxPrice = Number(item.max_price)
+
+                      const dynamicSellingRate = Number(
+                        item.selling_rate !== undefined && item.selling_rate !== null 
+                          ? item.selling_rate 
+                          : (item.api_selling_rate ?? item.uomRates?.[item.uom] ?? (Array.isArray(item.uom_details) ? item.uom_details.find((d: any) => d.uom === item.uom)?.rate || 0 : 0))
+                      )
+                      const isPriceViolated = dynamicSellingRate > 0 && ((minPrice > 0 && dynamicSellingRate < minPrice) || (maxPrice > 0 && dynamicSellingRate > maxPrice))
 
                       // Create unique key for each row (even for duplicate items)
                       // Include tab ID and index to ensure uniqueness across tab switches
@@ -2293,7 +2309,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                 pattern="[0-9]*"
                                 className="w-[50px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
                                 min="0"
-                                step="0.01"
+                                step="any"
                               />
                             ) : (
                               <div className={`px-2 py-1 ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>
@@ -2541,7 +2557,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                 className="w-[60px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
                                 min="0"
                                 max={(!item.discount_type || item.discount_type === 'Percentage') ? "100" : undefined}
-                                step="0.01"
+                                step="any"
                               />
                             ) : (
                               <div className={`px-2 py-1 text-[11px] ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>
@@ -2552,7 +2568,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
                           {/* Rate (editable) */}
                           <TableCell
-                            className={`${hasError ? 'text-red-600 font-medium' : hasSplitWarehouse ? 'text-yellow-600 font-medium' : isSelected ? 'font-medium' : ''} w-[100px] text-center ${priceLimitHighlight.has(item.item_code) ? 'bg-red-50' : ''}`}
+                            className={`${hasError ? 'text-red-600 font-medium' : hasSplitWarehouse ? 'text-yellow-600 font-medium' : isSelected ? 'font-medium' : ''} w-[100px] text-center`}
                             onClick={(e) => {
                               e.stopPropagation()
                               if (item.fromReceipt === true || (item.pr_item_id && String(item.pr_item_id).trim() !== '')) return
@@ -2609,22 +2625,21 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                 }}
                                 onBlur={handleSaveEdit}
                                 min="0"
-                                step="0.01"
-                                className={`w-[80px] mx-auto px-2 py-1 border ${priceLimitHighlight.has(item.item_code) ? 'border-red-500 bg-red-50' : 'border-gray-300'} rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center`}
+                                step="any"
+                                className="w-[80px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
                               />
                             ) : (
-                              <span className={`font-bold ${priceLimitHighlight.has(item.item_code) ? 'text-red-600' : hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>
+                              <span className={`font-bold ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>
                                 {(() => {
-                                  const flt = (val: number, precision: number = 2) => Math.round((val + Number.EPSILON) * Math.pow(10, precision)) / Math.pow(10, precision)
                                   const rawRate = Number(item.standard_rate || 0)
-                                  return flt(rawRate).toFixed(2)
+                                  return rawRate.toFixed(currencyPrecision)
                                 })()}
                               </span>
                             )}
                           </TableCell>
 
                           {/* Selling Rate Cell */}
-                          <TableCell className="w-[100px] text-center px-1" data-field="selling_rate"
+                          <TableCell className={`w-[100px] text-center px-1 ${isPriceViolated || priceLimitHighlight.has(item.item_code) ? 'bg-red-50' : ''}`} data-field="selling_rate"
                             onClick={(e) => {
                               e.stopPropagation()
                               if (!isReadOnly) {
@@ -2679,12 +2694,12 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                 }}
                                 onBlur={handleSaveEdit}
                                 min="0"
-                                step="0.01"
-                                className="w-[80px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
+                                step="any"
+                                className={`w-[80px] mx-auto px-2 py-1 border ${isPriceViolated || priceLimitHighlight.has(item.item_code) ? 'border-red-500 bg-red-50' : 'border-gray-300'} rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center`}
                               />
                             ) : (
-                              <span className="font-bold">
-                                {Number(item.selling_rate !== undefined ? item.selling_rate : (item.api_selling_rate ?? item.uomRates?.[item.uom] ?? (Array.isArray(item.uom_details) ? item.uom_details.find((d: any) => d.uom === item.uom)?.rate || 0 : 0))).toFixed(2)}
+                              <span className={`font-bold ${isPriceViolated || priceLimitHighlight.has(item.item_code) ? 'text-red-600' : ''}`}>
+                                {Number(item.selling_rate !== undefined ? item.selling_rate : (item.api_selling_rate ?? item.uomRates?.[item.uom] ?? (Array.isArray(item.uom_details) ? item.uom_details.find((d: any) => d.uom === item.uom)?.rate || 0 : 0)))}
                               </span>
                             )}
                           </TableCell>
@@ -2707,9 +2722,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                 discountAmt = flt((baseTotal * discountPercent) / 100)
                               }
                               
-                              // The user explicitly requested rounding to the nearest whole integer (e.g. 36518.74 -> 36519.00)
                               const exactTotal = baseTotal - discountAmt
-                              return Math.round(exactTotal).toFixed(2)
+                              return exactTotal.toFixed(currencyPrecision)
                             })()}
                           </TableCell>
                           <TableCell className="w-[60px] text-center">
@@ -2834,26 +2848,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-sm font-medium">Price List</label>
-                  <Select
-                    value={selectedPriceList}
-                    onValueChange={handlePriceListChange}
-                    disabled={loadingPriceLists || isReadOnly}
-                  >
-                    <SelectTrigger className={`w-full bg-white border-gray-300 ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}`}>
-                      <SelectValue placeholder={loadingPriceLists ? "Loading..." : "Select Price List"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {loadingPriceLists ? (
-                        <SelectItem value="loading" disabled>Loading...</SelectItem>
-                      ) : priceLists.length > 0 ? (
-                        priceLists.map((pl) => (
-                          <SelectItem key={pl} value={pl}>{pl}</SelectItem>
-                        ))
-                      ) : (
-                        <SelectItem value="Standard Selling">Standard Selling</SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
+                  <Input
+                    value="Standard Buying"
+                    readOnly
+                    className="w-full bg-gray-50 border-gray-300 text-gray-500 cursor-not-allowed focus-visible:ring-0"
+                  />
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-medium">Order Date</label>
@@ -2867,18 +2866,14 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4">
                 <div className="space-y-1">
-                  <label className="text-sm font-medium">PO Ref</label>
-                  <Input value={poRef} onChange={(e) => setPoRef(e.target.value)} placeholder="Enter PO reference" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-sm font-medium">PO Ref Date</label>
-                  <Input type="date" value={poRefDate} onChange={(e) => setPoRefDate(e.target.value)} />
+                  <label className="text-sm font-medium">Ref id</label>
+                  <Input value={poRef} onChange={(e) => setPoRef(e.target.value)} placeholder="Enter Ref id" />
                 </div>
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-medium">Terms and Conditions / Internal Note</label>
+                <label className="text-sm font-medium">Internal Note</label>
                 <Textarea
                   value={internalNote}
                   onChange={(e) => setInternalNote(e.target.value)}

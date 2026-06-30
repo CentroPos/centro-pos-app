@@ -13,6 +13,7 @@ import PurchaseDiscountSection from '@renderer/components/blocks/purchase/purcha
 
 import { usePurchaseTabStore } from '@renderer/store/usePurchaseTabStore'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
+import { useSystemSettingsStore } from '@renderer/store/useSystemSettingsStore'
 import { usePosProfile } from '@renderer/hooks/useProfile'
 import { useAuthStore } from '@renderer/store/useAuthStore'
 
@@ -46,13 +47,15 @@ const PurchaseInterface: React.FC = () => {
   const { data: posProfile } = usePosProfile()
   const { user } = useAuthStore()
   const { setProfile, setCurrentUserPrivileges } = usePOSProfileStore()
+  const { fetchSettings } = useSystemSettingsStore()
 
   React.useEffect(() => {
+    fetchSettings()
     if (posProfile) {
       setProfile(posProfile)
       if (user?.email) setCurrentUserPrivileges(user.email)
     }
-  }, [posProfile, user?.email, setProfile, setCurrentUserPrivileges])
+  }, [posProfile, user?.email, setProfile, setCurrentUserPrivileges, fetchSettings])
 
   const handleNewPurchase = () => {
     // Tab is already created by PurchaseHeader, just open supplier modal
@@ -67,7 +70,13 @@ const PurchaseInterface: React.FC = () => {
       toast.error('No active tab. Please create a new purchase order first.')
       return
     }
-    const itemToAdd = { ...item, quantity: 1 }
+    // For purchases, ALWAYS use the cost_price (passed as cost) as the rate
+    const rateToUse = item.cost !== undefined && item.cost > 0 ? item.cost : item.standard_rate
+    const itemToAdd = { 
+      ...item, 
+      quantity: 1,
+      standard_rate: rateToUse 
+    }
     addItemToTab(activeTabId, itemToAdd)
     setSelectedItemId(item.item_code)
     setRightPanelTab('product')

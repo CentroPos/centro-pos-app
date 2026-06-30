@@ -240,6 +240,29 @@ function makeErrorUserFriendly(message: string): string {
     return friendly
   }
   
+  // Duplicate Reference error formatting
+  if (message.includes('Duplicate Reference') || lowerMsg.includes('already exists') || lowerMsg.includes('duplicate')) {
+    
+    // Extract the exact sentence from the backend if it's there
+    const extractMatch = message.match(/A Purchase entry already exists for Supplier [^"\\]+/i)
+    if (extractMatch) {
+      return extractMatch[0]
+    }
+
+    // Fallback if the specific sentence isn't found
+    const match = message.match(/^([a-zA-Z0-9_-]+)\.\s*[\[\{]/i)
+    const refId = match ? match[1] : ''
+    
+    let friendly = 'Duplicate Reference Error: A document with this Reference ID already exists.'
+    if (refId) {
+      friendly = `Duplicate Reference Error: A document with the Reference ID "${refId}" already exists.`
+    } else if (!message.includes('{') && !message.includes('[')) {
+      friendly = message
+    }
+    
+    return friendly
+  }
+  
   // Return original message if no transformation needed
   return message
 }

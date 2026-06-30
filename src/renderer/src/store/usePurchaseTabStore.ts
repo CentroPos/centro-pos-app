@@ -52,13 +52,15 @@ interface PurchaseTab {
     distributeChargesBasedOn: 'Amount' | 'Qty'
     items: Array<{
       id: string
+      name?: string
       item_code: string
       description: string
       supplier: string
       amount: number
       total_amount?: number
       expense_account: string
-      tax_template: string
+      tax_template?: string
+      allocated_items?: any[]
     }>
   }
 }
@@ -327,13 +329,21 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
             distributeChargesBasedOn: orderData?.custom_distribute_charges_based_on || 'Amount',
             items: Array.isArray(orderData?.custom_lcv_service_items) ? orderData.custom_lcv_service_items.map((it: any) => ({
               id: `lc-item-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+              name: it.name,
               item_code: it.item_code || it.item || '',
               description: it.description || '',
               supplier: it.party || it.supplier || it.supplier_name || it.custom_supplier || it.supplier_id || '',
               amount: Number(it.amount || 0),
               total_amount: Number(it.total_amount || 0),
               expense_account: it.account || it.expense_account || '',
-              tax_template: it.tax_template || ''
+              tax_template: it.tax_template || '',
+              allocated_items: Array.isArray(it.custom_target_line_ids) ? it.custom_target_line_ids.map((alloc: any) => {
+                // The backend now provides the row name (po_line_item_id). Match it to get the item_code
+                const matchedItem = orderData?.items?.find((pi: any) => pi.name === alloc.po_line_item_id)
+                return {
+                  item_code: matchedItem?.item_code || alloc.po_line_item_id
+                }
+              }) : []
             })) : []
           }
         }
@@ -378,6 +388,7 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
                 
                 return {
                   ...existingItem, // Preserve client-side fields like api_selling_rate, uomMinMax
+                  name: it.name,
                   item_code: it.item_code,
                   item_name: it.item_name,
                   item_part_no: it.item_part_no,
@@ -427,13 +438,21 @@ export const usePurchaseTabStore = create<PurchaseTabStore>()(
                   const existingItem = tab.landedCost?.items?.[i]
                   return {
                     id: existingItem?.id || `lc-item-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+                    name: existingItem?.name || it.name,
                     item_code: it.item_code || it.item || '',
                     description: it.description || '',
                     supplier: it.party || it.supplier || it.supplier_name || it.custom_supplier || it.supplier_id || '',
                     amount: Number(it.amount || 0),
                     total_amount: Number(it.total_amount || 0),
                     expense_account: it.account || it.expense_account || '',
-                    tax_template: it.tax_template || ''
+                    tax_template: it.tax_template || '',
+                    allocated_items: Array.isArray(it.custom_target_line_ids) ? it.custom_target_line_ids.map((alloc: any) => {
+                      // The backend now provides the row name (po_line_item_id). Match it to get the item_code
+                      const matchedItem = orderData?.items?.find((pi: any) => pi.name === alloc.po_line_item_id)
+                      return {
+                        item_code: matchedItem?.item_code || alloc.po_line_item_id
+                      }
+                    }) : existingItem?.allocated_items || []
                   }
                 }) : tab.landedCost?.items || []
               }

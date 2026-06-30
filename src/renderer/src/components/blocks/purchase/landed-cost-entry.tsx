@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from 'react'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
-import { Trash2 } from 'lucide-react'
+import { Trash2, Eye, X, CheckSquare, Square } from 'lucide-react'
+
 import { usePurchaseTabStore } from '@renderer/store/usePurchaseTabStore'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@renderer/components/ui/select'
@@ -14,8 +15,30 @@ export const LandedCostEntry = () => {
   const currentTab = getCurrentTab()
   const isReadOnly = currentTab?.status === 'confirmed' || currentTab?.status === 'paid'
 
+  const getExactAmount = (item: any) => {
+    const qty = Number(item.quantity || 0)
+    const rate = Number(item.rate || item.standard_rate || 0)
+    const baseTotal = qty * rate
+    let discountAmt = 0
+    if (item.discount_type === 'Amount') {
+      discountAmt = Number(item.discount_amount || 0)
+      const effectiveDiscountMode = currentTab?.orderData?.custom_line_item_discount_mode || profile?.custom_default_line_item_discount_mode || 'Row Total'
+      if (effectiveDiscountMode !== 'Row Total') {
+        discountAmt = discountAmt * qty
+      }
+    } else {
+      const discountPercent = Number(item.discount_percentage || 0)
+      discountAmt = (baseTotal * discountPercent) / 100
+    }
+    return Math.max(0, baseTotal - discountAmt)
+  }
+
   const [itemsList, setItemsList] = useState<any[]>([])
   const [loadingItems, setLoadingItems] = useState(false)
+
+  // Allocation Wizard state
+  const [allocationModalItem, setAllocationModalItem] = useState<any>(null)
+  const [selectedPOItems, setSelectedPOItems] = useState<Set<string>>(new Set())
 
   // Custom dropdown state
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null)
@@ -101,20 +124,22 @@ export const LandedCostEntry = () => {
   const fetchSuppliers = async (search: string) => {
     setLoadingSuppliers(true)
     try {
-      const filters = search ? JSON.stringify([["supplier_name", "like", `%${search}%`]]) : undefined
       const response = await window.electronAPI?.proxy?.request({
-        url: '/api/resource/Supplier',
+        url: '/api/method/centro_pos_apis.api.supplier.supplier_list',
         method: 'GET',
         params: {
-          filters,
-          fields: JSON.stringify(["name", "supplier_name"]),
+          search_term: search || '',
           limit_start: 0,
           limit_page_length: 20
         }
       })
-      if (response?.data?.data) {
-        setSuppliersList(response.data.data)
-      }
+      const data = response?.data?.data
+      const list = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : []
+      const mappedList = list.map((s: any) => ({
+        name: s.name || s.supplier_id || s.supplier_name,
+        supplier_name: s.supplier_name || s.name
+      }))
+      setSuppliersList(mappedList)
     } catch (e) {
       console.error('Failed to fetch suppliers:', e)
     } finally {
@@ -208,16 +233,86 @@ export const LandedCostEntry = () => {
 
   if (!landedCost) return null
 
+  const handleOpenAllocation = (item: any) => {
+    // If it has previously allocated items, use those. 
+    // Otherwise, default to ALL items in the purchase order.
+    let preSelected: string[] = []
+    if (item.allocated_items && item.allocated_items.length > 0) {
+      preSelected = item.allocated_items.map((a: any) => a.item_code)
+    } else {
+      preSelected = (currentTab?.items || []).map(it => it.item_code)
+    }
+    
+    setSelectedPOItems(new Set(preSelected))
+    setAllocationModalItem(item)
+  }
+
+  const handleSaveAllocation = () => {
+    if (!allocationModalItem) return
+    const poItems = currentTab?.items || []
+    const selected = poItems.filter(it => selectedPOItems.has(it.item_code))
+    
+    let allocated_items: any[] = []
+    
+    if (selected.length > 0) {
+      const distributeBy = landedCost.distributeChargesBasedOn || 'Amount'
+      
+      const totalMetric = selected.reduce((sum, it) => {
+        const qty = Number(it.quantity || 0)
+        if (distributeBy === 'Qty') return sum + qty
+        // Amount calculation (discount-aware)
+        return sum + getExactAmount(it)
+      }, 0)
+
+      const rowAmount = Number(allocationModalItem.total_amount || allocationModalItem.amount || 0)
+
+      allocated_items = selected.map(it => {
+        const qty = Number(it.quantity || 0)
+        let metric = 0
+        if (distributeBy === 'Qty') {
+          metric = qty
+        } else {
+          metric = getExactAmount(it)
+        }
+
+        const proportion = totalMetric > 0 ? (metric / totalMetric) : (1 / selected.length)
+        const assignedAmount = Number((rowAmount * proportion).toFixed(2))
+
+        return {
+          item_code: it.item_code,
+          allocated_amount: assignedAmount
+        }
+      })
+    }
+
+    handleUpdateItemFields(allocationModalItem.id, { allocated_items })
+    setAllocationModalItem(null)
+  }
+
+  const togglePOItemSelection = (itemCode: string) => {
+    const newSet = new Set(selectedPOItems)
+    if (newSet.has(itemCode)) {
+      newSet.delete(itemCode)
+    } else {
+      newSet.add(itemCode)
+    }
+    setSelectedPOItems(newSet)
+  }
+
   const totalAmount = landedCost.items.reduce((sum, it) => sum + Number(it.amount || 0), 0)
   const totalLandedCost = landedCost.items.reduce((sum, it) => sum + Number(it.total_amount || 0), 0)
   const totalTaxes = totalLandedCost - totalAmount
+  
+  const backendGrandTotal = currentTab?.orderData?.custom_lcv_grand_total
+  const displayGrandTotal = backendGrandTotal != null ? Number(backendGrandTotal) : totalLandedCost
+
   const currencySymbol = profile?.custom_currency_symbol || 'SAR'
 
   return (
     <div className="h-full flex flex-col space-y-4">
       <div className="flex gap-4">
-        <div className="space-y-1 w-1/2">
-          <label className="text-sm font-medium">Distribute Charges Based On</label>
+        <div className="flex items-center gap-3 w-1/2">
+          <label className="text-sm font-medium whitespace-nowrap">Distribute Charges Based On</label>
           <Select
             value={landedCost.distributeChargesBasedOn}
             onValueChange={(val) => handleUpdateField('distributeChargesBasedOn', val)}
@@ -406,7 +501,17 @@ export const LandedCostEntry = () => {
                   disabled={isReadOnly}
                 />
               </div>
-              <div className="col-span-1 text-center">
+              <div className="col-span-1 flex items-center justify-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0 text-blue-500 hover:text-blue-700"
+                  onClick={() => handleOpenAllocation(item)}
+                  disabled={isReadOnly}
+                  title="Allocate to Items"
+                >
+                  <Eye className="h-4 w-4" />
+                </Button>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -428,17 +533,153 @@ export const LandedCostEntry = () => {
           )}
         </div>
 
-        <div className="bg-gray-50 border-t p-3 grid grid-cols-2 gap-4 rounded-b-md">
-          <div className="space-y-1">
+        <div className="bg-gray-50 border-t p-3 grid grid-cols-3 gap-4 rounded-b-md">
+          <div className="space-y-1 text-left">
             <label className="text-xs text-gray-500 font-medium">Total LCV Amount</label>
             <div className="font-semibold">{currencySymbol} {totalAmount.toFixed(2)}</div>
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1 text-center">
             <label className="text-xs text-gray-500 font-medium">Total LCV Taxes</label>
             <div className="font-semibold">{currencySymbol} {totalTaxes.toFixed(2)}</div>
           </div>
+          <div className="space-y-1 text-right">
+            <label className="text-xs text-gray-500 font-medium">Grand Total</label>
+            <div className="font-semibold">{currencySymbol} {displayGrandTotal.toFixed(2)}</div>
+          </div>
         </div>
       </div>
+
+      {allocationModalItem && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-lg shadow-xl w-[600px] max-w-[90vw] max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-4 border-b bg-gray-50/80 backdrop-blur">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Allocate Service Cost</h3>
+                <p className="text-sm text-gray-500 truncate max-w-[400px]">
+                  {allocationModalItem.description || allocationModalItem.item_code || 'Landed Cost Item'}
+                </p>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => setAllocationModalItem(null)} className="h-8 w-8 rounded-full">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            
+            <div className="p-4 flex-1 overflow-auto bg-gray-50/30">
+              <div className="flex items-center justify-between mb-4 bg-white p-3 rounded-md border shadow-sm">
+                <span className="text-sm font-medium text-gray-600">Total Row Amount:</span>
+                <span className="text-lg font-bold text-gray-900">
+                  {currencySymbol} {Number(allocationModalItem.total_amount || allocationModalItem.amount || 0).toFixed(2)}
+                </span>
+              </div>
+
+              <div className="border rounded-md bg-white overflow-hidden shadow-sm">
+                <div className="grid grid-cols-12 gap-2 bg-gray-100 p-2 border-b text-xs font-semibold text-gray-500 sticky top-0 z-10">
+                  <div className="col-span-1 text-center flex items-center justify-center">
+                    <button 
+                      onClick={() => {
+                        if (selectedPOItems.size === (currentTab?.items?.length || 0)) {
+                          setSelectedPOItems(new Set())
+                        } else {
+                          setSelectedPOItems(new Set((currentTab?.items || []).map(it => it.item_code)))
+                        }
+                      }}
+                      className="text-gray-500 hover:text-gray-700 transition-colors"
+                    >
+                      {selectedPOItems.size === (currentTab?.items?.length || 0) && (currentTab?.items?.length || 0) > 0 ? (
+                        <CheckSquare className="h-4 w-4" />
+                      ) : (
+                        <Square className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+                  <div className="col-span-4">Item</div>
+                  <div className="col-span-1 text-right">Qty</div>
+                  <div className="col-span-2 text-right">Item Amt</div>
+                  <div className="col-span-4 text-right">Assigned Amount</div>
+                </div>
+                <div className="divide-y max-h-[400px] overflow-auto">
+                  {(currentTab?.items || []).length === 0 ? (
+                    <div className="p-4 text-center text-sm text-gray-500">No items found in the purchase order.</div>
+                  ) : (
+                    (currentTab?.items || []).map(it => {
+                      const isSelected = selectedPOItems.has(it.item_code)
+                      
+                      // Calculate preview amount
+                      let previewAmount = 0
+                      if (isSelected) {
+                        const distributeBy = landedCost.distributeChargesBasedOn || 'Amount'
+                        const selectedList = (currentTab?.items || []).filter(i => selectedPOItems.has(i.item_code))
+                        const totalMetric = selectedList.reduce((sum, i) => {
+                          const q = Number(i.quantity || 0)
+                          if (distributeBy === 'Qty') return sum + q
+                          // Amount calculation (discount-aware)
+                          return sum + getExactAmount(i)
+                        }, 0)
+
+                        const qty = Number(it.quantity || 0)
+                        let metric = 0
+                        if (distributeBy === 'Qty') {
+                          metric = qty
+                        } else {
+                          metric = getExactAmount(it)
+                        }
+
+                        const proportion = totalMetric > 0 ? (metric / totalMetric) : (1 / selectedList.length)
+                        const rowAmount = Number(allocationModalItem.total_amount || allocationModalItem.amount || 0)
+                        previewAmount = rowAmount * proportion
+                      }
+
+                      return (
+                        <div 
+                          key={it.item_code} 
+                          className={`grid grid-cols-12 gap-2 items-center p-2 text-sm transition-colors cursor-pointer ${isSelected ? 'bg-blue-50/50' : 'hover:bg-gray-50'}`}
+                          onClick={() => togglePOItemSelection(it.item_code)}
+                        >
+                          <div className="col-span-1 text-center flex items-center justify-center">
+                            {isSelected ? (
+                              <CheckSquare className="h-4 w-4 text-blue-600" />
+                            ) : (
+                              <Square className="h-4 w-4 text-gray-400" />
+                            )}
+                          </div>
+                          <div className="col-span-4 truncate pr-2">
+                            <div className="font-medium text-gray-900 truncate">{it.item_code}</div>
+                            <div className="text-[10px] text-gray-500 truncate">{it.item_name}</div>
+                          </div>
+                          <div className="col-span-1 text-right text-gray-600">
+                            {it.quantity} <span className="text-[10px]">{it.uom}</span>
+                          </div>
+                          <div className="col-span-2 text-right text-gray-600 text-xs">
+                            {currencySymbol} {getExactAmount(it).toFixed(2)}
+                          </div>
+                          <div className="col-span-4 text-right">
+                            {isSelected ? (
+                              <span className="font-semibold text-blue-700 bg-white border border-blue-200 px-2 py-1 rounded shadow-sm inline-block min-w-[80px]">
+                                {currencySymbol} {previewAmount.toFixed(2)}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 italic text-xs">-</span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-4 border-t bg-gray-50 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setAllocationModalItem(null)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveAllocation} className="bg-blue-600 hover:bg-blue-700 text-white">
+                Save Allocations
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -17,8 +17,7 @@ import {
   Select,
   SelectContent,
   SelectItem,
-  SelectTrigger,
-  SelectValue
+  SelectTrigger
 } from '@renderer/components/ui/select'
 
 import React, { useState, useRef, useEffect } from 'react'
@@ -29,6 +28,7 @@ import api from '@renderer/services/api'
 import { API_Endpoints } from '@renderer/config/endpoints'
 import { toast } from 'sonner'
 import { usePOSProfileStore } from '@renderer/store/usePOSProfileStore';
+import { useSystemSettingsStore } from '@renderer/store/useSystemSettingsStore';
 import { useHotkeys } from 'react-hotkeys-hook'
 
 type Props = {
@@ -81,13 +81,14 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
   // --- Date & Price List Logic (Migrated from OrderDetails) ---
   const { profile } = usePOSProfileStore()
+  const { settings } = useSystemSettingsStore()
+  const currencyPrecision = settings?.currency_precision || 2
+  const floatPrecision = settings?.float_precision || 3
   
   const effectiveDiscountMode = currentTab?.lineItemDiscountMode || profile?.custom_default_line_item_discount_mode || 'Per Unit';
 
   // Price List State
   const [selectedPriceList, setSelectedPriceList] = useState<string>('Standard Selling')
-  const [priceLists, setPriceLists] = useState<string[]>([])
-  const [loadingPriceLists, setLoadingPriceLists] = useState(false)
 
   // Date State
   const getCurrentDate = () => {
@@ -107,32 +108,6 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   const [poRefDate, setPoRefDate] = useState<string>(currentTab?.po_date || getCurrentDate())
   const [internalNote, setInternalNote] = useState<string>(currentTab?.internal_note || '')
 
-  // Fetch Price Lists
-  useEffect(() => {
-    const fetchPriceLists = async () => {
-      setLoadingPriceLists(true)
-      try {
-        const response = await window.electronAPI?.proxy?.request({
-          method: 'GET',
-          url: '/api/resource/Price List',
-          params: { limit_start: 1, limit_page_length: 10 }
-        })
-        if (response?.data?.data && Array.isArray(response.data.data)) {
-          const names = response.data.data.map((item: any) => item.name).filter(Boolean)
-          setPriceLists(names)
-          if (names.length === 0) setPriceLists(['Standard Selling'])
-        } else {
-          setPriceLists(['Standard Selling'])
-        }
-      } catch (error) {
-        console.error('❌ Error fetching price lists:', error)
-        setPriceLists(['Standard Selling'])
-      } finally {
-        setLoadingPriceLists(false)
-      }
-    }
-    fetchPriceLists()
-  }, [])
 
   // Sync Price List from Store -> Local State
   useEffect(() => {
@@ -179,14 +154,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     }
   }, [profile?.selling_price_list])
 
-  // Handle Price List Change
-  const handlePriceListChange = (priceList: string) => {
-    setSelectedPriceList(priceList)
-    if (activeTabId && currentTab?.orderData) {
-      updateTabOrderData(activeTabId, { ...currentTab.orderData, price_list: priceList })
-      setTabEdited(activeTabId, true)
-    }
-  }
+  // --- Date & Price List Logic End ---
 
   // Handle Date Change
   const handleDateChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1052,14 +1020,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
             maxPrice = Number(uomEntry?.max_price ?? 0)
           }
 
-          let clamped = numeric
           let violated = false
           if (minPrice && numeric < minPrice) {
-            clamped = minPrice
             violated = true
           }
           if (maxPrice && numeric > maxPrice) {
-            clamped = maxPrice
             violated = true
           }
           if (violated) {
@@ -1069,7 +1034,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
             })
             triggerPriceHighlight(item.item_code)
           }
-          finalValue = clamped
+          finalValue = numeric
         }
       } catch (err) {
         // If validation API fails, proceed without blocking
@@ -2319,11 +2284,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                 pattern="[0-9]*"
                                 className="w-[50px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
                                 min="0"
-                                step="0.01"
+                                step="any"
                               />
                             ) : (
                               <div className={`px-2 py-1 ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>
-                                {item.quantity}
+                                {Number(item.quantity || 0).toFixed(floatPrecision)}
                               </div>
                             )}
                           </TableCell>
@@ -2566,7 +2531,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                 className="w-[60px] mx-auto px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
                                 min="0"
                                 max={(!item.discount_type || item.discount_type === 'Percentage') ? "100" : undefined}
-                                step="0.01"
+                                step="any"
                               />
                             ) : (
                               <div className={`px-2 py-1 text-[11px] ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>
@@ -2633,30 +2598,31 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                 }}
                                 onBlur={handleSaveEdit}
                                 min="0"
-                                step="0.01"
+                                step="any"
                                 className={`w-[80px] mx-auto px-2 py-1 border ${priceLimitHighlight.has(item.item_code) ? 'border-red-500 bg-red-50' : 'border-gray-300'} rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center`}
                               />
                             ) : (
                               <span className={`font-bold ${priceLimitHighlight.has(item.item_code) ? 'text-red-600' : hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : ''}`}>
                                 {(() => {
-                                  const flt = (val: number, precision: number = 2) => Math.round((val + Number.EPSILON) * Math.pow(10, precision)) / Math.pow(10, precision)
+                                  const flt = (val: number, precision: number = 6) => Math.round((val + Number.EPSILON) * Math.pow(10, precision)) / Math.pow(10, precision)
                                   const rawRate = Number(item.standard_rate || 0)
                                   const rawQty = Number(item.quantity || 0)
                                   let discAmtPerUnit = 0
                                   
                                   if (item.discount_type === 'Amount') {
-                                    const totalDiscAmt = flt(Number(item.discount_amount || 0))
+                                    const totalDiscAmt = flt(Number(item.discount_amount || 0), 6)
                                     if (effectiveDiscountMode === 'Row Total') {
-                                      discAmtPerUnit = rawQty > 0 ? flt(totalDiscAmt / rawQty) : 0
+                                      discAmtPerUnit = rawQty > 0 ? flt(totalDiscAmt / rawQty, 6) : 0
                                     } else {
                                       discAmtPerUnit = totalDiscAmt
                                     }
                                   } else {
-                                    const discPercent = flt(Number(item.discount_percentage || 0))
-                                    discAmtPerUnit = flt((rawRate * discPercent) / 100)
+                                    const discPercent = flt(Number(item.discount_percentage || 0), 6)
+                                    discAmtPerUnit = flt((rawRate * discPercent) / 100, 6)
                                   }
                                   
-                                  return flt(rawRate - discAmtPerUnit).toFixed(2)
+                                  const computedRate = flt(rawRate - discAmtPerUnit, 6)
+                                  return computedRate.toFixed(currencyPrecision)
                                 })()}
                               </span>
                             )}
@@ -2679,9 +2645,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                 discountAmt = flt((baseTotal * discountPercent) / 100)
                               }
                               
-                              // The user explicitly requested rounding to the nearest whole integer (e.g. 36518.74 -> 36519.00)
                               const exactTotal = baseTotal - discountAmt
-                              return Math.round(exactTotal).toFixed(2)
+                              return exactTotal.toFixed(currencyPrecision)
                             })()}
                           </TableCell>
                           {isReadOnly ? (
@@ -2815,26 +2780,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-sm font-medium">Price List</label>
-                  <Select
-                    value={selectedPriceList}
-                    onValueChange={handlePriceListChange}
-                    disabled={loadingPriceLists || isReadOnly}
-                  >
-                    <SelectTrigger className={`w-full bg-white border-gray-300 ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}`}>
-                      <SelectValue placeholder={loadingPriceLists ? "Loading..." : "Select Price List"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {loadingPriceLists ? (
-                        <SelectItem value="loading" disabled>Loading...</SelectItem>
-                      ) : priceLists.length > 0 ? (
-                        priceLists.map((pl) => (
-                          <SelectItem key={pl} value={pl}>{pl}</SelectItem>
-                        ))
-                      ) : (
-                        <SelectItem value="Standard Selling">Standard Selling</SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
+                  <Input
+                    value="Standard Selling"
+                    readOnly
+                    className="w-full bg-gray-50 border-gray-300 text-gray-500 cursor-not-allowed focus-visible:ring-0"
+                  />
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-medium">Order Date</label>

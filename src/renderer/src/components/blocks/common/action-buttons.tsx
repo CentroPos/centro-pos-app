@@ -372,16 +372,13 @@ const ActionButtons: React.FC<Props> = ({
   }, [currentTab?.custom_is_exempt, (profile as any)?.custom_tax_rate, (profile as any)?.custom_exempt_tax_rate])
 
   // Helper function to round to nearest (same as DiscountSection)
-  const roundToNearest = (value: number, step = 0.05) => {
-    const rounded = Math.round(value / step) * step
-    return Number(rounded.toFixed(2))
-  }
+
 
   // Calculate order total
   // For confirmed orders (docstatus = 1), always use outstanding_amount from linked_invoices[0]
   // For draft orders (docstatus != 1), use calculated total from discount section
   const calculateOrderTotal = useCallback(() => {
-    const isRoundingEnabled = getCurrentTabRoundingEnabled()
+    // const isRoundingEnabled = getCurrentTabRoundingEnabled()
     const normalize = (value: any) => {
       const num = Number(value)
       return Number.isFinite(num) ? Number(num.toFixed(2)) : null
@@ -460,10 +457,7 @@ const ActionButtons: React.FC<Props> = ({
     const netAfterGlobalDiscount = netAfterIndividualDiscount - globalDiscountAmount
     const vatCalc = netAfterGlobalDiscount * (vatPercentage / 100)
     const totalRaw = netAfterGlobalDiscount + vatCalc
-    const totalRoundedCandidate = roundToNearest(totalRaw, 0.05)
-
-     const useRounding = isRoundingEnabled
-     const totalFinal = useRounding ? totalRoundedCandidate : Number(totalRaw.toFixed(2))
+    const totalFinal = Number(totalRaw.toFixed(2))
  
      return totalFinal.toFixed(2)
    }, [
@@ -705,10 +699,12 @@ const ActionButtons: React.FC<Props> = ({
         }
 
         return {
+          ...(item.name ? { name: item.name } : {}),
           item_code: item.item_code || item.code,
           qty,
           uom: item.uom || 'Nos',
           rate,
+          is_free_item: rate === 0 ? 1 : 0,
           delivery_date: deliveryDate,
           ...(item.discount_type === 'Percentage' 
             ? { discount_percentage: Number(discount || 0) } 
@@ -827,7 +823,7 @@ const ActionButtons: React.FC<Props> = ({
         customer: finalCustomerId,
         posting_date: postingDate, // Use the date selected in the order details box
         delivery_date: (currentTab?.po_date?.trim() && new Date(postingDate) < new Date(currentTab.po_date.trim())) ? currentTab.po_date.trim() : postingDate,
-        selling_price_list: selectedPriceList,
+        selling_price_list: 'Standard Selling',
         taxes_and_charges: currentTab?.custom_is_exempt === 1 ? profile?.custom_exempt_taxes_and_charges : profile?.taxes_and_charges,
         custom_line_item_discount_mode: currentTab?.lineItemDiscountMode || profile?.custom_default_line_item_discount_mode || 'Per Unit',
         custom_is_exempt: currentTab?.custom_is_exempt || 0,
