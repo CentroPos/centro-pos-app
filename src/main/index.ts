@@ -94,7 +94,8 @@ function createWindow(): void {
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    // Load the remote Netlify URL in production
+    mainWindow.loadURL('https://centropos-frontend.netlify.app')
   }
 
   // Store reference to main window for auth handlers
