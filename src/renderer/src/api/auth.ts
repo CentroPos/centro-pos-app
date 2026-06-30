@@ -26,58 +26,78 @@ const authStore = ElectronAuthStore.getInstance()
 export const authAPI = {
   login: async (credentials: LoginCredentials): Promise<FrappeLoginResponse> => {
     try {
-      console.log('🔐 Starting login process (local server)...')
+      console.log('🔐 Starting login process...')
 
-      // Proxy login through Electron main (captures Set-Cookie/CSRF)
-      const response = await window.electronAPI?.proxy?.login({
-        username: credentials.username,
-        password: credentials.password
-      })
-      
-      console.log('✅ Login Response:', response?.data)
-      
-      // Local server returns cookies and csrfToken in JSON
-      const setCookieHeader = response?.cookies
-      const csrfFromLocal = response?.csrfToken
-      
-      // Check all response headers for session info
-      console.log('📋 All response headers:')
-      // headers are not directly available from IPC result
-      
-      const data = response?.data
+      let data;
+
+      if (window.electronAPI?.proxy?.login) {
+        console.log('🔐 Starting login process (local server)...')
+        // Proxy login through Electron main (captures Set-Cookie/CSRF)
+        const response = await window.electronAPI.proxy.login({
+          username: credentials.username,
+          password: credentials.password
+        })
+        
+        console.log('✅ Login Response:', response?.data)
+        
+        // Local server returns cookies and csrfToken in JSON
+        const setCookieHeader = response?.cookies
+        const csrfFromLocal = response?.csrfToken
+        
+        // Check all response headers for session info
+        console.log('📋 All response headers:')
+        // headers are not directly available from IPC result
+        
+        data = response?.data
+        
+        // Extract CSRF token from response headers
+        const csrfToken = csrfFromLocal
+        if (csrfToken) {
+          await authStore.setAuthData({ csrfToken })
+          console.log('🔑 CSRF token stored:', csrfToken)
+        } else {
+          console.log('⚠️ No CSRF token found from local server')
+        }
+        
+        // Check if we have session cookies
+        if (typeof setCookieHeader === 'string') {
+          // Try to extract sid value from the combined cookie string
+          const match = /sid=([^;\s]+)/.exec(setCookieHeader)
+          const sessionId = match?.[1]
+          if (sessionId) {
+            await authStore.setAuthData({ sessionId })
+            console.log('🆔 Session ID extracted from local cookies:', sessionId)
+          }
+        }
+        
+        // Test session establishment
+        try {
+          console.log('🧪 Testing session establishment via proxy...')
+          const testResponse = await window.electronAPI.proxy.session()
+          console.log('✅ Session test (proxy) successful:', testResponse)
+        } catch (e) {
+          console.log('❌ Session test (proxy) failed:', e)
+        }
+      } else {
+        // Standard web browser fallback
+        console.log('🌐 Using web browser login fallback...')
+        const formData = new URLSearchParams()
+        formData.append('usr', credentials.username)
+        formData.append('pwd', credentials.password)
+        
+        const apiResponse = await api.post('method/login', formData, {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Requested-With': 'XMLHttpRequest'
+          }
+        })
+        
+        data = apiResponse.data
+      }
 
       // Store auth data
       await authStore.setFrappeAuth(data)
       console.log('💾 Auth data stored')
-      
-      // Extract CSRF token from response headers
-      const csrfToken = csrfFromLocal
-      if (csrfToken) {
-        await authStore.setAuthData({ csrfToken })
-        console.log('🔑 CSRF token stored:', csrfToken)
-      } else {
-        console.log('⚠️ No CSRF token found from local server')
-      }
-      
-      // Check if we have session cookies
-      if (typeof setCookieHeader === 'string') {
-        // Try to extract sid value from the combined cookie string
-        const match = /sid=([^;\s]+)/.exec(setCookieHeader)
-        const sessionId = match?.[1]
-        if (sessionId) {
-          await authStore.setAuthData({ sessionId })
-          console.log('🆔 Session ID extracted from local cookies:', sessionId)
-        }
-      }
-      
-      // Test session establishment
-      try {
-        console.log('🧪 Testing session establishment via proxy...')
-        const testResponse = await window.electronAPI?.proxy?.session()
-        console.log('✅ Session test (proxy) successful:', testResponse)
-      } catch (e) {
-        console.log('❌ Session test (proxy) failed:', e)
-      }
 
       return data
     } catch (error) {
@@ -89,9 +109,15 @@ export const authAPI = {
   // ✅ Add this function
   getCurrentUser: async (): Promise<SessionResponse> => {
     try {
-      // Use local session endpoint which already carries ERP cookies
-      const response = await window.electronAPI?.proxy?.session()
-      return response
+      if (window.electronAPI?.proxy?.session) {
+        // Use local session endpoint which already carries ERP cookies
+        const response = await window.electronAPI.proxy.session()
+        return response
+      } else {
+        // Fallback to web request
+        const response = await api.get('method/frappe.auth.get_logged_user')
+        return { message: 'Logged In', full_name: response.data.message } as SessionResponse
+      }
     } catch (error) {
       console.error('Session validation error:', error)
       throw error

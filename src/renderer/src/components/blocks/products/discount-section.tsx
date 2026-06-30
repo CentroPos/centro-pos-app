@@ -75,6 +75,7 @@ const DiscountSection: React.FC<Props> = ({
     updateTabOrderData
   } = usePOSTabStore()
   const { profile } = usePOSProfileStore()
+  const hideSalesAdditionalDiscount = Boolean(profile?.custom_hide_sales_additional_discount === 1);
   const items = getCurrentTabItems()
   const currentTab = getCurrentTab()
   const selectedCustomer = getCurrentTabCustomer()
@@ -473,7 +474,7 @@ const DiscountSection: React.FC<Props> = ({
   useHotkeys(
     'ctrl+d',
     () => {
-      if (isReadOnly) return // Disable hotkey when order is confirmed
+      if (isReadOnly || hideSalesAdditionalDiscount) return // Disable hotkey when order is confirmed or hidden
       if (currentTab) {
         handleGlobalDiscountClick()
       }
@@ -502,17 +503,19 @@ const DiscountSection: React.FC<Props> = ({
   return (
     <div className="p-2 pb-6 relative">
       <div className="flex gap-3 mb-2">
-        <Button
-          variant="outline"
-          className="flex items-center gap-2"
-          onClick={handleGlobalDiscountClick}
-          disabled={isReadOnly || !currentTab?.id}
-          title={isReadOnly ? 'Discount cannot be edited for confirmed orders' : 'Click to edit global discount percentage'}
-        >
-          <span className="text-blue-500">%</span>
-          Discount
-          <span className="text-xs bg-gray-200 px-1 rounded">Ctrl+D</span>
-        </Button>
+        {!hideSalesAdditionalDiscount && (
+          <Button
+            variant="outline"
+            className="flex items-center gap-2"
+            onClick={handleGlobalDiscountClick}
+            disabled={isReadOnly || !currentTab?.id}
+            title={isReadOnly ? 'Discount cannot be edited for confirmed orders' : 'Click to edit global discount percentage'}
+          >
+            <span className="text-blue-500">%</span>
+            Discount
+            <span className="text-xs bg-gray-200 px-1 rounded">Ctrl+D</span>
+          </Button>
+        )}
         <Button variant="outline" className="flex items-center gap-2" onClick={handleDuplicate}>
           <span className="text-slate-600">⎘</span>
           Duplicate
@@ -618,67 +621,76 @@ const DiscountSection: React.FC<Props> = ({
             {currencySymbol} {untaxed.toLocaleString(undefined, { minimumFractionDigits: currencyPrecision, maximumFractionDigits: currencyPrecision })}
           </div>
         </div>
-        <div className="text-center">
-          <div className="text-[10px] text-gray-600 mb-0.5">Disc.Type</div>
-          <div className="flex w-3/4 mx-auto bg-gray-100/80 p-0.5 rounded-md h-8 border border-gray-200">
-            <button
-              disabled={isReadOnly}
-              onClick={() => {
-                if (currentTab && !isReadOnly) {
-                  updateTabGlobalDiscount(currentTab.id, globalDiscountPercent, globalDiscountAmountStore, 'Percentage');
-                }
-              }}
-              className={`flex-1 text-[11px] rounded transition-all flex items-center justify-center ${globalDiscountTypeStore === 'Percentage' ? 'bg-white shadow-sm font-medium text-blue-600' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'}`}
-              title="Percentage"
-            >
-              %
-            </button>
-            <button
-              disabled={isReadOnly}
-              onClick={() => {
-                if (currentTab && !isReadOnly) {
-                  updateTabGlobalDiscount(currentTab.id, globalDiscountPercent, globalDiscountAmountStore, 'Amount');
-                }
-              }}
-              className={`flex-1 text-[11px] rounded transition-all flex items-center justify-center ${globalDiscountTypeStore === 'Amount' ? 'bg-white shadow-sm font-medium text-blue-600' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'}`}
-              title="Amount"
-            >
-              {currencySymbol || '$'}
-            </button>
-          </div>
-        </div>
-        <div className="text-center">
-          <div className="text-xs text-gray-600">Discount</div>
-          {isEditingGlobalDiscount ? (
-            <Input
-              ref={globalDiscountRef}
-              type="number"
-              value={globalDiscountValue}
-              onChange={handleGlobalDiscountChange}
-              onBlur={handleGlobalDiscountBlur}
-              onKeyDown={handleGlobalDiscountKeyDown}
-              disabled={isReadOnly}
-              className={`text-center text-base font-semibold w-16 h-8 mx-auto ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
-              placeholder="0"
-              min="0"
-              max={globalDiscountTypeStore === 'Percentage' ? "100" : undefined}
-              step={globalDiscountTypeStore === 'Percentage' ? "0.1" : "1"}
-            />
-          ) : (
-            <div
-              className={`text-base font-semibold text-blue-600 px-1 rounded flex flex-col items-center justify-center ${
-                isReadOnly ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-gray-100'
-              }`}
-              onClick={handleGlobalDiscountClick}
-              title={isReadOnly ? 'Discount cannot be edited for confirmed orders' : 'Click to edit global discount'}
-            >
-              <div>{currencySymbol} {globalDiscount.toLocaleString(undefined, { minimumFractionDigits: currencyPrecision, maximumFractionDigits: currencyPrecision })}</div>
-              {globalDiscountTypeStore === 'Percentage' && globalDiscountPercent > 0 && (
-                <div className="text-[10px] text-gray-500">({globalDiscountPercent}%)</div>
+        {hideSalesAdditionalDiscount ? (
+          <>
+            <div />
+            <div />
+          </>
+        ) : (
+          <>
+            <div className="text-center">
+              <div className="text-[10px] text-gray-600 mb-0.5">Disc.Type</div>
+              <div className="flex w-3/4 mx-auto bg-gray-100/80 p-0.5 rounded-md h-8 border border-gray-200">
+                <button
+                  disabled={isReadOnly}
+                  onClick={() => {
+                    if (currentTab && !isReadOnly) {
+                      updateTabGlobalDiscount(currentTab.id, globalDiscountPercent, globalDiscountAmountStore, 'Percentage');
+                    }
+                  }}
+                  className={`flex-1 text-[11px] rounded transition-all flex items-center justify-center ${globalDiscountTypeStore === 'Percentage' ? 'bg-white shadow-sm font-medium text-blue-600' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'}`}
+                  title="Percentage"
+                >
+                  %
+                </button>
+                <button
+                  disabled={isReadOnly}
+                  onClick={() => {
+                    if (currentTab && !isReadOnly) {
+                      updateTabGlobalDiscount(currentTab.id, globalDiscountPercent, globalDiscountAmountStore, 'Amount');
+                    }
+                  }}
+                  className={`flex-1 text-[11px] rounded transition-all flex items-center justify-center ${globalDiscountTypeStore === 'Amount' ? 'bg-white shadow-sm font-medium text-blue-600' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'}`}
+                  title="Amount"
+                >
+                  {currencySymbol || '$'}
+                </button>
+              </div>
+            </div>
+            <div className="text-center">
+              <div className="text-xs text-gray-600">Discount</div>
+              {isEditingGlobalDiscount ? (
+                <Input
+                  ref={globalDiscountRef}
+                  type="number"
+                  value={globalDiscountValue}
+                  onChange={handleGlobalDiscountChange}
+                  onBlur={handleGlobalDiscountBlur}
+                  onKeyDown={handleGlobalDiscountKeyDown}
+                  disabled={isReadOnly}
+                  className={`text-center text-base font-semibold w-16 h-8 mx-auto ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  placeholder="0"
+                  min="0"
+                  max={globalDiscountTypeStore === 'Percentage' ? "100" : undefined}
+                  step={globalDiscountTypeStore === 'Percentage' ? "0.1" : "1"}
+                />
+              ) : (
+                <div
+                  className={`text-base font-semibold text-blue-600 px-1 rounded flex flex-col items-center justify-center ${
+                    isReadOnly ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-gray-100'
+                  }`}
+                  onClick={handleGlobalDiscountClick}
+                  title={isReadOnly ? 'Discount cannot be edited for confirmed orders' : 'Click to edit global discount'}
+                >
+                  <div>{currencySymbol} {globalDiscount.toLocaleString(undefined, { minimumFractionDigits: currencyPrecision, maximumFractionDigits: currencyPrecision })}</div>
+                  {globalDiscountTypeStore === 'Percentage' && globalDiscountPercent > 0 && (
+                    <div className="text-[10px] text-gray-500">({globalDiscountPercent}%)</div>
+                  )}
+                </div>
               )}
             </div>
-          )}
-        </div>
+          </>
+        )}
         <div className="text-center">
           <div className="text-xs text-gray-600">VAT ({vatPercentage}%)</div>
           <div className="text-base font-semibold text-red-600">

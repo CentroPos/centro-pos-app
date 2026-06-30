@@ -61,11 +61,12 @@ class ElectronAuthStore {
   // Store auth data securely
   async setAuthData(data: Partial<AuthData>): Promise<void> {
     try {
-      if (!this.isElectron()) {
-        throw new Error('Electron API not available')
-      }
-
       this.authData = { ...this.authData, ...data }
+
+      if (!this.isElectron()) {
+        localStorage.setItem('centro_pos_auth', JSON.stringify(this.authData))
+        return
+      }
 
       // Store in Electron's secure storage (main process)
       await window.electronAPI!.auth.storeAuthData(this.authData)
@@ -101,7 +102,8 @@ class ElectronAuthStore {
   private async getStoredAuth(): Promise<AuthData | null> {
     try {
       if (!this.isElectron()) {
-        return null
+        const local = localStorage.getItem('centro_pos_auth')
+        return local ? JSON.parse(local) : null
       }
       return await window.electronAPI!.auth.getAuthData()
     } catch (error) {
@@ -115,6 +117,7 @@ class ElectronAuthStore {
       this.authData = { isAuthenticated: false }
 
       if (!this.isElectron()) {
+        localStorage.removeItem('centro_pos_auth')
         return
       }
 
@@ -208,6 +211,7 @@ class ElectronAuthStore {
   async setUserPreferences(preferences: any): Promise<void> {
     try {
       if (!this.isElectron()) {
+        localStorage.setItem('centro_pos_preferences', JSON.stringify(preferences))
         return
       }
       await window.electronAPI!.auth.storeUserPreferences(preferences)
@@ -220,7 +224,8 @@ class ElectronAuthStore {
   async getUserPreferences(): Promise<any> {
     try {
       if (!this.isElectron()) {
-        return {}
+        const local = localStorage.getItem('centro_pos_preferences')
+        return local ? JSON.parse(local) : {}
       }
       return await window.electronAPI!.auth.getUserPreferences()
     } catch (error) {

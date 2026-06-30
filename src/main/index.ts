@@ -98,6 +98,42 @@ function createWindow(): void {
     mainWindow.loadURL('https://centropos-frontend.netlify.app')
   }
 
+  // Handle offline or load failure
+  mainWindow.webContents.on('did-fail-load', (_event, _errorCode, _errorDescription, validatedURL) => {
+    // Only show error page for the main frame load failure
+    if (validatedURL.includes('centropos-frontend.netlify.app')) {
+      const rawHtml = `<!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <title>No Connection</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f8fafc; color: #334155; }
+            .container { text-align: center; padding: 40px; background: white; border-radius: 12px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
+            h1 { font-size: 1.5rem; margin-bottom: 1rem; color: #0f172a; }
+            p { font-size: 1rem; margin-bottom: 1.5rem; color: #64748b; max-width: 300px; line-height: 1.5; }
+            button { background-color: #0f172a; color: white; border: none; padding: 10px 24px; border-radius: 6px; font-size: 0.95rem; font-weight: 500; cursor: pointer; transition: opacity 0.2s; }
+            button:hover { opacity: 0.9; }
+            .icon { color: #ef4444; margin-bottom: 1rem; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <svg class="icon" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <path d="M16 16s-1.5-2-4-2-4 2-4 2"></path>
+              <line x1="9" y1="9" x2="9.01" y2="9"></line>
+              <line x1="15" y1="9" x2="15.01" y2="9"></line>
+            </svg>
+            <h1>No Internet Connection</h1>
+            <button onclick="window.location.href='https://centropos-frontend.netlify.app'">Retry Connection</button>
+          </div>
+        </body>
+        </html>`;
+      const base64Html = Buffer.from(rawHtml).toString('base64');
+      mainWindow.loadURL(`data:text/html;base64,${base64Html}`);
+    }
+  });
+
   // Store reference to main window for auth handlers
   global.mainWindow = mainWindow
 }

@@ -33,6 +33,12 @@ interface POSProfile {
   custom_exempt_taxes_and_charges?: string
   custom_exempt_tax_rate?: number
   custom_default_line_item_discount_mode?: 'Per Unit' | 'Row Total'
+  // Discount Configuration Fields
+  custom_hide_sales_item_discounts?: number
+  custom_hide_sales_additional_discount?: number
+  custom_hide_purchase_item_discounts?: number
+  custom_hide_purchase_additional_discount?: number
+
   // Purchase-specific fields
   custom_buying_price_list?: string
   custom_purchase_taxes_and_charges?: string

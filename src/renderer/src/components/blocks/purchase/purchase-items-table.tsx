@@ -1693,6 +1693,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
 
   // const _allowDuplicateItems = Boolean(profile?.custom_allow_duplicate_items_in_cart === 1); // Unused
   const allowLabelEditing = Boolean(profile?.custom_allow_item_label_editing === 1);
+  const hidePurchaseItemDiscounts = Boolean(profile?.custom_hide_purchase_item_discounts === 1);
 
   // Use ref to track if we're syncing from store to prevent infinite loop
   const isSyncingFromStoreRef = React.useRef(false)
@@ -1932,27 +1933,31 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                         </div>
                       </TableHead>
                       <TableHead className="w-[80px] text-center px-1">UOM</TableHead>
-                      <TableHead className="w-[75px] text-center px-1">Disc.Type</TableHead>
-                      <TableHead className="w-[100px] text-center px-1">
-                        <Select
-                          disabled={isReadOnly}
-                          value={effectiveDiscountMode}
-                          onValueChange={(value) => {
-                            if (activeTabId) {
-                              updateTabDiscountMode(activeTabId, value as 'Per Unit' | 'Row Total')
-                              setTabEdited(activeTabId, true)
-                            }
-                          }}
-                        >
-                          <SelectTrigger className="mx-auto h-7 w-auto px-1 border-none shadow-none bg-transparent hover:bg-gray-100 rounded focus:ring-0 text-black font-bold text-center flex items-center justify-center gap-1 transition-colors [&>svg]:w-3 [&>svg]:h-3">
-                            <span>Discount</span>
-                          </SelectTrigger>
-                          <SelectContent>
-                              <SelectItem className="text-[10px] py-1" value="Per Unit">Per Unit</SelectItem>
-                              <SelectItem className="text-[10px] py-1" value="Row Total">Row Total</SelectItem>
-                            </SelectContent>
-                          </Select>
-                      </TableHead>
+                      {!hidePurchaseItemDiscounts && (
+                        <>
+                          <TableHead className="w-[75px] text-center px-1">Disc.Type</TableHead>
+                          <TableHead className="w-[100px] text-center px-1">
+                            <Select
+                              disabled={isReadOnly}
+                              value={effectiveDiscountMode}
+                              onValueChange={(value) => {
+                                if (activeTabId) {
+                                  updateTabDiscountMode(activeTabId, value as 'Per Unit' | 'Row Total')
+                                  setTabEdited(activeTabId, true)
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="mx-auto h-7 w-auto px-1 border-none shadow-none bg-transparent hover:bg-gray-100 rounded focus:ring-0 text-black font-bold text-center flex items-center justify-center gap-1 transition-colors [&>svg]:w-3 [&>svg]:h-3">
+                                <span>Discount</span>
+                              </SelectTrigger>
+                              <SelectContent>
+                                  <SelectItem className="text-[10px] py-1" value="Per Unit">Per Unit</SelectItem>
+                                  <SelectItem className="text-[10px] py-1" value="Row Total">Row Total</SelectItem>
+                                </SelectContent>
+                              </Select>
+                          </TableHead>
+                        </>
+                      )}
                       <TableHead className="w-[100px] text-center font-bold">Rate</TableHead>
                       <TableHead className="w-[100px] text-center font-bold">Selling Rate</TableHead>
                       <TableHead className="w-[100px] text-left pl-8">Total</TableHead>
@@ -2446,7 +2451,9 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                           </TableCell>
 
                           {/* Disc.Type Cell */}
-                          <TableCell className="w-[75px] text-center px-3 py-1">
+                          {!hidePurchaseItemDiscounts && (
+                            <>
+                              <TableCell className="w-[75px] text-center px-3 py-1">
                             <select
                               value={item.discount_type || 'Percentage'}
                               disabled={isReadOnly || item.fromReceipt === true || !!(item.pr_item_id && String(item.pr_item_id).trim() !== '')}
@@ -2565,6 +2572,8 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                               </div>
                             )}
                           </TableCell>
+                            </>
+                          )}
 
                           {/* Rate (editable) */}
                           <TableCell
