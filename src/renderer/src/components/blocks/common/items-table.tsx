@@ -6,7 +6,7 @@ import { Checkbox } from '@renderer/components/ui/checkbox'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@renderer/components/ui/dialog'
 import { Button } from '@renderer/components/ui/button'
 import {
-  
+
   TableBody,
   TableCell,
   TableHead,
@@ -84,7 +84,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
   const { settings } = useSystemSettingsStore()
   const currencyPrecision = settings?.currency_precision || 2
   const floatPrecision = settings?.float_precision || 3
-  
+
   const effectiveDiscountMode = currentTab?.lineItemDiscountMode || profile?.custom_default_line_item_discount_mode || 'Per Unit';
 
   // Price List State
@@ -628,21 +628,33 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
     // Check if this is the last item (newly added) by actual index
     const isLastItem = actualIndex === items.length - 1
 
-      let value = item[activeField]
-      if (activeField === 'quantity') {
-        const storeQty = item.quantity
-        if (isLastItem && (storeQty === 1 || storeQty === undefined || storeQty === null)) {
-          value = 1
-        } else {
-          value = storeQty ?? item[activeField]
+    let value = item[activeField]
+    if (activeField === 'quantity') {
+      const storeQty = item.quantity
+      if (isLastItem && (storeQty === 1 || storeQty === undefined || storeQty === null)) {
+        value = 1
+      } else {
+        value = storeQty ?? item[activeField]
+      }
+    } else if (activeField === 'discount_percentage') {
+      value = (!item.discount_type || item.discount_type === 'Percentage') ? item.discount_percentage : item.discount_amount
+    }
+
+    // if (editValue === '' || (activeField && String(value) !== editValue)) {
+    //   setEditValue(value?.toString() || '')
+    // }
+
+    if (editValue === '' || (activeField && String(value) !== editValue)) {
+      // Don't overwrite if the user is just typing a decimal or trailing zero (e.g. "129." mathematically equals 129)
+      if (['quantity', 'discount_percentage', 'standard_rate'].includes(activeField)) {
+        if (parseFloat(editValue) === Number(value)) {
+          return; // Skip overwriting!
         }
-      } else if (activeField === 'discount_percentage') {
-        value = (!item.discount_type || item.discount_type === 'Percentage') ? item.discount_percentage : item.discount_amount
       }
-      
-      if (editValue === '' || (activeField && String(value) !== editValue)) {
-        setEditValue(value?.toString() || '')
-      }
+
+      setEditValue(value?.toString() || '')
+    }
+
     // Clear invalid UOM message when starting to edit
     if (activeField === 'uom') {
       setInvalidUomMessage('')
@@ -1829,7 +1841,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
           <TabsContent value="items" className="absolute inset-0 flex flex-col min-h-0 data-[state=inactive]:hidden">
             <div className="border rounded-lg flex flex-col min-h-0">
               {/* Sticky table head, scrollable body only */}
-              
+
               {/* Only the body scrolls. Dynamically reduce height when error box is visible */}
               <div
                 className={`flex-1 min-h-0 overflow-auto transition-[max-height] duration-200`}
@@ -1899,7 +1911,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                 }}
               >
                 <table className="w-full min-w-[1070px] text-sm table-fixed border-collapse">
-<TableHeader className="bg-white sticky top-0 z-20 shadow-sm">
+                  <TableHeader className="bg-white sticky top-0 z-20 shadow-sm">
                     <TableRow>
                       <TableHead className="w-[50px] text-center font-bold">S.No</TableHead>
                       <TableHead className="w-[110px]">
@@ -1936,10 +1948,10 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             <span>Discount</span>
                           </SelectTrigger>
                           <SelectContent>
-                              <SelectItem className="text-[10px] py-1" value="Per Unit">Per Unit</SelectItem>
-                              <SelectItem className="text-[10px] py-1" value="Row Total">Row Total</SelectItem>
-                            </SelectContent>
-                          </Select>
+                            <SelectItem className="text-[10px] py-1" value="Per Unit">Per Unit</SelectItem>
+                            <SelectItem className="text-[10px] py-1" value="Row Total">Row Total</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </TableHead>
                       <TableHead className="w-[100px] text-center font-bold">Rate</TableHead>
                       <TableHead className="w-[100px] text-left pl-8">Total</TableHead>
@@ -1950,7 +1962,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                       )}
                     </TableRow>
                   </TableHeader>
-<TableBody>
+                  <TableBody>
                     {filteredItems.map((item, index) => {
                       const isSelected = item.item_code === selectedItemId && index === selectedRowIndex
                       const isEditingQuantity = isSelected && isEditing && activeField === 'quantity' && !isReadOnly
@@ -2561,13 +2573,32 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                             }}
                           >
                             {isEditingRate ? (
+                              // <input
+                              //   key={`rate-${item.item_code}-${isEditingRate}-${forceFocus}`}
+                              //   ref={inputRef}
+                              //   type="number"
+                              //   value={editValue}
+                              //   onChange={(e) => {
+                              //     const newValue = e.target.value
+                              //     setEditValue(newValue)
+                              //     // Real-time update for unit price
+                              //     if (selectedItemId && activeTabId) {
+                              //       const numValue = parseFloat(newValue)
+                              //       if (!isNaN(numValue) && numValue >= 0) {
+                              //         updateItemAndMarkEdited(selectedItemId, { standard_rate: numValue })
+                              //       }
+                              //     }
+                              //   }}
                               <input
                                 key={`rate-${item.item_code}-${isEditingRate}-${forceFocus}`}
                                 ref={inputRef}
-                                type="number"
+                                type="text"           // 1. Changed from "number" to "text"
+                                inputMode="decimal"   // 2. Added this for numeric keyboards
                                 value={editValue}
                                 onChange={(e) => {
-                                  const newValue = e.target.value
+                                  // 3. Clean the input to only allow numbers and one decimal point
+                                  const newValue = e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1')
+
                                   setEditValue(newValue)
                                   // Real-time update for unit price
                                   if (selectedItemId && activeTabId) {
@@ -2577,6 +2608,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                     }
                                   }
                                 }}
+
                                 onKeyDown={(e) => {
                                   handleArrowNavigation(e, 'standard_rate', item.item_code)
                                   handleVerticalNavigation(e, 'standard_rate', item.item_code)
@@ -2608,7 +2640,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                   const rawRate = Number(item.standard_rate || 0)
                                   const rawQty = Number(item.quantity || 0)
                                   let discAmtPerUnit = 0
-                                  
+
                                   if (item.discount_type === 'Amount') {
                                     const totalDiscAmt = flt(Number(item.discount_amount || 0), 6)
                                     if (effectiveDiscountMode === 'Row Total') {
@@ -2620,7 +2652,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                     const discPercent = flt(Number(item.discount_percentage || 0), 6)
                                     discAmtPerUnit = flt((rawRate * discPercent) / 100, 6)
                                   }
-                                  
+
                                   const computedRate = flt(rawRate - discAmtPerUnit, 6)
                                   return computedRate.toFixed(currencyPrecision)
                                 })()}
@@ -2629,11 +2661,11 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                           </TableCell>
                           <TableCell className={`font-semibold ${hasError ? 'text-red-600' : hasSplitWarehouse ? 'text-yellow-600' : isSelected ? 'text-blue-900' : ''} w-[100px] text-left pl-8`}>
                             {(() => {
-                              const flt = (val: number, precision: number = 2) => Math.round((val + Number.EPSILON) * Math.pow(10, precision)) / Math.pow(10, precision)
+                              const flt = (val: number, precision: number = 6) => Math.round((val + Number.EPSILON) * Math.pow(10, precision)) / Math.pow(10, precision)
                               const rawRate = Number(item.standard_rate || 0)
                               const rawQty = Number(item.quantity || 0)
                               const baseTotal = flt(rawRate * rawQty)
-                              
+
                               let discountAmt = 0
                               if (item.discount_type === 'Amount') {
                                 discountAmt = flt(Number(item.discount_amount || 0))
@@ -2644,7 +2676,7 @@ const ItemsTable: React.FC<Props> = ({ selectedItemId, onRemoveItem, selectItem,
                                 const discountPercent = flt(Number(item.discount_percentage || 0))
                                 discountAmt = flt((baseTotal * discountPercent) / 100)
                               }
-                              
+
                               const exactTotal = baseTotal - discountAmt
                               return exactTotal.toFixed(currencyPrecision)
                             })()}

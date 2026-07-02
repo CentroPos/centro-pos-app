@@ -127,7 +127,7 @@ const DiscountSection: React.FC<Props> = ({
   // 2. docstatus === 1 (confirmed)
   // 3. Order has been saved (has orderId) and outstanding amount is 0 or very close to 0 (fully paid)
   // 4. Order has linked invoices and outstanding amount is 0 (fully paid, even if not confirmed)
-  const isReadOnly = currentTab?.status === 'confirmed' || 
+  const isReadOnly = currentTab?.status === 'confirmed' ||
     currentTab?.status === 'paid' ||
     (currentTab?.orderData && Number(currentTab.orderData.docstatus) === 1) ||
     (currentTab?.orderId && outstandingAmount !== null && Math.abs(outstandingAmount) < 0.01) ||
@@ -311,11 +311,11 @@ const DiscountSection: React.FC<Props> = ({
     let untaxedSum = 0
 
     const netAfterIndividualDiscount = items.reduce((sum: number, it: any) => {
-      const flt = (val: number, precision: number = 2) => Math.round((val + Number.EPSILON) * Math.pow(10, precision)) / Math.pow(10, precision)
+      const flt = (val: number, precision: number = 6) => Math.round((val + Number.EPSILON) * Math.pow(10, precision)) / Math.pow(10, precision)
       const qty = Number(it.quantity || 0)
       const rate = Number(it.standard_rate || 0)
       const baseTotal = flt(qty * rate)
-      
+
       let itemDiscount = 0
       const type = it.discount_type || 'Percentage'
       if (type === 'Percentage') {
@@ -324,10 +324,10 @@ const DiscountSection: React.FC<Props> = ({
         const discAmount = flt(Number(it.discount_amount || 0))
         itemDiscount = effectiveDiscountMode === 'Row Total' ? discAmount : flt(discAmount * qty)
       }
-      
+
       untaxedSum += baseTotal
       individualDiscountSum += itemDiscount
-      
+
       const exactTotal = baseTotal - itemDiscount
       return sum + exactTotal
     }, 0)
@@ -345,8 +345,9 @@ const DiscountSection: React.FC<Props> = ({
 
     // Final total = discounted net amount + VAT
     const totalRaw = netAfterGlobalDiscount + vatCalc
-    
-    let totalFinal = Number(totalRaw.toFixed(2))
+
+    // let totalFinal = Number(totalRaw.toFixed(2))
+    let totalFinal = Number(totalRaw.toFixed(currencyPrecision))
     let roundingAdj = 0
 
     // Prefer final_total returned from backend once the order exists
@@ -666,9 +667,8 @@ const DiscountSection: React.FC<Props> = ({
             />
           ) : (
             <div
-              className={`text-base font-semibold text-blue-600 px-1 rounded flex flex-col items-center justify-center ${
-                isReadOnly ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-gray-100'
-              }`}
+              className={`text-base font-semibold text-blue-600 px-1 rounded flex flex-col items-center justify-center ${isReadOnly ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-gray-100'
+                }`}
               onClick={handleGlobalDiscountClick}
               title={isReadOnly ? 'Discount cannot be edited for confirmed orders' : 'Click to edit global discount'}
             >
@@ -685,10 +685,9 @@ const DiscountSection: React.FC<Props> = ({
             {currencySymbol} {vat.toLocaleString(undefined, { minimumFractionDigits: currencyPrecision, maximumFractionDigits: currencyPrecision })}
           </div>
         </div>
-        <div 
-          className={`text-center rounded p-1 ${
-            isReadOnly ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-gray-50'
-          }`}
+        <div
+          className={`text-center rounded p-1 ${isReadOnly ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-gray-50'
+            }`}
           onClick={() => handleRoundingChange(!isRoundingEnabled)}
           title={isReadOnly ? 'Rounding cannot be changed for confirmed orders' : 'Click to toggle rounding'}
         >
