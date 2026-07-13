@@ -17,3 +17,6 @@ pnpm-lock.yaml
 .agentdist.zip
 dist/
 build/
+
+# Local Netlify folder
+.netlify

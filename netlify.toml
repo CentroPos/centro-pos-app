@@ -1,0 +1,28 @@
+# Paste your friend's content below this line:
+plugins = []
+headers = []
+redirects = []
+
+[functions]
+
+[functions."*"]
+
+[build]
+publish = "out/renderer"
+publishOrigin = "config"
+commandOrigin = "config"
+command = "echo 'Skipping Netlify build, using local files'"
+
+[build.environment]
+
+[build.processing]
+
+[build.processing.css]
+
+[build.processing.html]
+
+[build.processing.images]
+
+[build.processing.js]
+
+[build.services]

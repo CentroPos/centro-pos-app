@@ -350,13 +350,21 @@ const PrintsTabContent: React.FC = () => {
         )
         console.log('🖨️ Request data:', { order_id: currentTab.orderId })
 
+        // const response = await window.electronAPI?.proxy?.request({
+        //   method: 'POST',
+        //   url: '/api/method/centro_pos_apis.api.print.print_items_list',
+        //   data: {
+        //     order_id: currentTab.orderId
+        //   }
+        // })
         const response = await window.electronAPI?.proxy?.request({
-          method: 'POST',
-          url: '/api/method/centro_pos_apis.api.print.print_items_list',
-          data: {
-            order_id: currentTab.orderId
+          method: 'GET',
+          url: '/api/method/centro_pos_apis.api.print.print_purchase_items_list', // <-- UPDATED API
+          params: {
+            purchase_order_id: currentTab.orderId // <-- UPDATED PARAMETER
           }
         })
+
 
         console.log('🖨️ API call completed')
         console.log('🖨️ Full response object:', response)
@@ -456,11 +464,8 @@ const PrintsTabContent: React.FC = () => {
 
   // Load PDF preview for selected format (MUST be before any conditional returns)
   useEffect(() => {
-    const isStaticTab = activePrintTab === 'instant-print' ||
-      activePrintTab === 'purchase-order' ||
-      activePrintTab === 'purchase-invoice' ||
-      activePrintTab === 'return-invoice'
-    if (isStaticTab) return
+    const isInstantPrintActive = activePrintTab === 'instant-print'
+    if (isInstantPrintActive) return
 
     const selectedItem = printItems.find((item) => getItemKey(item) === activePrintTab)
 
@@ -479,10 +484,6 @@ const PrintsTabContent: React.FC = () => {
 
   // Calculate values needed for useHotkeys (MUST be before any conditional returns)
   const isInstantPrintActive = activePrintTab === 'instant-print'
-  const isStaticTab = isInstantPrintActive ||
-    activePrintTab === 'purchase-order' ||
-    activePrintTab === 'purchase-invoice' ||
-    activePrintTab === 'return-invoice'
   const selectedItem = printItems.find((item) => getItemKey(item) === activePrintTab)
   const activeItemKey = selectedItem ? getItemKey(selectedItem) : ''
   const activeFormatUrl = selectedItem
@@ -491,11 +492,8 @@ const PrintsTabContent: React.FC = () => {
   const activePreviewKey =
     selectedItem && activeFormatUrl ? `${activeItemKey}-${activeFormatUrl}` : ''
 
-  const isPrintEnabled = isStaticTab
-    ? (isInstantPrintActive ? !!instantPrintPreview :
-      activePrintTab === 'purchase-order' ? !!poPrintPreview :
-        activePrintTab === 'purchase-invoice' ? !!piPrintPreview :
-          activePrintTab === 'return-invoice' ? !!prPrintPreview : false)
+  const isPrintEnabled = isInstantPrintActive
+    ? !!instantPrintPreview
     : !!(activePreviewKey && (pdfPreviews[activePreviewKey] || pdfPreviewsCache.current[activePreviewKey]))
 
   // Handle print action (MUST be before any conditional returns)
@@ -504,12 +502,6 @@ const PrintsTabContent: React.FC = () => {
       let pdfDataUrl = ''
       if (isInstantPrintActive) {
         pdfDataUrl = instantPrintPreview
-      } else if (activePrintTab === 'purchase-order') {
-        pdfDataUrl = poPrintPreview
-      } else if (activePrintTab === 'purchase-invoice') {
-        pdfDataUrl = piPrintPreview
-      } else if (activePrintTab === 'return-invoice') {
-        pdfDataUrl = prPrintPreview
       } else if (selectedItem) {
         const previewKey = activePreviewKey
         pdfDataUrl = previewKey ? pdfPreviews[previewKey] : ''
@@ -641,40 +633,6 @@ const PrintsTabContent: React.FC = () => {
             >
               Instant Print
             </button>
-            {/* Categorized Static Tabs */}
-            {currentTab?.purchaseOrderPrintUrl && (
-              <button
-                className={`px-4 py-3 font-bold text-sm border-b-2 whitespace-nowrap transition-all ${activePrintTab === 'purchase-order'
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'text-gray-500 hover:text-black hover:bg-white/40 border-transparent'
-                  }`}
-                onClick={() => setActivePrintTab('purchase-order')}
-              >
-                Purchase Order
-              </button>
-            )}
-            {currentTab?.purchaseInvoicePrintUrl && (
-              <button
-                className={`px-4 py-3 font-bold text-sm border-b-2 whitespace-nowrap transition-all ${activePrintTab === 'purchase-invoice'
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'text-gray-500 hover:text-black hover:bg-white/40 border-transparent'
-                  }`}
-                onClick={() => setActivePrintTab('purchase-invoice')}
-              >
-                Purchase Invoice
-              </button>
-            )}
-            {currentTab?.returnInvoicePrintUrl && (
-              <button
-                className={`px-4 py-3 font-bold text-sm border-b-2 whitespace-nowrap transition-all ${activePrintTab === 'return-invoice'
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'text-gray-500 hover:text-black hover:bg-white/40 border-transparent'
-                  }`}
-                onClick={() => setActivePrintTab('return-invoice')}
-              >
-                Return Invoice
-              </button>
-            )}
 
             {/* Dynamic Tabs from API */}
             {printItems.map((item, index) => {
@@ -696,34 +654,35 @@ const PrintsTabContent: React.FC = () => {
           </div>
 
           {/* Selected Tab Content */}
-          {(isStaticTab || selectedItem) && (
+          {(isInstantPrintActive || selectedItem) && (
             <div className="flex-1 flex flex-col overflow-hidden">
               <div className="flex items-center justify-end mb-3 gap-3">
-                {!(isInstantPrintActive ||
+                {/* {!(isInstantPrintActive ||
                   activePrintTab === 'purchase-order' ||
                   activePrintTab === 'purchase-invoice' ||
-                  activePrintTab === 'return-invoice') && selectedItem && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                        Print Format
-                      </span>
-                      <Select
-                        value={activeFormatUrl}
-                        onValueChange={(value) => handleFormatChange(activeItemKey, value)}
-                      >
-                        <SelectTrigger className="w-48 h-9 text-sm max-w-48 [&_[data-slot=select-value]]:truncate [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:flex-1">
-                          <SelectValue placeholder="Select format" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {getFormatList(selectedItem).map((format: any) => (
-                            <SelectItem key={format.url} value={format.url}>
-                              {format.format_name || 'Default'}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
+                  activePrintTab === 'return-invoice') && selectedItem && ( */}
+                {!isInstantPrintActive && selectedItem && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Print Format
+                    </span>
+                    <Select
+                      value={activeFormatUrl}
+                      onValueChange={(value) => handleFormatChange(activeItemKey, value)}
+                    >
+                      <SelectTrigger className="w-48 h-9 text-sm max-w-48 [&_[data-slot=select-value]]:truncate [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:flex-1">
+                        <SelectValue placeholder="Select format" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {getFormatList(selectedItem).map((format: any) => (
+                          <SelectItem key={format.url} value={format.url}>
+                            {format.format_name || 'Default'}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <button
                   type="button"
                   onClick={handlePrint}
@@ -737,11 +696,8 @@ const PrintsTabContent: React.FC = () => {
                   className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center gap-2"
                   title="Print with Printer Selection"
                   disabled={
-                    isInstantPrintActive || activePrintTab === 'purchase-order' || activePrintTab === 'purchase-invoice' || activePrintTab === 'return-invoice'
-                      ? (activePrintTab === 'instant-print' ? !instantPrintPreview :
-                        activePrintTab === 'purchase-order' ? !poPrintPreview :
-                          activePrintTab === 'purchase-invoice' ? !piPrintPreview :
-                            activePrintTab === 'return-invoice' ? !prPrintPreview : true)
+                    isInstantPrintActive
+                      ? !instantPrintPreview
                       : !(activePreviewKey && (pdfPreviews[activePreviewKey] || pdfPreviewsCache.current[activePreviewKey]))
                   }
                 >
@@ -760,98 +716,97 @@ const PrintsTabContent: React.FC = () => {
               {/* PDF Preview */}
               <div className="bg-gray-50 rounded border p-3 flex-1 overflow-hidden flex flex-col">
                 <div className="bg-white rounded border overflow-hidden flex-1" style={{ display: 'flex', flexDirection: 'column' }}>
-                  {/* PDF Preview rendering based on active tab */}
-                  {(() => {
-                    const isInstant = activePrintTab === 'instant-print'
-                    const isPO = activePrintTab === 'purchase-order'
-                    const isPI = activePrintTab === 'purchase-invoice'
-                    const isRI = activePrintTab === 'return-invoice'
-
-                    const previewToSet = isInstant ? instantPrintPreview :
-                      isPO ? poPrintPreview :
-                        isPI ? piPrintPreview :
-                          isRI ? prPrintPreview : null
-
-                    if (isInstant || isPO || isPI || isRI) {
-                      if (previewToSet) {
-                        return (
-                          <iframe
-                            src={previewToSet}
-                            className="w-full h-full border-0"
-                            style={{ minHeight: '100%', minWidth: '100%' }}
-                            title={activePrintTab}
-                            onLoad={() => console.log(`📄 PDF preview loaded for ${activePrintTab}`)}
-                          />
-                        )
-                      } else {
-                        const urlToHandle = isInstant ? currentTab?.instantPrintUrl :
-                          isPO ? currentTab?.purchaseOrderPrintUrl :
-                            isPI ? currentTab?.purchaseInvoicePrintUrl :
-                              isRI ? currentTab?.returnInvoicePrintUrl : null
-
-                        if (urlToHandle) {
-                          return (
-                            <div className="flex items-center justify-center h-full">
-                              <div className="text-center">
-                                <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                                  <svg className="w-6 h-6 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                  </svg>
-                                </div>
-                                <p className="text-sm text-gray-500">Loading preview...</p>
-                              </div>
-                            </div>
-                          )
-                        } else {
-                          return (
-                            <div className="flex items-center justify-center h-full">
-                              <div className="text-center">
-                                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                  <i className="fas fa-print text-2xl text-gray-400"></i>
-                                </div>
-                                <h3 className="text-lg font-semibold text-gray-600 mb-2">No Print Available</h3>
-                                <p className="text-sm text-gray-500">Print will be available after creating, updating, confirming, paying, or returning an order.</p>
-                              </div>
-                            </div>
-                          )
-                        }
-                      }
-                    } else if (selectedItem) {
-                      if (activePreviewKey && pdfPreviews[activePreviewKey]) {
-                        return (
-                          <iframe
-                            src={pdfPreviews[activePreviewKey]}
-                            className="w-full h-full border-0"
-                            style={{ minHeight: '100%', minWidth: '100%' }}
-                            title={selectedItem.report_title}
-                            onLoad={() => console.log('📄 PDF preview loaded:', selectedItem.report_title)}
-                          />
-                        )
-                      } else {
-                        return (
-                          <div className="flex items-center justify-center h-full">
-                            <div className="text-center">
-                              <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                                <svg className="w-6 h-6 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
-                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                              </div>
-                              <p className="text-sm text-gray-500">Loading preview...</p>
-                              <button
-                                onClick={() => loadPDFPreview(selectedItem, activeFormatUrl)}
-                                className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline"
-                              >
-                                Click to load preview
-                              </button>
-                            </div>
+                  {isInstantPrintActive ? (
+                    instantPrintPreview ? (
+                      <iframe
+                        src={instantPrintPreview}
+                        className="w-full h-full border-0"
+                        style={{ minHeight: '100%', minWidth: '100%' }}
+                        title="Instant Print"
+                        onLoad={() => console.log('📄 Instant Print PDF preview loaded')}
+                      />
+                    ) : currentTab?.instantPrintUrl ? (
+                      <div className="flex items-center justify-center h-full">
+                        <div className="text-center">
+                          <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                            <svg
+                              className="w-6 h-6 text-gray-400 animate-spin"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                            >
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                              ></circle>
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                              ></path>
+                            </svg>
                           </div>
-                        )
-                      }
-                    }
-                    return null
-                  })()}
+                          <p className="text-sm text-gray-500">Loading preview...</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center h-full">
+                        <div className="text-center">
+                          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i className="fas fa-print text-2xl text-gray-400"></i>
+                          </div>
+                          <h3 className="text-lg font-semibold text-gray-600 mb-2">No Print Available</h3>
+                          <p className="text-sm text-gray-500">Print will be available after creating, updating, confirming, paying, or returning an order.</p>
+                        </div>
+                      </div>
+                    )
+                  ) : selectedItem ? (
+                    activePreviewKey && pdfPreviews[activePreviewKey] ? (
+                      <iframe
+                        src={pdfPreviews[activePreviewKey]}
+                        className="w-full h-full border-0"
+                        style={{ minHeight: '100%', minWidth: '100%' }}
+                        title={selectedItem.report_title}
+                        onLoad={() => console.log('📄 PDF preview loaded:', selectedItem.report_title)}
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center h-full">
+                        <div className="text-center">
+                          <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                            <svg
+                              className="w-6 h-6 text-gray-400 animate-spin"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                            >
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                              ></circle>
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                              ></path>
+                            </svg>
+                          </div>
+                          <p className="text-sm text-gray-500">Loading preview...</p>
+                          <button
+                            onClick={() => loadPDFPreview(selectedItem, activeFormatUrl)}
+                            className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline"
+                          >
+                            Click to load preview
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -938,7 +893,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
   const { updateItemInTab, getCurrentTab, updateTabOrderData, tabs, setActiveTab, openTab } = usePurchaseTabStore()
   const currentTab = getCurrentTab()
   const activeTabId = currentTab?.id
-  
+
   const handleSubmitPriceLimits = async () => {
     try {
       const minP = Number(editMinPrice)
@@ -950,7 +905,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
       }
 
       setIsSubmittingPriceLimits(true)
-      
+
       const thisItem = items.find((item) => item.item_code === selectedItemId)
       const thisUom = (thisItem && (thisItem.uom || 'Nos')) || 'Nos'
 
@@ -973,7 +928,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
     } finally {
       const thisItem = items.find((item) => item.item_code === selectedItemId)
       const thisUom = (thisItem && (thisItem.uom || 'Nos')) || 'Nos'
-      
+
       // Optimistically update the UI in the cart item
       if (activeTabId && selectedItemId) {
         // Also update the uomMinMax object for the item so that the current UOM reflects the change
@@ -982,25 +937,25 @@ const RightPanel: React.FC<RightPanelProps> = ({
           ...currentUomMinMax,
           [thisUom]: { min: Number(editMinPrice), max: Number(editMaxPrice) }
         }
-        
+
         updateItemInTab(activeTabId, selectedItemId, {
           min_price: Number(editMinPrice),
           max_price: Number(editMaxPrice),
           uomMinMax: updatedUomMinMax
         })
       }
-      
+
       // Optimistically update productListData so the right panel instantly shows the new price
       setProductListData(prev => {
         if (!prev) return prev
-        const newUomDetails = prev.uom_details?.map(d => 
-          String(d.uom).toLowerCase() === String(thisUom).toLowerCase() 
-            ? { ...d, min_price: Number(editMinPrice), max_price: Number(editMaxPrice) } 
+        const newUomDetails = prev.uom_details?.map(d =>
+          String(d.uom).toLowerCase() === String(thisUom).toLowerCase()
+            ? { ...d, min_price: Number(editMinPrice), max_price: Number(editMaxPrice) }
             : d
         )
         return { ...prev, uom_details: newUomDetails }
       })
-      
+
       setIsSubmittingPriceLimits(false)
       setIsEditingPriceLimits(false)
     }
@@ -1115,10 +1070,15 @@ const RightPanel: React.FC<RightPanelProps> = ({
         // Fetch print items
         let printItemsData = null
         try {
+          // const printRes = await window.electronAPI?.proxy?.request({
+          //   url: '/api/method/centro_pos_apis.api.print.print_items_list',
+          //   params: { order_id: String(orderId) }
+          // })
           const printRes = await window.electronAPI?.proxy?.request({
-            url: '/api/method/centro_pos_apis.api.print.print_items_list',
-            params: { order_id: String(orderId) }
+            url: '/api/method/centro_pos_apis.api.print.print_purchase_items_list', // <-- UPDATED API
+            params: { purchase_order_id: String(orderId) } // <-- UPDATED PARAMETER
           })
+
           printItemsData = printRes?.data?.data || null
         } catch (printErr) {
           console.warn('⚠️ Failed to fetch print items:', printErr)
@@ -3008,7 +2968,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
                     {/* Inline Popover Wizard */}
                     {isEditingPriceLimits && (
-                      <div 
+                      <div
                         ref={priceLimitsPopoverRef}
                         className="absolute left-0 top-full mt-2 w-full min-w-[200px] z-50 bg-white rounded-xl shadow-xl border border-gray-200 p-4"
                       >
@@ -3016,33 +2976,33 @@ const RightPanel: React.FC<RightPanelProps> = ({
                         <div className="space-y-3">
                           <div>
                             <label className="text-xs font-medium text-gray-600 mb-1 block">Min Price</label>
-                            <Input 
-                              type="number" 
-                              className="h-8 text-sm" 
+                            <Input
+                              type="number"
+                              className="h-8 text-sm"
                               value={editMinPrice}
                               onChange={e => setEditMinPrice(e.target.value)}
                             />
                           </div>
                           <div>
                             <label className="text-xs font-medium text-gray-600 mb-1 block">Max Price</label>
-                            <Input 
-                              type="number" 
-                              className="h-8 text-sm" 
+                            <Input
+                              type="number"
+                              className="h-8 text-sm"
                               value={editMaxPrice}
                               onChange={e => setEditMaxPrice(e.target.value)}
                             />
                           </div>
                           <div className="flex justify-end gap-2 mt-2">
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
+                            <Button
+                              variant="outline"
+                              size="sm"
                               className="h-8 text-xs"
                               onClick={() => setIsEditingPriceLimits(false)}
                             >
                               Cancel
                             </Button>
-                            <Button 
-                              size="sm" 
+                            <Button
+                              size="sm"
                               className="h-8 text-xs bg-blue-600 hover:bg-blue-700"
                               disabled={isSubmittingPriceLimits}
                               onClick={handleSubmitPriceLimits}
@@ -3981,7 +3941,7 @@ const RightPanel: React.FC<RightPanelProps> = ({
 
                         toast.success('Supplier updated successfully')
                         setEditOpen(false)
-                        
+
                         // refresh details
                         if (selectedCustomer?.name || selectedCustomer?.customer_id || customerDetails?.name) {
                           try {
